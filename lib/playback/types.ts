@@ -6,6 +6,15 @@ import type { PlaybackSnapshot } from '@/lib/utils/playback-storage';
 
 export type { PlaybackSnapshot };
 
+/** Playback progress for the active classroom scene. */
+export interface PlaybackProgress {
+  sceneId?: string;
+  currentTimeMs: number;
+  durationMs: number;
+  seekable: boolean;
+  actionIndex: number;
+}
+
 /** Visual effects (for onEffectFire callback) */
 export type Effect =
   | { kind: 'spotlight'; targetId: string; dimOpacity?: number }

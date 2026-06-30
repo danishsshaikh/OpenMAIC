@@ -155,6 +155,8 @@
     "generatingNextPage": "場景正在生成，請稍候...",
     "fullscreen": "全螢幕",
     "exitFullscreen": "離開全螢幕",
+    "playbackSeekLabel": "播放位置",
+    "playbackTime": "{{current}} / {{duration}}",
     "courseComplete": "課程完成",
     "editCourse": "編輯課程",
     "doneEditing": "完成編輯",

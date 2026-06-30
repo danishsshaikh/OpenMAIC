@@ -156,6 +156,8 @@
     "courseComplete": "اكتملت الدورة",
     "fullscreen": "ملء الشاشة",
     "exitFullscreen": "الخروج من ملء الشاشة",
+    "playbackSeekLabel": "موضع التشغيل",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "تحرير الدورة",
     "doneEditing": "إنهاء التحرير",
     "proModeDisabledHint": "التحرير غير متاح في هذه الصفحة — افتح شريحة من الدورة للتحرير باستخدام وضع Pro."

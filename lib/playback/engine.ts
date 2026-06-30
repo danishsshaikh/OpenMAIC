@@ -29,6 +29,7 @@ import type {
   EngineMode,
   TopicState,
   PlaybackEngineCallbacks,
+  PlaybackProgress,
   PlaybackSnapshot,
   TriggerEvent,
   Effect,
@@ -42,6 +43,9 @@ import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('PlaybackEngine');
+const DISCUSSION_PROMPT_DELAY_MS = 3000;
+const MIN_SPEECH_DURATION_MS = 2000;
+const INSTANT_ACTION_DURATION_MS = 0;
 
 /**
  * If more than 30% of characters are CJK, treat the text as Chinese.
@@ -84,6 +88,11 @@ export class PlaybackEngine {
   private browserTTSChunkIndex: number = 0; // current chunk being spoken
   private browserTTSPausedChunks: string[] = []; // remaining chunks saved on pause (for cancel+re-speak)
   private speechTimerRemaining: number = 0; // remaining ms (set on pause)
+  private activeActionIndex: number | null = null;
+  private activeActionStartedAt: number = 0;
+  private activeActionEstimatedMs: number = 0;
+  private pendingSpeechSeekOffsetMs: number = 0;
+  private seekProgressOverrideMs: number | null = null;
 
   constructor(
     scenes: Scene[],
@@ -122,6 +131,70 @@ export class PlaybackEngine {
     this.consumedDiscussions = new Set(snapshot.consumedDiscussions);
   }
 
+  /** Get current scene-level playback progress. */
+  getProgress(): PlaybackProgress {
+    return this.computeProgress();
+  }
+
+  /**
+   * Seek within the current scene timeline.
+   *
+   * Seeking is action-boundary based for non-audio actions. For generated
+   * speech that is already active, the underlying audio element is seeked
+   * precisely; otherwise the offset is applied when the speech action starts.
+   */
+  seekTo(timeMs: number): PlaybackProgress {
+    const durationMs = this.getSceneDurationMs();
+    const targetMs = Math.max(0, durationMs > 0 ? Math.min(timeMs, durationMs) : timeMs);
+    const timeline = this.getTimeline();
+    const wasPlaying = this.mode === 'playing';
+
+    if (durationMs <= 0 || timeline.length === 0) {
+      return this.getProgress();
+    }
+
+    if (targetMs >= durationMs) {
+      this.cancelActivePlayback();
+      this.sceneIndex = 0;
+      this.actionIndex = this.scenes[0]?.actions?.length ?? 0;
+      this.activeActionIndex = null;
+      this.seekProgressOverrideMs = durationMs;
+      this.setMode('idle');
+      return this.getProgress();
+    }
+
+    const target =
+      timeline.find((entry) => targetMs >= entry.startMs && targetMs < entry.endMs) ??
+      timeline[timeline.length - 1];
+    const offsetMs = Math.max(0, targetMs - target.startMs);
+
+    if (
+      this.activeActionIndex === target.actionIndex &&
+      target.action.type === 'speech' &&
+      this.audioPlayer.seekTo(offsetMs)
+    ) {
+      this.pendingSpeechSeekOffsetMs = 0;
+      this.seekProgressOverrideMs = null;
+      return this.getProgress();
+    }
+
+    this.cancelActivePlayback();
+    this.sceneIndex = 0;
+    this.actionIndex = target.actionIndex;
+    this.activeActionIndex = null;
+    this.pendingSpeechSeekOffsetMs = target.action.type === 'speech' ? offsetMs : 0;
+    this.seekProgressOverrideMs = target.startMs + this.pendingSpeechSeekOffsetMs;
+
+    if (wasPlaying) {
+      this.setMode('playing');
+      this.processNext();
+    } else {
+      this.setMode('paused');
+    }
+
+    return this.getProgress();
+  }
+
   /** idle → playing (from beginning) */
   start(): void {
     if (this.mode !== 'idle') {
@@ -131,6 +204,8 @@ export class PlaybackEngine {
 
     this.sceneIndex = 0;
     this.actionIndex = 0;
+    this.pendingSpeechSeekOffsetMs = 0;
+    this.seekProgressOverrideMs = null;
     this.setMode('playing');
     this.processNext();
   }
@@ -141,6 +216,7 @@ export class PlaybackEngine {
       log.warn('Cannot continue: not idle, current mode:', this.mode);
       return;
     }
+    this.seekProgressOverrideMs = null;
     this.setMode('playing');
     this.processNext();
   }
@@ -148,6 +224,7 @@ export class PlaybackEngine {
   /** playing → paused | live → paused (abort SSE, truncate, topic pending) */
   pause(): void {
     if (this.mode === 'playing') {
+      const pausedAtMs = this.computeProgress().currentTimeMs;
       // Cancel pending timers
       if (this.triggerDelayTimer) {
         clearTimeout(this.triggerDelayTimer);
@@ -176,6 +253,7 @@ export class PlaybackEngine {
           this.audioPlayer.pause();
         }
       }
+      this.seekProgressOverrideMs = pausedAtMs;
     } else if (this.mode === 'live') {
       this.setMode('paused');
       this.currentTopicState = 'pending';
@@ -201,6 +279,7 @@ export class PlaybackEngine {
       this.setMode('playing');
     } else {
       // Resume lecture
+      const resumeProgressMs = this.seekProgressOverrideMs;
       this.setMode('playing');
       if (this.browserTTSPausedChunks.length > 0) {
         // Browser TTS was paused via cancel — re-speak remaining chunks
@@ -208,12 +287,25 @@ export class PlaybackEngine {
         this.browserTTSChunks = this.browserTTSPausedChunks;
         this.browserTTSChunkIndex = 0;
         this.browserTTSPausedChunks = [];
+        if (resumeProgressMs !== null && this.activeActionIndex !== null) {
+          this.activeActionStartedAt =
+            Date.now() -
+            Math.max(0, resumeProgressMs - this.getActionStartMs(this.activeActionIndex));
+        }
+        this.seekProgressOverrideMs = null;
         this.playBrowserTTSChunk();
       } else if (this.audioPlayer.hasActiveAudio()) {
         // Audio is paused — resume it; TTS onend will call processNext
+        this.seekProgressOverrideMs = null;
         this.audioPlayer.resume();
       } else if (this.speechTimerRemaining > 0) {
         // Reading timer was paused — reschedule with remaining time
+        if (resumeProgressMs !== null && this.activeActionIndex !== null) {
+          this.activeActionStartedAt =
+            Date.now() -
+            Math.max(0, resumeProgressMs - this.getActionStartMs(this.activeActionIndex));
+        }
+        this.seekProgressOverrideMs = null;
         this.speechTimerStart = Date.now();
         this.speechTimer = setTimeout(() => {
           this.speechTimer = null;
@@ -223,6 +315,7 @@ export class PlaybackEngine {
         }, this.speechTimerRemaining);
       } else {
         // TTS finished while paused, continue to next event
+        this.seekProgressOverrideMs = null;
         this.processNext();
       }
     }
@@ -245,6 +338,11 @@ export class PlaybackEngine {
       this.speechTimer = null;
     }
     this.speechTimerRemaining = 0;
+    this.activeActionIndex = null;
+    this.activeActionStartedAt = 0;
+    this.activeActionEstimatedMs = 0;
+    this.pendingSpeechSeekOffsetMs = 0;
+    this.seekProgressOverrideMs = null;
     this.sceneIndex = 0;
     this.actionIndex = 0;
     this.savedSceneIndex = null;
@@ -393,6 +491,125 @@ export class PlaybackEngine {
     this.callbacks.onModeChange?.(mode);
   }
 
+  private cancelActivePlayback(): void {
+    this.setMode('idle');
+    this.audioPlayer.stop();
+    this.cancelBrowserTTS();
+    if (this.triggerDelayTimer) {
+      clearTimeout(this.triggerDelayTimer);
+      this.triggerDelayTimer = null;
+    }
+    if (this.speechTimer) {
+      clearTimeout(this.speechTimer);
+      this.speechTimer = null;
+    }
+    this.speechTimerRemaining = 0;
+    this.activeActionIndex = null;
+    this.activeActionStartedAt = 0;
+    this.activeActionEstimatedMs = 0;
+    if (this.currentTrigger) {
+      this.currentTrigger = null;
+      this.callbacks.onProactiveHide?.();
+    }
+    this.actionEngine.clearEffects();
+  }
+
+  private getSpeechDurationMs(action: SpeechAction): number {
+    const text = action.text;
+    const cjkCount = (
+      text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []
+    ).length;
+    const isCJK = text.length > 0 && cjkCount > text.length * CJK_LANG_THRESHOLD;
+    const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
+    const rawMs = isCJK
+      ? Math.max(MIN_SPEECH_DURATION_MS, text.length * 150)
+      : Math.max(MIN_SPEECH_DURATION_MS, text.split(/\s+/).filter(Boolean).length * 240);
+    return rawMs / speed;
+  }
+
+  private getActionDurationMs(action: Action, actionIndex?: number): number {
+    if (action.type === 'speech') {
+      if (this.activeActionIndex === actionIndex) {
+        const audioDuration = this.audioPlayer.getDuration();
+        if (audioDuration > 0) return audioDuration;
+      }
+      return this.getSpeechDurationMs(action as SpeechAction);
+    }
+    if (action.type === 'discussion') return DISCUSSION_PROMPT_DELAY_MS;
+    return INSTANT_ACTION_DURATION_MS;
+  }
+
+  private getTimeline(): Array<{
+    action: Action;
+    actionIndex: number;
+    startMs: number;
+    endMs: number;
+  }> {
+    const actions = this.scenes[0]?.actions ?? [];
+    let cursorMs = 0;
+    return actions.map((action, actionIndex) => {
+      const durationMs = this.getActionDurationMs(action, actionIndex);
+      const entry = {
+        action,
+        actionIndex,
+        startMs: cursorMs,
+        endMs: cursorMs + durationMs,
+      };
+      cursorMs += durationMs;
+      return entry;
+    });
+  }
+
+  private getSceneDurationMs(): number {
+    const timeline = this.getTimeline();
+    return timeline[timeline.length - 1]?.endMs ?? 0;
+  }
+
+  private getActionStartMs(actionIndex: number): number {
+    const timeline = this.getTimeline();
+    return timeline.find((entry) => entry.actionIndex === actionIndex)?.startMs ?? 0;
+  }
+
+  private computeProgress(): PlaybackProgress {
+    const actions = this.scenes[0]?.actions ?? [];
+    const durationMs = this.getSceneDurationMs();
+    let currentTimeMs = 0;
+
+    if (this.seekProgressOverrideMs !== null) {
+      currentTimeMs = this.seekProgressOverrideMs;
+    } else if (this.activeActionIndex !== null) {
+      const action = actions[this.activeActionIndex];
+      const actionStartMs = this.getActionStartMs(this.activeActionIndex);
+      let elapsedMs = Math.max(0, Date.now() - this.activeActionStartedAt);
+
+      if (action?.type === 'speech') {
+        const audioCurrent = this.audioPlayer.getCurrentTime();
+        if (audioCurrent > 0 || this.audioPlayer.hasActiveAudio()) {
+          elapsedMs = audioCurrent;
+        } else if (this.speechTimerRemaining > 0 && !this.speechTimer) {
+          elapsedMs = Math.max(0, this.activeActionEstimatedMs - this.speechTimerRemaining);
+        }
+      }
+
+      const actionDurationMs = action
+        ? this.getActionDurationMs(action, this.activeActionIndex)
+        : 0;
+      currentTimeMs = actionStartMs + Math.min(elapsedMs, actionDurationMs);
+    } else if (this.actionIndex >= actions.length && actions.length > 0) {
+      currentTimeMs = durationMs;
+    } else {
+      currentTimeMs = this.getActionStartMs(this.actionIndex);
+    }
+
+    return {
+      sceneId: this.sceneId,
+      currentTimeMs: Math.max(0, durationMs > 0 ? Math.min(currentTimeMs, durationMs) : 0),
+      durationMs,
+      seekable: durationMs > 0,
+      actionIndex: this.activeActionIndex ?? this.actionIndex,
+    };
+  }
+
   private restoreSavedLectureState(): void {
     if (this.savedSceneIndex !== null && this.savedActionIndex !== null) {
       this.sceneIndex = this.savedSceneIndex;
@@ -434,6 +651,8 @@ export class PlaybackEngine {
     if (!current) {
       // All scenes complete
       this.actionEngine.clearEffects();
+      this.activeActionIndex = null;
+      this.seekProgressOverrideMs = this.getSceneDurationMs();
       this.setMode('idle');
       this.callbacks.onComplete?.();
       return;
@@ -446,6 +665,11 @@ export class PlaybackEngine {
     // is the desired behaviour for speech (user may have only heard half).
     this.callbacks.onProgress?.(this.getSnapshot());
 
+    const actionOffsetMs = action.type === 'speech' ? this.pendingSpeechSeekOffsetMs : 0;
+    this.activeActionIndex = this.actionIndex;
+    this.activeActionEstimatedMs = this.getActionDurationMs(action, this.actionIndex);
+    this.activeActionStartedAt = Date.now() - actionOffsetMs;
+    this.seekProgressOverrideMs = null;
     this.actionIndex++;
 
     switch (action.type) {
@@ -466,24 +690,17 @@ export class PlaybackEngine {
         // Non-CJK text: ~240ms/word (≈250 WPM).
         // Min 2s. Cancelled on pause; resume() calls processNext directly.
         const scheduleReadingTimer = () => {
-          const text = speechAction.text;
-          const cjkCount = (
-            text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []
-          ).length;
-          const isCJK = cjkCount > text.length * 0.3;
-          const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
-          const rawMs = isCJK
-            ? Math.max(2000, text.length * 150)
-            : Math.max(2000, text.split(/\s+/).filter(Boolean).length * 240);
-          const readingMs = rawMs / speed;
+          const readingMs = this.getSpeechDurationMs(speechAction);
+          const remainingMs = Math.max(0, readingMs - actionOffsetMs);
           this.speechTimerStart = Date.now();
-          this.speechTimerRemaining = readingMs;
+          this.speechTimerRemaining = remainingMs;
+          this.pendingSpeechSeekOffsetMs = 0;
           this.speechTimer = setTimeout(() => {
             this.speechTimer = null;
             this.speechTimerRemaining = 0;
             this.callbacks.onSpeechEnd?.();
             if (this.mode === 'playing') this.processNext();
-          }, readingMs);
+          }, remainingMs);
         };
 
         // A speech line with no text (e.g. a freshly inserted blank slide's
@@ -494,7 +711,7 @@ export class PlaybackEngine {
         const hasText = !!speechAction.text.trim();
 
         this.audioPlayer
-          .play(speechAction.audioId || '', speechAction.audioUrl)
+          .play(speechAction.audioId || '', speechAction.audioUrl, actionOffsetMs)
           .then((audioStarted) => {
             if (!audioStarted) {
               // No pre-generated audio — try browser-native TTS only when it is
@@ -511,10 +728,12 @@ export class PlaybackEngine {
                 typeof window !== 'undefined' &&
                 window.speechSynthesis
               ) {
-                this.playBrowserTTS(speechAction);
+                this.playBrowserTTS(speechAction, actionOffsetMs);
               } else {
                 scheduleReadingTimer();
               }
+            } else if (actionOffsetMs > 0) {
+              this.pendingSpeechSeekOffsetMs = 0;
             }
           })
           .catch((err) => {
@@ -560,7 +779,7 @@ export class PlaybackEngine {
           return;
         }
 
-        // 3s delay before showing ProactiveCard (allows previous speech to finish naturally)
+        // Short delay before showing ProactiveCard (allows previous speech to finish naturally)
         const trigger: TriggerEvent = {
           id: discussionAction.id,
           question: discussionAction.topic,
@@ -574,7 +793,7 @@ export class PlaybackEngine {
           this.currentTrigger = trigger;
           this.callbacks.onProactiveShow?.(trigger);
           // Engine pauses here — user calls confirmDiscussion() or skipDiscussion()
-        }, 3000);
+        }, DISCUSSION_PROMPT_DELAY_MS);
         break;
       }
 
@@ -632,10 +851,34 @@ export class PlaybackEngine {
    * Splits text into sentence-level chunks to avoid Chrome's ~15s cutoff.
    * Uses cancel+re-speak for pause/resume (Firefox compatibility).
    */
-  private playBrowserTTS(speechAction: SpeechAction): void {
+  private getBrowserTTSStartChunkIndex(
+    chunks: string[],
+    offsetMs: number,
+    totalMs: number,
+  ): number {
+    if (offsetMs <= 0 || totalMs <= 0 || chunks.length <= 1) return 0;
+
+    const totalUnits = chunks.reduce((sum, chunk) => sum + Math.max(1, chunk.length), 0);
+    let elapsedMs = 0;
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkMs = (Math.max(1, chunks[i].length) / totalUnits) * totalMs;
+      if (offsetMs < elapsedMs + chunkMs) return i;
+      elapsedMs += chunkMs;
+    }
+
+    return Math.max(0, chunks.length - 1);
+  }
+
+  private playBrowserTTS(speechAction: SpeechAction, offsetMs = 0): void {
     this.browserTTSChunks = this.splitIntoChunks(speechAction.text);
-    this.browserTTSChunkIndex = 0;
+    this.browserTTSChunkIndex = this.getBrowserTTSStartChunkIndex(
+      this.browserTTSChunks,
+      offsetMs,
+      this.getSpeechDurationMs(speechAction),
+    );
     this.browserTTSPausedChunks = [];
+    this.pendingSpeechSeekOffsetMs = 0;
     this.browserTTSActive = true;
     this.playBrowserTTSChunk();
   }

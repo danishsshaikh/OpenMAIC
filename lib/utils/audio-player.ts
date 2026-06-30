@@ -25,9 +25,10 @@ export class AudioPlayer {
    * Play audio (from URL or IndexedDB pre-generated cache)
    * @param audioId Audio ID
    * @param audioUrl Optional server-generated audio URL (takes priority over IndexedDB)
+   * @param startTimeMs Optional start offset in milliseconds
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
-  public async play(audioId: string, audioUrl?: string): Promise<boolean> {
+  public async play(audioId: string, audioUrl?: string, startTimeMs = 0): Promise<boolean> {
     try {
       // 1. Try audioUrl first (server-generated TTS)
       if (audioUrl) {
@@ -41,6 +42,7 @@ export class AudioPlayer {
         this.audio.addEventListener('ended', () => {
           this.onEndedCallback?.();
         });
+        this.seekTo(startTimeMs);
         await this.audio.play();
         this.audio.playbackRate = this.playbackRate;
         return true;
@@ -69,6 +71,7 @@ export class AudioPlayer {
       // Apply playback rate
       this.audio.defaultPlaybackRate = this.playbackRate;
       this.audio.playbackRate = this.playbackRate;
+      this.seekTo(startTimeMs);
 
       // Set ended callback
       this.audio.addEventListener('ended', () => {
@@ -156,6 +159,22 @@ export class AudioPlayer {
    */
   public getDuration(): number {
     return this.audio && !isNaN(this.audio.duration) ? this.audio.duration * 1000 : 0;
+  }
+
+  /**
+   * Seek active audio to a position in milliseconds.
+   */
+  public seekTo(timeMs: number): boolean {
+    if (!this.audio) return false;
+    const durationMs = this.getDuration();
+    const clampedMs =
+      durationMs > 0 ? Math.max(0, Math.min(timeMs, durationMs)) : Math.max(0, timeMs);
+    try {
+      this.audio.currentTime = clampedMs / 1000;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
