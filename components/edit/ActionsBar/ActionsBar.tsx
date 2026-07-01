@@ -73,6 +73,7 @@ import {
   audioExists,
   audioObjectUrl,
   discardSpeechAudio,
+  filterSpeechActionsNeedingAudio,
   regenerateSpeechAudio,
   resolveSpeechAudioId,
   speechAudioId,
@@ -914,17 +915,25 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     [sceneId],
   );
 
-  // Regenerate TTS for every speech line in the scene, then stamp audioIds.
+  // Regenerate TTS only for speech lines missing usable audio, then stamp audioIds.
   // Reads the latest actions from the store at each step so a concurrent edit
   // isn't clobbered, and stamps by id (index-stale-safe).
   const regenerateAllAudio = useCallback(async () => {
     if (regenAll) return;
     const latest = () => useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    const speeches = (latest()?.actions ?? []).filter(
-      (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
-    );
-    if (!speeches.length) return;
     const order = latest()?.order ?? 0;
+    const speechActions = (latest()?.actions ?? []).filter(
+      (
+        a,
+      ): a is Action & {
+        id: string;
+        text?: string;
+        audioId?: string;
+        audioUrl?: string;
+      } => a.type === 'speech' && typeof a.id === 'string',
+    );
+    const speeches = await filterSpeechActionsNeedingAudio(speechActions);
+    if (!speeches.length) return;
     setRegenAll(true);
     // Stamp audioId only for lines that actually synthesized — a skipped/failed
     // line must not get an id pointing at a blob that was never written.

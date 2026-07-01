@@ -10,6 +10,13 @@ import { db } from '@/lib/utils/database';
 import { useSettingsStore } from '@/lib/store/settings';
 import { generateAndStoreTTS } from '@/lib/hooks/use-scene-generator';
 
+export interface SpeechAudioTarget {
+  id?: string;
+  text?: string;
+  audioId?: string;
+  audioUrl?: string;
+}
+
 /** Canonical audio cache key — matches the generation pipeline. */
 export function speechAudioId(sceneOrder: number, actionId: string): string {
   return `tts_s${sceneOrder}_${actionId}`;
@@ -47,6 +54,21 @@ export async function audioExistsBulk(audioIds: string[]): Promise<Set<string>> 
     if (r) have.add(audioIds[i]);
   });
   return have;
+}
+
+/** Speech lines that still need generated audio for playback. */
+export async function filterSpeechActionsNeedingAudio<T extends SpeechAudioTarget>(
+  actions: readonly T[],
+): Promise<T[]> {
+  const candidates = actions.filter(
+    (action) => action.text?.trim() && !action.audioUrl && typeof action.id === 'string',
+  );
+  const audioIds = candidates
+    .map((action) => action.audioId)
+    .filter((audioId): audioId is string => typeof audioId === 'string' && audioId.length > 0);
+  const cachedAudioIds = await audioExistsBulk([...new Set(audioIds)]);
+
+  return candidates.filter((action) => !action.audioId || !cachedAudioIds.has(action.audioId));
 }
 
 /** Object URL for the audio cached under this exact audioId (caller revokes). */
