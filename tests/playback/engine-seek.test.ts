@@ -169,6 +169,88 @@ describe('PlaybackEngine seek', () => {
     expect(progress.durationMs).toBe(10000);
   });
 
+  it('clears transient effects during precise seek within active generated speech', async () => {
+    let onEnded: () => void = () => {};
+    const actionEngine = fakeActionEngine();
+    const audio = fakeAudio({
+      play: vi.fn().mockResolvedValue(true),
+      hasActiveAudio: vi.fn(() => true),
+      getDuration: vi.fn(() => 10000),
+      seekTo: vi.fn(() => true),
+      onEnded: vi.fn((callback) => {
+        onEnded = callback;
+      }),
+    });
+    const engine = new PlaybackEngine(
+      [
+        scene([
+          { id: 'speech-1', type: 'speech', text: 'First line.' },
+          { id: 'spotlight-1', type: 'spotlight', elementId: 'shape-1' },
+          { id: 'speech-2', type: 'speech', text: 'Second line.' },
+        ]),
+      ],
+      actionEngine,
+      audio,
+      { getPlaybackSpeed: () => 1 },
+    );
+
+    engine.start();
+    onEnded();
+    await Promise.resolve();
+    await Promise.resolve();
+    vi.mocked(actionEngine.clearEffects).mockClear();
+
+    await engine.seekTo(11000);
+
+    expect(actionEngine.clearEffects).toHaveBeenCalledTimes(1);
+    expect(actionEngine.execute).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'spotlight' }),
+      { silent: true },
+    );
+  });
+
+  it('keeps seek progress at the selected offset while active audio currentTime is still zero', async () => {
+    const audio = fakeAudio({
+      play: vi.fn().mockResolvedValue(true),
+      hasActiveAudio: vi.fn(() => true),
+      getCurrentTime: vi.fn(() => 0),
+      getDuration: vi.fn(() => 10000),
+      seekTo: vi.fn(() => true),
+    });
+    const engine = new PlaybackEngine(
+      [scene([{ id: 'speech-1', type: 'speech', text: 'Generated audio line.' }])],
+      fakeActionEngine(),
+      audio,
+      { getPlaybackSpeed: () => 1 },
+    );
+
+    engine.start();
+    const progress = await engine.seekTo(5000);
+
+    expect(progress.currentTimeMs).toBe(5000);
+    expect(progress.durationMs).toBe(10000);
+  });
+
+  it('keeps observed generated-audio duration stable after the action is no longer active', () => {
+    const engine = new PlaybackEngine(
+      [scene([{ id: 'speech-1', type: 'speech', text: 'Short estimate.' }])],
+      fakeActionEngine(),
+      fakeAudio({
+        play: vi.fn().mockResolvedValue(true),
+        hasActiveAudio: vi.fn(() => true),
+        getDuration: vi.fn(() => 10000),
+      }),
+      { getPlaybackSpeed: () => 1 },
+    );
+
+    engine.start();
+    expect(engine.getProgress().durationMs).toBe(10000);
+
+    engine.stop();
+
+    expect(engine.getProgress().durationMs).toBe(10000);
+  });
+
   it('starts generated speech audio at the pending seek offset', async () => {
     const play = vi.fn().mockResolvedValue(true);
     const engine = new PlaybackEngine(

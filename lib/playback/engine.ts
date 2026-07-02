@@ -110,6 +110,7 @@ export class PlaybackEngine {
   private pendingSpeechSeekOffsetMs: number = 0;
   private seekProgressOverrideMs: number | null = null;
   private playbackGeneration: number = 0;
+  private knownSpeechDurationsMs: Map<string, number> = new Map();
 
   constructor(
     scenes: Scene[],
@@ -201,6 +202,7 @@ export class PlaybackEngine {
       this.audioPlayer.seekTo(offsetMs)
     ) {
       const generation = this.invalidatePlaybackWork();
+      this.actionEngine.clearEffects();
       this.audioPlayer.onEnded(() => {
         if (!this.isCurrentGeneration(generation)) return;
         this.callbacks.onSpeechEnd?.();
@@ -617,13 +619,22 @@ export class PlaybackEngine {
     return rawMs / speed;
   }
 
+  private getSpeechDurationKey(action: SpeechAction, actionIndex?: number): string {
+    return `${action.id || 'speech'}:${actionIndex ?? -1}`;
+  }
+
   private getActionDurationMs(action: Action, actionIndex?: number): number {
     if (action.type === 'speech') {
+      const speechAction = action as SpeechAction;
+      const durationKey = this.getSpeechDurationKey(speechAction, actionIndex);
       if (this.activeActionIndex === actionIndex) {
         const audioDuration = this.audioPlayer.getDuration();
-        if (audioDuration > 0) return audioDuration;
+        if (audioDuration > 0) {
+          this.knownSpeechDurationsMs.set(durationKey, audioDuration);
+          return audioDuration;
+        }
       }
-      return this.getSpeechDurationMs(action as SpeechAction);
+      return this.knownSpeechDurationsMs.get(durationKey) ?? this.getSpeechDurationMs(speechAction);
     }
     if (action.type === 'discussion') return DISCUSSION_PROMPT_DELAY_MS;
     return INSTANT_ACTION_DURATION_MS;
@@ -674,7 +685,7 @@ export class PlaybackEngine {
 
       if (action?.type === 'speech') {
         const audioCurrent = this.audioPlayer.getCurrentTime();
-        if (audioCurrent > 0 || this.audioPlayer.hasActiveAudio()) {
+        if (audioCurrent > 0) {
           elapsedMs = audioCurrent;
         } else if (this.speechTimerRemaining > 0 && !this.speechTimer) {
           elapsedMs = Math.max(0, this.activeActionEstimatedMs - this.speechTimerRemaining);
