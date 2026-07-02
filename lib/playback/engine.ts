@@ -46,6 +46,22 @@ const log = createLogger('PlaybackEngine');
 const DISCUSSION_PROMPT_DELAY_MS = 3000;
 const MIN_SPEECH_DURATION_MS = 2000;
 const INSTANT_ACTION_DURATION_MS = 0;
+const SEEK_UNSAFE_ACTION_TYPES = new Set<Action['type']>([
+  'discussion',
+  'play_video',
+  'widget_highlight',
+  'widget_setState',
+  'widget_annotation',
+  'widget_reveal',
+]);
+
+export function isPlaybackSceneSeekable(actions: readonly Action[] = []): boolean {
+  return !actions.some((action) => SEEK_UNSAFE_ACTION_TYPES.has(action.type));
+}
+
+function isSeekReplayAction(action: Action): boolean {
+  return action.type.startsWith('wb_');
+}
 
 /**
  * If more than 30% of characters are CJK, treat the text as Chinese.
@@ -93,6 +109,7 @@ export class PlaybackEngine {
   private activeActionEstimatedMs: number = 0;
   private pendingSpeechSeekOffsetMs: number = 0;
   private seekProgressOverrideMs: number | null = null;
+  private playbackGeneration: number = 0;
 
   constructor(
     scenes: Scene[],
@@ -143,7 +160,11 @@ export class PlaybackEngine {
    * speech that is already active, the underlying audio element is seeked
    * precisely; otherwise the offset is applied when the speech action starts.
    */
-  seekTo(timeMs: number): PlaybackProgress {
+  async seekTo(timeMs: number): Promise<PlaybackProgress> {
+    if (this.mode === 'live' || !this.isCurrentSceneSeekable()) {
+      return this.getProgress();
+    }
+
     const durationMs = this.getSceneDurationMs();
     const targetMs = Math.max(0, durationMs > 0 ? Math.min(timeMs, durationMs) : timeMs);
     const timeline = this.getTimeline();
@@ -154,7 +175,13 @@ export class PlaybackEngine {
     }
 
     if (targetMs >= durationMs) {
-      this.cancelActivePlayback();
+      const generation = this.cancelActivePlayback();
+      this.actionEngine.resetPlaybackVisualState();
+      const replayed = await this.replaySeekStateBefore(
+        this.scenes[0]?.actions?.length ?? 0,
+        generation,
+      );
+      if (!replayed) return this.getProgress();
       this.sceneIndex = 0;
       this.actionIndex = this.scenes[0]?.actions?.length ?? 0;
       this.activeActionIndex = null;
@@ -173,12 +200,24 @@ export class PlaybackEngine {
       target.action.type === 'speech' &&
       this.audioPlayer.seekTo(offsetMs)
     ) {
+      const generation = this.invalidatePlaybackWork();
+      this.audioPlayer.onEnded(() => {
+        if (!this.isCurrentGeneration(generation)) return;
+        this.callbacks.onSpeechEnd?.();
+        if (this.mode === 'playing') {
+          this.processNext();
+        }
+      });
+      this.activeActionStartedAt = Date.now() - offsetMs;
       this.pendingSpeechSeekOffsetMs = 0;
       this.seekProgressOverrideMs = null;
       return this.getProgress();
     }
 
-    this.cancelActivePlayback();
+    const generation = this.cancelActivePlayback();
+    this.actionEngine.resetPlaybackVisualState();
+    const replayed = await this.replaySeekStateBefore(target.actionIndex, generation);
+    if (!replayed) return this.getProgress();
     this.sceneIndex = 0;
     this.actionIndex = target.actionIndex;
     this.activeActionIndex = null;
@@ -206,6 +245,7 @@ export class PlaybackEngine {
     this.actionIndex = 0;
     this.pendingSpeechSeekOffsetMs = 0;
     this.seekProgressOverrideMs = null;
+    this.invalidatePlaybackWork();
     this.setMode('playing');
     this.processNext();
   }
@@ -217,6 +257,7 @@ export class PlaybackEngine {
       return;
     }
     this.seekProgressOverrideMs = null;
+    this.invalidatePlaybackWork();
     this.setMode('playing');
     this.processNext();
   }
@@ -224,6 +265,7 @@ export class PlaybackEngine {
   /** playing → paused | live → paused (abort SSE, truncate, topic pending) */
   pause(): void {
     if (this.mode === 'playing') {
+      this.invalidatePlaybackWork();
       const pausedAtMs = this.computeProgress().currentTimeMs;
       // Cancel pending timers
       if (this.triggerDelayTimer) {
@@ -255,6 +297,7 @@ export class PlaybackEngine {
       }
       this.seekProgressOverrideMs = pausedAtMs;
     } else if (this.mode === 'live') {
+      this.invalidatePlaybackWork();
       this.setMode('paused');
       this.currentTopicState = 'pending';
       // Caller is responsible for aborting SSE
@@ -279,6 +322,7 @@ export class PlaybackEngine {
       this.setMode('playing');
     } else {
       // Resume lecture
+      const generation = this.invalidatePlaybackWork();
       const resumeProgressMs = this.seekProgressOverrideMs;
       this.setMode('playing');
       if (this.browserTTSPausedChunks.length > 0) {
@@ -293,10 +337,17 @@ export class PlaybackEngine {
             Math.max(0, resumeProgressMs - this.getActionStartMs(this.activeActionIndex));
         }
         this.seekProgressOverrideMs = null;
-        this.playBrowserTTSChunk();
+        this.playBrowserTTSChunk(generation);
       } else if (this.audioPlayer.hasActiveAudio()) {
         // Audio is paused — resume it; TTS onend will call processNext
         this.seekProgressOverrideMs = null;
+        this.audioPlayer.onEnded(() => {
+          if (!this.isCurrentGeneration(generation)) return;
+          this.callbacks.onSpeechEnd?.();
+          if (this.mode === 'playing') {
+            this.processNext();
+          }
+        });
         this.audioPlayer.resume();
       } else if (this.speechTimerRemaining > 0) {
         // Reading timer was paused — reschedule with remaining time
@@ -308,6 +359,7 @@ export class PlaybackEngine {
         this.seekProgressOverrideMs = null;
         this.speechTimerStart = Date.now();
         this.speechTimer = setTimeout(() => {
+          if (!this.isCurrentGeneration(generation)) return;
           this.speechTimer = null;
           this.speechTimerRemaining = 0;
           this.callbacks.onSpeechEnd?.();
@@ -323,11 +375,13 @@ export class PlaybackEngine {
 
   /** → idle */
   stop(): void {
+    this.invalidatePlaybackWork();
     // Set mode BEFORE stopping audio to prevent spurious processNext from
     // synchronous onend callbacks (see handleUserInterrupt for details).
     this.setMode('idle');
     this.audioPlayer.stop();
     this.cancelBrowserTTS();
+    useCanvasStore.getState().pauseVideo();
     this.actionEngine.clearEffects();
     if (this.triggerDelayTimer) {
       clearTimeout(this.triggerDelayTimer);
@@ -396,6 +450,7 @@ export class PlaybackEngine {
 
   /** End discussion → restore lecture → idle (user clicks "start" to continue) */
   handleEndDiscussion(): void {
+    this.invalidatePlaybackWork();
     this.actionEngine.clearEffects();
     this.currentTopicState = 'closed';
 
@@ -424,6 +479,7 @@ export class PlaybackEngine {
       return;
     }
 
+    this.invalidatePlaybackWork();
     this.actionEngine.clearEffects();
     useCanvasStore.getState().setWhiteboardOpen(false);
     this.currentTopicState = 'closed';
@@ -434,6 +490,7 @@ export class PlaybackEngine {
 
   /** User sends a message during playback → interrupt → live mode */
   handleUserInterrupt(text: string): void {
+    this.invalidatePlaybackWork();
     if (this.mode === 'playing' || this.mode === 'paused') {
       // Save lecture state BEFORE stopping audio — actionIndex was already
       // incremented by processNext, so subtract 1 to replay the interrupted
@@ -491,10 +548,42 @@ export class PlaybackEngine {
     this.callbacks.onModeChange?.(mode);
   }
 
-  private cancelActivePlayback(): void {
+  private invalidatePlaybackWork(): number {
+    this.playbackGeneration += 1;
+    return this.playbackGeneration;
+  }
+
+  private isCurrentGeneration(generation: number): boolean {
+    return generation === this.playbackGeneration;
+  }
+
+  private getSceneActions(): Action[] {
+    return this.scenes[0]?.actions ?? [];
+  }
+
+  private isCurrentSceneSeekable(): boolean {
+    return isPlaybackSceneSeekable(this.getSceneActions());
+  }
+
+  private async replaySeekStateBefore(actionIndex: number, generation: number): Promise<boolean> {
+    const actions = this.getSceneActions();
+    const replayUntil = Math.min(actionIndex, actions.length);
+    for (let index = 0; index < replayUntil; index++) {
+      if (!this.isCurrentGeneration(generation)) return false;
+      const action = actions[index];
+      if (!isSeekReplayAction(action)) continue;
+      await this.actionEngine.execute(action, { silent: true });
+      if (!this.isCurrentGeneration(generation)) return false;
+    }
+    return true;
+  }
+
+  private cancelActivePlayback(): number {
+    const generation = this.invalidatePlaybackWork();
     this.setMode('idle');
     this.audioPlayer.stop();
     this.cancelBrowserTTS();
+    useCanvasStore.getState().pauseVideo();
     if (this.triggerDelayTimer) {
       clearTimeout(this.triggerDelayTimer);
       this.triggerDelayTimer = null;
@@ -512,6 +601,7 @@ export class PlaybackEngine {
       this.callbacks.onProactiveHide?.();
     }
     this.actionEngine.clearEffects();
+    return generation;
   }
 
   private getSpeechDurationMs(action: SpeechAction): number {
@@ -605,7 +695,7 @@ export class PlaybackEngine {
       sceneId: this.sceneId,
       currentTimeMs: Math.max(0, durationMs > 0 ? Math.min(currentTimeMs, durationMs) : 0),
       durationMs,
-      seekable: durationMs > 0,
+      seekable: durationMs > 0 && this.isCurrentSceneSeekable(),
       actionIndex: this.activeActionIndex ?? this.actionIndex,
     };
   }
@@ -638,6 +728,7 @@ export class PlaybackEngine {
    */
   private async processNext(): Promise<void> {
     if (this.mode !== 'playing') return;
+    const generation = this.playbackGeneration;
 
     // Check for scene boundary (fire scene change callback at start of each new scene)
     if (this.actionIndex === 0 && this.sceneIndex < this.scenes.length) {
@@ -648,6 +739,7 @@ export class PlaybackEngine {
     }
 
     const current = this.getCurrentAction();
+    if (!this.isCurrentGeneration(generation)) return;
     if (!current) {
       // All scenes complete
       this.actionEngine.clearEffects();
@@ -679,6 +771,7 @@ export class PlaybackEngine {
 
         // onEnded → processNext; if paused, resume() will call processNext
         this.audioPlayer.onEnded(() => {
+          if (!this.isCurrentGeneration(generation)) return;
           this.callbacks.onSpeechEnd?.();
           if (this.mode === 'playing') {
             this.processNext();
@@ -690,12 +783,14 @@ export class PlaybackEngine {
         // Non-CJK text: ~240ms/word (≈250 WPM).
         // Min 2s. Cancelled on pause; resume() calls processNext directly.
         const scheduleReadingTimer = () => {
+          if (!this.isCurrentGeneration(generation)) return;
           const readingMs = this.getSpeechDurationMs(speechAction);
           const remainingMs = Math.max(0, readingMs - actionOffsetMs);
           this.speechTimerStart = Date.now();
           this.speechTimerRemaining = remainingMs;
           this.pendingSpeechSeekOffsetMs = 0;
           this.speechTimer = setTimeout(() => {
+            if (!this.isCurrentGeneration(generation)) return;
             this.speechTimer = null;
             this.speechTimerRemaining = 0;
             this.callbacks.onSpeechEnd?.();
@@ -713,6 +808,7 @@ export class PlaybackEngine {
         this.audioPlayer
           .play(speechAction.audioId || '', speechAction.audioUrl, actionOffsetMs)
           .then((audioStarted) => {
+            if (!this.isCurrentGeneration(generation)) return;
             if (!audioStarted) {
               // No pre-generated audio — try browser-native TTS only when it is
               // the selected provider AND actually enabled (opt-in, #665).
@@ -728,7 +824,7 @@ export class PlaybackEngine {
                 typeof window !== 'undefined' &&
                 window.speechSynthesis
               ) {
-                this.playBrowserTTS(speechAction, actionOffsetMs);
+                this.playBrowserTTS(speechAction, actionOffsetMs, generation);
               } else {
                 scheduleReadingTimer();
               }
@@ -737,6 +833,7 @@ export class PlaybackEngine {
             }
           })
           .catch((err) => {
+            if (!this.isCurrentGeneration(generation)) return;
             log.error('TTS error:', err);
             scheduleReadingTimer();
           });
@@ -757,7 +854,9 @@ export class PlaybackEngine {
         // Don't block — continue immediately (use queueMicrotask to avoid
         // stack overflow from deep synchronous recursion when many consecutive
         // spotlight/laser actions appear in sequence)
-        queueMicrotask(() => this.processNext());
+        queueMicrotask(() => {
+          if (this.isCurrentGeneration(generation)) this.processNext();
+        });
         break;
       }
 
@@ -765,7 +864,7 @@ export class PlaybackEngine {
         const discussionAction = action as DiscussionAction;
         // Check if already consumed
         if (this.consumedDiscussions.has(discussionAction.id)) {
-          this.processNext();
+          if (this.isCurrentGeneration(generation)) this.processNext();
           return;
         }
         // Skip if the discussion's agent isn't in the user's selected list
@@ -775,7 +874,7 @@ export class PlaybackEngine {
           !this.callbacks.isAgentSelected(discussionAction.agentId)
         ) {
           this.consumedDiscussions.add(discussionAction.id);
-          this.processNext();
+          if (this.isCurrentGeneration(generation)) this.processNext();
           return;
         }
 
@@ -788,6 +887,7 @@ export class PlaybackEngine {
         };
 
         this.triggerDelayTimer = setTimeout(() => {
+          if (!this.isCurrentGeneration(generation)) return;
           this.triggerDelayTimer = null;
           if (this.mode !== 'playing') return; // Cancelled if user paused/stopped
           this.currentTrigger = trigger;
@@ -804,6 +904,9 @@ export class PlaybackEngine {
       case 'wb_draw_chart':
       case 'wb_draw_latex':
       case 'wb_draw_table':
+      case 'wb_draw_line':
+      case 'wb_draw_code':
+      case 'wb_edit_code':
       case 'wb_clear':
       case 'wb_delete':
       case 'wb_close':
@@ -813,6 +916,7 @@ export class PlaybackEngine {
       case 'widget_reveal': {
         // Synchronous actions — await completion, then continue
         await this.actionEngine.execute(action);
+        if (!this.isCurrentGeneration(generation)) return;
         if (this.mode === 'playing') {
           this.processNext();
         }
@@ -821,7 +925,7 @@ export class PlaybackEngine {
 
       default:
         // Unknown action, skip
-        this.processNext();
+        if (this.isCurrentGeneration(generation)) this.processNext();
         break;
     }
   }
@@ -870,7 +974,12 @@ export class PlaybackEngine {
     return Math.max(0, chunks.length - 1);
   }
 
-  private playBrowserTTS(speechAction: SpeechAction, offsetMs = 0): void {
+  private playBrowserTTS(
+    speechAction: SpeechAction,
+    offsetMs = 0,
+    generation = this.playbackGeneration,
+  ): void {
+    if (!this.isCurrentGeneration(generation)) return;
     this.browserTTSChunks = this.splitIntoChunks(speechAction.text);
     this.browserTTSChunkIndex = this.getBrowserTTSStartChunkIndex(
       this.browserTTSChunks,
@@ -880,17 +989,18 @@ export class PlaybackEngine {
     this.browserTTSPausedChunks = [];
     this.pendingSpeechSeekOffsetMs = 0;
     this.browserTTSActive = true;
-    this.playBrowserTTSChunk();
+    this.playBrowserTTSChunk(generation);
   }
 
   /** Speak the current chunk; on completion, advance to next or finish. */
-  private async playBrowserTTSChunk(): Promise<void> {
+  private async playBrowserTTSChunk(generation = this.playbackGeneration): Promise<void> {
+    if (!this.isCurrentGeneration(generation)) return;
     if (this.browserTTSChunkIndex >= this.browserTTSChunks.length) {
       // All chunks done
       this.browserTTSActive = false;
       this.browserTTSChunks = [];
       this.callbacks.onSpeechEnd?.();
-      if (this.mode === 'playing') this.processNext();
+      if (this.mode === 'playing' && this.isCurrentGeneration(generation)) this.processNext();
       return;
     }
 
@@ -905,6 +1015,7 @@ export class PlaybackEngine {
 
     // Ensure voices are loaded (Chrome loads them asynchronously)
     const voices = await this.ensureVoicesLoaded();
+    if (!this.isCurrentGeneration(generation)) return;
 
     // Set voice: try user's configured voice, fall back to auto-detect language
     let voiceFound = false;
@@ -927,20 +1038,22 @@ export class PlaybackEngine {
     }
 
     utterance.onend = () => {
+      if (!this.isCurrentGeneration(generation)) return;
       this.browserTTSChunkIndex++;
       if (this.mode === 'playing') {
-        this.playBrowserTTSChunk(); // next chunk
+        this.playBrowserTTSChunk(generation); // next chunk
       }
     };
 
     utterance.onerror = (event) => {
+      if (!this.isCurrentGeneration(generation)) return;
       // 'canceled' is expected when stop/pause is called — not a real error
       if (event.error !== 'canceled') {
         log.warn('Browser TTS chunk error:', event.error);
         // Skip failed chunk, try next
         this.browserTTSChunkIndex++;
         if (this.mode === 'playing') {
-          this.playBrowserTTSChunk();
+          this.playBrowserTTSChunk(generation);
         }
       }
       // On 'canceled': do nothing — pause handler already saved state
@@ -948,6 +1061,7 @@ export class PlaybackEngine {
 
     // Chrome bug workaround: cancel() before speak() to clear stale synthesis
     // state that can produce garbled/broken audio output.
+    if (!this.isCurrentGeneration(generation)) return;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }

@@ -714,7 +714,11 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         // Restore this scene's session-only position, but never auto-play.
         const savedPositionMs = scenePlaybackPositionsRef.current[currentScene.id] ?? 0;
         if (savedPositionMs > 0) {
-          updatePlaybackProgress(engine.seekTo(savedPositionMs));
+          void engine.seekTo(savedPositionMs).then((progress) => {
+            if (engineRef.current === engine) {
+              updatePlaybackProgress(progress);
+            }
+          });
         } else {
           updatePlaybackProgress(engine.getProgress());
         }
@@ -920,11 +924,13 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         const engine = engineRef.current;
         if (!engine) return;
         setPlaybackCompleted(false);
-        const progress = engine.seekTo(timeMs);
-        updatePlaybackProgress(progress);
-        if (lectureSessionIdRef.current) {
-          chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
-        }
+        void engine.seekTo(timeMs).then((progress) => {
+          if (engineRef.current !== engine) return;
+          updatePlaybackProgress(progress);
+          if (lectureSessionIdRef.current && engine.getMode() !== 'playing') {
+            chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
+          }
+        });
       },
       [updatePlaybackProgress],
     );

@@ -77,6 +77,11 @@ const EFFECT_AUTO_CLEAR_MS = 5000;
 /** Callback for sending messages to widget iframe */
 export type WidgetMessageCallback = (type: string, payload: Record<string, unknown>) => void;
 
+export interface ActionExecutionOptions {
+  /** Apply state changes needed for seek reconstruction without delays/media/transient effects. */
+  silent?: boolean;
+}
+
 export class ActionEngine {
   private stageStore: StageStore;
   private stageAPI: ReturnType<typeof createStageAPI>;
@@ -113,63 +118,71 @@ export class ActionEngine {
    * Fire-and-forget actions return immediately.
    * Synchronous actions return a Promise that resolves when the action is complete.
    */
-  async execute(action: Action): Promise<void> {
+  async execute(action: Action, options: ActionExecutionOptions = {}): Promise<void> {
     // Auto-open whiteboard if a draw/clear/delete action is attempted while it's closed
     if (action.type.startsWith('wb_') && action.type !== 'wb_open' && action.type !== 'wb_close') {
-      await this.ensureWhiteboardOpen();
+      await this.ensureWhiteboardOpen(options);
     }
 
     switch (action.type) {
       // Fire-and-forget
       case 'spotlight':
+        if (options.silent) return;
         this.executeSpotlight(action);
         return;
       case 'laser':
+        if (options.silent) return;
         this.executeLaser(action);
         return;
       // Synchronous — Video
       case 'play_video':
+        if (options.silent) return;
         return this.executePlayVideo(action as PlayVideoAction);
 
       // Synchronous
       case 'speech':
+        if (options.silent) return;
         return this.executeSpeech(action);
       case 'wb_open':
-        return this.executeWbOpen();
+        return this.executeWbOpen(options);
       case 'wb_draw_text':
-        return this.executeWbDrawText(action);
+        return this.executeWbDrawText(action, options);
       case 'wb_draw_shape':
-        return this.executeWbDrawShape(action);
+        return this.executeWbDrawShape(action, options);
       case 'wb_draw_chart':
-        return this.executeWbDrawChart(action);
+        return this.executeWbDrawChart(action, options);
       case 'wb_draw_latex':
-        return this.executeWbDrawLatex(action);
+        return this.executeWbDrawLatex(action, options);
       case 'wb_draw_table':
-        return this.executeWbDrawTable(action);
+        return this.executeWbDrawTable(action, options);
       case 'wb_draw_line':
-        return this.executeWbDrawLine(action as WbDrawLineAction);
+        return this.executeWbDrawLine(action as WbDrawLineAction, options);
       case 'wb_draw_code':
-        return this.executeWbDrawCode(action as WbDrawCodeAction);
+        return this.executeWbDrawCode(action as WbDrawCodeAction, options);
       case 'wb_edit_code':
-        return this.executeWbEditCode(action as WbEditCodeAction);
+        return this.executeWbEditCode(action as WbEditCodeAction, options);
       case 'wb_clear':
-        return this.executeWbClear();
+        return this.executeWbClear(options);
       case 'wb_delete':
-        return this.executeWbDelete(action as WbDeleteAction);
+        return this.executeWbDelete(action as WbDeleteAction, options);
       case 'wb_close':
-        return this.executeWbClose();
+        return this.executeWbClose(options);
       case 'discussion':
         // Discussion lifecycle is managed externally via engine callbacks
         return;
 
       // Widget actions — post message to iframe
       case 'widget_highlight':
+        if (options.silent) return;
         return this.executeWidgetHighlight(action as WidgetHighlightAction);
       case 'widget_setState':
+        if (options.silent) return;
         return this.executeWidgetSetState(action as WidgetSetStateAction);
       case 'widget_annotation':
+        if (options.silent) return;
         return this.executeWidgetAnnotation(action as WidgetAnnotationAction);
       case 'widget_reveal':
+        if (options.silent) return;
         return this.executeWidgetReveal(action as WidgetRevealAction);
     }
   }
@@ -181,6 +194,27 @@ export class ActionEngine {
       this.effectTimer = null;
     }
     useCanvasStore.getState().clearAllEffects();
+  }
+
+  /** Reset playback-owned visual state before seek reconstruction. */
+  resetPlaybackVisualState(): void {
+    this.clearEffects();
+    const canvas = useCanvasStore.getState();
+    canvas.pauseVideo();
+    canvas.setWhiteboardOpen(false);
+    canvas.setWhiteboardClearing(false);
+
+    const state = this.stageStore.getState();
+    if (!state.stage?.whiteboard?.length) return;
+    this.stageStore.setState({
+      stage: {
+        ...state.stage,
+        whiteboard: state.stage.whiteboard.map((whiteboard) => ({
+          ...whiteboard,
+          elements: [],
+        })),
+      },
+    });
   }
 
   /** Schedule auto-clear for fire-and-forget effects */
@@ -326,21 +360,25 @@ export class ActionEngine {
   // ==================== Synchronous — Whiteboard ====================
 
   /** Auto-open the whiteboard if it's not already open */
-  private async ensureWhiteboardOpen(): Promise<void> {
+  private async ensureWhiteboardOpen(options: ActionExecutionOptions = {}): Promise<void> {
     if (!useCanvasStore.getState().whiteboardOpen) {
-      await this.executeWbOpen();
+      await this.executeWbOpen(options);
     }
   }
 
-  private async executeWbOpen(): Promise<void> {
+  private async executeWbOpen(options: ActionExecutionOptions = {}): Promise<void> {
     // Ensure a whiteboard exists
     this.stageAPI.whiteboard.get();
     useCanvasStore.getState().setWhiteboardOpen(true);
+    if (options.silent) return;
     // Wait for open animation to complete (slow spring: stiffness 120, damping 18, mass 1.2)
     await delay(2000);
   }
 
-  private async executeWbDrawText(action: WbDrawTextAction): Promise<void> {
+  private async executeWbDrawText(
+    action: WbDrawTextAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -368,11 +406,15 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     // Wait for element fade-in animation
     await delay(800);
   }
 
-  private async executeWbDrawShape(action: WbDrawShapeAction): Promise<void> {
+  private async executeWbDrawShape(
+    action: WbDrawShapeAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -394,11 +436,15 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     // Wait for element fade-in animation
     await delay(800);
   }
 
-  private async executeWbDrawChart(action: WbDrawChartAction): Promise<void> {
+  private async executeWbDrawChart(
+    action: WbDrawChartAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -419,10 +465,14 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     await delay(800);
   }
 
-  private async executeWbDrawLatex(action: WbDrawLatexAction): Promise<void> {
+  private async executeWbDrawLatex(
+    action: WbDrawLatexAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -455,10 +505,14 @@ export class ActionEngine {
       return;
     }
 
+    if (options.silent) return;
     await delay(800);
   }
 
-  private async executeWbDrawTable(action: WbDrawTableAction): Promise<void> {
+  private async executeWbDrawTable(
+    action: WbDrawTableAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -511,10 +565,14 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     await delay(800);
   }
 
-  private async executeWbDrawLine(action: WbDrawLineAction): Promise<void> {
+  private async executeWbDrawLine(
+    action: WbDrawLineAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -543,11 +601,15 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     // Wait for element fade-in animation
     await delay(800);
   }
 
-  private async executeWbDrawCode(action: WbDrawCodeAction): Promise<void> {
+  private async executeWbDrawCode(
+    action: WbDrawCodeAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -572,12 +634,16 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     // Wait for typing animation: base 800ms + 50ms per line, capped at 3s
     const animMs = Math.min(800 + lines.length * 50, 3000);
     await delay(animMs);
   }
 
-  private async executeWbEditCode(action: WbEditCodeAction): Promise<void> {
+  private async executeWbEditCode(
+    action: WbEditCodeAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
@@ -635,24 +701,35 @@ export class ActionEngine {
       wb.data.id,
     );
 
+    if (options.silent) return;
     // Wait for edit animation
     await delay(600);
   }
 
-  private async executeWbDelete(action: WbDeleteAction): Promise<void> {
+  private async executeWbDelete(
+    action: WbDeleteAction,
+    options: ActionExecutionOptions = {},
+  ): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
     this.stageAPI.whiteboard.deleteElement(action.elementId, wb.data.id);
+    if (options.silent) return;
     await delay(300);
   }
 
-  private async executeWbClear(): Promise<void> {
+  private async executeWbClear(options: ActionExecutionOptions = {}): Promise<void> {
     const wb = this.stageAPI.whiteboard.get();
     if (!wb.success || !wb.data) return;
 
     const elementCount = wb.data.elements?.length || 0;
     if (elementCount === 0) return;
+
+    if (options.silent) {
+      this.stageAPI.whiteboard.update({ elements: [] }, wb.data.id);
+      useCanvasStore.getState().setWhiteboardClearing(false);
+      return;
+    }
 
     // Save snapshot before AI clear (mirrors UI handleClear in index.tsx)
     useWhiteboardHistoryStore.getState().pushSnapshot(wb.data.elements!);
@@ -669,8 +746,9 @@ export class ActionEngine {
     useCanvasStore.getState().setWhiteboardClearing(false);
   }
 
-  private async executeWbClose(): Promise<void> {
+  private async executeWbClose(options: ActionExecutionOptions = {}): Promise<void> {
     useCanvasStore.getState().setWhiteboardOpen(false);
+    if (options.silent) return;
     // Wait for close animation (500ms ease-out tween)
     await delay(700);
   }
