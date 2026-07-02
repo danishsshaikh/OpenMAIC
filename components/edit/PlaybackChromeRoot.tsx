@@ -18,7 +18,13 @@ import { SceneSidebar } from '@/components/stage/scene-sidebar';
 import { Header } from '@/components/header';
 import { CanvasArea } from '@/components/canvas/canvas-area';
 import { Roundtable } from '@/components/roundtable';
-import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
+import {
+  PlaybackEngine,
+  clearPlaybackResumePosition,
+  computePlaybackView,
+  loadPlaybackResumePosition,
+  savePlaybackResumePosition,
+} from '@/lib/playback';
 import type { EngineMode, TriggerEvent, Effect } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
 import { createAudioPlayer } from '@/lib/utils/audio-player';
@@ -27,7 +33,6 @@ import { useWidgetIframeStore } from '@/lib/store/widget-iframe';
 import type { AudioIndicatorState } from '@/components/roundtable/audio-indicator';
 import type { Action, DiscussionAction, SpeechAction } from '@/lib/types/action';
 import { cn } from '@/lib/utils';
-// Playback state persistence removed — refresh always starts from the beginning
 import { ChatArea, type ChatAreaRef } from '@/components/chat/chat-area';
 import { agentsToParticipants, useAgentRegistry } from '@/lib/orchestration/registry/store';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
@@ -80,6 +85,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       setCurrentSceneId,
       generatingOutlines,
       outlines,
+      stage,
     } = useStageStore();
     const failedOutlines = useStageStore.use.failedOutlines();
     const generationComplete = useStageStore.use.generationComplete();
@@ -457,6 +463,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       // on a scene's first visit and silently drop every widget action. Looking it
       // up per-send always sees the live registration.
       const sceneIdForWidget = currentScene.id;
+      const playbackResumeScopeId = stage?.id ?? currentScene.stageId;
       const widgetSendMessage = (type: string, payload: Record<string, unknown>) =>
         useWidgetIframeStore.getState().getSendMessage(sceneIdForWidget)?.(type, payload);
 
@@ -563,7 +570,11 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           return ids.includes(agentId);
         },
         getPlaybackSpeed: () => useSettingsStore.getState().playbackSpeed || 1,
+        onProgress: (snapshot) => {
+          savePlaybackResumePosition(playbackResumeScopeId, currentScene, snapshot);
+        },
         onComplete: () => {
+          clearPlaybackResumePosition(playbackResumeScopeId, currentScene.id);
           // lectureSpeech intentionally NOT cleared — last sentence stays visible
           // until scene transition (auto-play) or user restarts. Scene change
           // effect handles the reset.
@@ -626,7 +637,10 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           engine.start();
         })();
       } else {
-        // Load saved playback state and restore position (but never auto-play).
+        const resumePosition = loadPlaybackResumePosition(playbackResumeScopeId, currentScene);
+        if (resumePosition) {
+          engine.restoreActionPosition(resumePosition.actionIndex);
+        }
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps -- Only re-run when scene changes, functions are stable refs
     }, [currentScene]);

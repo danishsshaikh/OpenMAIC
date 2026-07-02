@@ -122,6 +122,18 @@ export class PlaybackEngine {
     this.consumedDiscussions = new Set(snapshot.consumedDiscussions);
   }
 
+  /** Restore to an action boundary within the current scene. */
+  restoreActionPosition(actionIndex: number): boolean {
+    if (this.mode !== 'idle') return false;
+    const actions = this.scenes[0]?.actions ?? [];
+    if (!Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actions.length) {
+      return false;
+    }
+    this.sceneIndex = 0;
+    this.actionIndex = actionIndex;
+    return true;
+  }
+
   /** idle → playing (from beginning) */
   start(): void {
     if (this.mode !== 'idle') {
