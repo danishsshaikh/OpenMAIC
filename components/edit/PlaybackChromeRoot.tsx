@@ -20,6 +20,12 @@ import { CanvasArea } from '@/components/canvas/canvas-area';
 import { Roundtable } from '@/components/roundtable';
 import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
 import type { EngineMode, TriggerEvent, Effect } from '@/lib/playback';
+import {
+  canJumpWithinReconstructablePrefix,
+  getActionLineProgress,
+  getNextSafeSpeechActionIndex,
+  getPreviousSafeSpeechActionIndex,
+} from '@/lib/playback/action-navigation';
 import { ActionEngine } from '@/lib/action/engine';
 import { createAudioPlayer } from '@/lib/utils/audio-player';
 import { useDiscussionTTS } from '@/lib/hooks/use-discussion-tts';
@@ -100,6 +106,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const [engineMode, setEngineMode] = useState<EngineMode>('idle');
     const [playbackCompleted, setPlaybackCompleted] = useState(false); // Distinguishes "never played" idle from "finished" idle
     const [lectureSpeech, setLectureSpeech] = useState<string | null>(null); // From PlaybackEngine (lecture)
+    const [currentPlaybackActionIndex, setCurrentPlaybackActionIndex] = useState<number | null>(0);
     const [liveSpeech, setLiveSpeech] = useState<string | null>(null); // From buffer (discussion/QA)
     const [speechProgress, setSpeechProgress] = useState<number | null>(null); // StreamBuffer reveal progress (0–1)
     const [discussionTrigger, setDiscussionTrigger] = useState<TriggerEvent | null>(null);
@@ -245,6 +252,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       resetLiveState();
       setPlaybackCompleted(false);
       setLectureSpeech(null);
+      setCurrentPlaybackActionIndex(0);
       setSpeechProgress(null);
       setShowEndFlash(false);
       setActiveBubbleId(null);
@@ -472,6 +480,9 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         onModeChange: (mode) => {
           setEngineMode(mode);
         },
+        onProgress: (snapshot) => {
+          setCurrentPlaybackActionIndex(snapshot.actionIndex);
+        },
         onSceneChange: (_sceneId) => {
           // Scene change handled by engine
         },
@@ -567,6 +578,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           // lectureSpeech intentionally NOT cleared — last sentence stays visible
           // until scene transition (auto-play) or user restarts. Scene change
           // effect handles the reset.
+          setCurrentPlaybackActionIndex(currentScene.actions?.length ?? 0);
           setPlaybackCompleted(true);
 
           // End lecture session on playback complete
@@ -867,6 +879,73 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
 
     // get action information
     const totalActions = currentScene?.actions?.length || 0;
+    const currentActions = currentScene?.actions ?? [];
+    const lineProgress = getActionLineProgress(currentActions, currentPlaybackActionIndex);
+    const previousLineActionIndex = getPreviousSafeSpeechActionIndex(
+      currentActions,
+      currentPlaybackActionIndex,
+    );
+    const nextLineActionIndex = getNextSafeSpeechActionIndex(
+      currentActions,
+      currentPlaybackActionIndex,
+    );
+
+    const canJumpToAction = useCallback(
+      (sceneId: string, actionIndex: number): boolean => {
+        if (sceneId !== currentSceneId) return false;
+        return canJumpWithinReconstructablePrefix(
+          currentScene?.actions ?? [],
+          currentPlaybackActionIndex,
+          actionIndex,
+        );
+      },
+      [currentPlaybackActionIndex, currentScene?.actions, currentSceneId],
+    );
+
+    const handleJumpToAction = useCallback(
+      async (sceneId: string, actionIndex: number) => {
+        const engine = engineRef.current;
+        if (!engine || sceneId !== currentSceneId || !currentScene) return;
+        const autoplay = engine.getMode() === 'playing';
+        const jumped = await engine.jumpToAction(actionIndex, { autoplay });
+        if (!jumped) return;
+        setPlaybackCompleted(false);
+        setCurrentPlaybackActionIndex(actionIndex);
+        const action = currentScene.actions?.[actionIndex];
+        if (action?.type === 'speech') {
+          setLectureSpeech(action.text);
+        }
+      },
+      [currentScene, currentSceneId],
+    );
+
+    const handlePreviousLine = useCallback(() => {
+      if (!currentScene || previousLineActionIndex === null) return;
+      void handleJumpToAction(currentScene.id, previousLineActionIndex);
+    }, [currentScene, handleJumpToAction, previousLineActionIndex]);
+
+    const handleNextLine = useCallback(() => {
+      if (!currentScene || nextLineActionIndex === null) return;
+      void handleJumpToAction(currentScene.id, nextLineActionIndex);
+    }, [currentScene, handleJumpToAction, nextLineActionIndex]);
+
+    const actionNavigation =
+      lineProgress.totalLines > 0
+        ? {
+            currentLine: lineProgress.currentLine,
+            totalLines: lineProgress.totalLines,
+            canGoPrev:
+              !!currentScene &&
+              previousLineActionIndex !== null &&
+              canJumpToAction(currentScene.id, previousLineActionIndex),
+            canGoNext:
+              !!currentScene &&
+              nextLineActionIndex !== null &&
+              canJumpToAction(currentScene.id, nextLineActionIndex),
+            onPrev: handlePreviousLine,
+            onNext: handleNextLine,
+          }
+        : undefined;
 
     // whiteboard toggle
     const handleWhiteboardToggle = () => {
@@ -1089,6 +1168,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
               onNextSlide={handleNextScene}
               onPlayPause={handlePlayPause}
               onWhiteboardClose={handleWhiteboardToggle}
+              actionNavigation={actionNavigation}
               isPresenting={isPresenting}
               onTogglePresentation={togglePresentation}
               showStopDiscussion={
@@ -1231,7 +1311,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                   setIsDiscussionPaused(false);
                 }}
                 totalActions={totalActions}
-                currentActionIndex={0}
+                currentActionIndex={currentPlaybackActionIndex ?? 0}
                 currentSceneIndex={currentSceneIndex}
                 scenesCount={totalScenesCount}
                 whiteboardOpen={whiteboardOpen}
@@ -1242,6 +1322,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                 onPrevSlide={handlePreviousScene}
                 onNextSlide={handleNextScene}
                 onWhiteboardClose={handleWhiteboardToggle}
+                actionNavigation={actionNavigation}
                 isPresenting={isPresenting}
                 controlsVisible={controlsVisible}
                 onTogglePresentation={togglePresentation}
@@ -1265,6 +1346,11 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
             activeBubbleId={activeBubbleId}
             onActiveBubble={(id) => setActiveBubbleId(id)}
             currentSceneId={currentSceneId}
+            currentActionIndex={currentPlaybackActionIndex}
+            canJumpToAction={canJumpToAction}
+            onJumpToAction={(sceneId, actionIndex) => {
+              void handleJumpToAction(sceneId, actionIndex);
+            }}
             onLiveSpeech={(text, agentId) => {
               // Capture epoch at call time — discard if scene has changed since
               const epoch = sceneEpochRef.current;

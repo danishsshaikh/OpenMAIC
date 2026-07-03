@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type ComponentProps } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mic,
@@ -84,6 +84,7 @@ interface RoundtableProps {
   readonly onPrevSlide?: () => void;
   readonly onNextSlide?: () => void;
   readonly onWhiteboardClose?: () => void;
+  readonly actionNavigation?: ComponentProps<typeof CanvasToolbar>['actionNavigation'];
   readonly isPresenting?: boolean;
   readonly controlsVisible?: boolean;
   readonly onTogglePresentation?: () => void;
@@ -169,6 +170,7 @@ export function Roundtable({
   onPrevSlide,
   onNextSlide,
   onWhiteboardClose,
+  actionNavigation,
   isPresenting,
   controlsVisible,
   onTogglePresentation,
@@ -648,6 +650,7 @@ export function Roundtable({
       onToggleAutoPlay={() => setAutoPlayLecture(!autoPlayLecture)}
       playbackSpeed={playbackSpeed}
       onCycleSpeed={handleCycleSpeed}
+      actionNavigation={actionNavigation}
     />
   );
 

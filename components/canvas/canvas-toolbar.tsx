@@ -6,6 +6,8 @@ import {
   ChevronRight,
   Play,
   Pause,
+  SkipBack,
+  SkipForward,
   PencilLine,
   LayoutList,
   MessageSquare,
@@ -50,6 +52,14 @@ export interface CanvasToolbarProps {
   readonly onToggleAutoPlay?: () => void;
   readonly playbackSpeed?: number;
   readonly onCycleSpeed?: () => void;
+  readonly actionNavigation?: {
+    currentLine: number;
+    totalLines: number;
+    canGoPrev: boolean;
+    canGoNext: boolean;
+    onPrev: () => void;
+    onNext: () => void;
+  };
 }
 
 /* Compact control button */
@@ -108,6 +118,7 @@ export function CanvasToolbar({
   onToggleAutoPlay,
   playbackSpeed = 1,
   onCycleSpeed,
+  actionNavigation,
 }: CanvasToolbarProps) {
   const { t } = useI18n();
   const canGoPrev = currentSceneIndex > 0;
@@ -273,6 +284,49 @@ export function CanvasToolbar({
           )}
 
           <CtrlDivider />
+
+          {/* Sentence navigation */}
+          {actionNavigation && actionNavigation.totalLines > 0 && (
+            <>
+              <button
+                onClick={actionNavigation.onPrev}
+                disabled={!actionNavigation.canGoPrev}
+                className={cn(
+                  ctrlBtn,
+                  'w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none',
+                )}
+                aria-label={t('roundtable.previousLine')}
+                title={t('roundtable.previousLine')}
+              >
+                <SkipBack className="w-3.5 h-3.5" />
+              </button>
+              <span
+                className="min-w-[3.25rem] px-1 text-center text-[10px] text-gray-400 dark:text-gray-500 tabular-nums select-none font-medium"
+                aria-label={t('roundtable.lineProgress', {
+                  current: actionNavigation.currentLine,
+                  total: actionNavigation.totalLines,
+                })}
+              >
+                {t('roundtable.lineProgress', {
+                  current: actionNavigation.currentLine,
+                  total: actionNavigation.totalLines,
+                })}
+              </span>
+              <button
+                onClick={actionNavigation.onNext}
+                disabled={!actionNavigation.canGoNext}
+                className={cn(
+                  ctrlBtn,
+                  'w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none',
+                )}
+                aria-label={t('roundtable.nextLine')}
+                title={t('roundtable.nextLine')}
+              >
+                <SkipForward className="w-3.5 h-3.5" />
+              </button>
+              <CtrlDivider />
+            </>
+          )}
 
           {/* Prev scene */}
           {scenesCount > 1 && (
