@@ -222,9 +222,10 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     // Guard to prevent double flash when manual stop triggers onDiscussionEnd
     const manualStopRef = useRef(false);
 
-    useEffect(() => {
-      currentPlaybackActionIndexRef.current = currentPlaybackActionIndex;
-    }, [currentPlaybackActionIndex]);
+    const updateCurrentPlaybackActionIndex = useCallback((actionIndex: number | null) => {
+      currentPlaybackActionIndexRef.current = actionIndex;
+      setCurrentPlaybackActionIndex(actionIndex);
+    }, []);
 
     const actionResumeStorageKey = useMemo(
       () => getActionResumeStorageKey(stage?.id ?? currentScene?.stageId),
@@ -315,12 +316,12 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       resetLiveState();
       setPlaybackCompleted(false);
       setLectureSpeech(null);
-      setCurrentPlaybackActionIndex(0);
+      updateCurrentPlaybackActionIndex(0);
       setSpeechProgress(null);
       setShowEndFlash(false);
       setActiveBubbleId(null);
       setDiscussionTrigger(null);
-    }, [resetLiveState]);
+    }, [resetLiveState, updateCurrentPlaybackActionIndex]);
 
     /** Request failure should exit live discussion UI without hard-closing the session. */
     const handleLiveSessionError = useCallback(() => {
@@ -550,7 +551,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           setEngineMode(mode);
         },
         onProgress: (snapshot) => {
-          setCurrentPlaybackActionIndex(snapshot.actionIndex);
+          updateCurrentPlaybackActionIndex(snapshot.actionIndex);
           saveSceneResumePosition(snapshot.sceneId, snapshot.actionIndex);
         },
         onSceneChange: (_sceneId) => {
@@ -648,7 +649,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           // lectureSpeech intentionally NOT cleared — last sentence stays visible
           // until scene transition (auto-play) or user restarts. Scene change
           // effect handles the reset.
-          setCurrentPlaybackActionIndex(currentScene.actions?.length ?? 0);
+          updateCurrentPlaybackActionIndex(currentScene.actions?.length ?? 0);
           clearSceneResumePosition(currentScene.id);
           setPlaybackCompleted(true);
 
@@ -723,7 +724,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
               .jumpToAction(savedPosition.actionIndex, { autoplay: false })
               .then((restored) => {
                 if (!restored || engineRef.current !== engine) return;
-                setCurrentPlaybackActionIndex(savedPosition.actionIndex);
+                updateCurrentPlaybackActionIndex(savedPosition.actionIndex);
                 const action = currentScene.actions?.[savedPosition.actionIndex];
                 if (action?.type === 'speech') {
                   setLectureSpeech(action.text);
@@ -1004,13 +1005,13 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         const jumped = await engine.jumpToAction(actionIndex, { autoplay });
         if (!jumped) return;
         setPlaybackCompleted(false);
-        setCurrentPlaybackActionIndex(actionIndex);
+        updateCurrentPlaybackActionIndex(actionIndex);
         const action = currentScene.actions?.[actionIndex];
         if (action?.type === 'speech') {
           setLectureSpeech(action.text);
         }
       },
-      [currentScene, currentSceneId],
+      [currentScene, currentSceneId, updateCurrentPlaybackActionIndex],
     );
 
     const handlePreviousLine = useCallback(() => {

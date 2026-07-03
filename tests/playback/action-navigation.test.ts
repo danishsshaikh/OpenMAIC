@@ -339,6 +339,41 @@ describe('PlaybackEngine action navigation', () => {
     });
   });
 
+  it('jumping while paused positions the cursor without autoplay', async () => {
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => true);
+    const engine = new PlaybackEngine([scene([speech('a'), speech('b')])], actionEngine, player);
+
+    engine.start();
+    await flushPromises();
+    engine.pause();
+    vi.mocked(player.play).mockClear();
+
+    expect(await engine.jumpToAction(1, { autoplay: false })).toBe(true);
+
+    expect(engine.getMode()).toBe('paused');
+    expect(engine.getSnapshot().actionIndex).toBe(1);
+    expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it('jumping while playing continues from the target action', async () => {
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => true);
+    const engine = new PlaybackEngine([scene([speech('a'), speech('b')])], actionEngine, player);
+
+    engine.start();
+    await flushPromises();
+    vi.mocked(player.play).mockClear();
+
+    expect(await engine.jumpToAction(1)).toBe(true);
+    await flushPromises();
+
+    expect(engine.getMode()).toBe('playing');
+    expect(player.play).toHaveBeenCalledTimes(1);
+    expect(player.play).toHaveBeenCalledWith('', undefined);
+    expect(engine.getSnapshot().actionIndex).toBe(2);
+  });
+
   it('does not duplicate whiteboard actions after a backward jump and replay', async () => {
     const { engine: actionEngine, executions } = createActionEngine();
     const { player } = createAudioPlayer();
