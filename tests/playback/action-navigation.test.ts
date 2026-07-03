@@ -8,6 +8,13 @@ import {
   getNextSafeSpeechActionIndex,
   getPreviousSafeSpeechActionIndex,
 } from '@/lib/playback/action-navigation';
+import {
+  clearActionResumePosition,
+  createActionResumePosition,
+  getValidActionResumePosition,
+  readActionResumeState,
+  saveActionResumePosition,
+} from '@/lib/playback/action-resume';
 import { useSettingsStore } from '@/lib/store/settings';
 import type { Action } from '@/lib/types/action';
 import type { Scene } from '@/lib/types/stage';
@@ -77,6 +84,17 @@ async function flushPromises() {
   await Promise.resolve();
 }
 
+function createMemoryStorage(initial: Record<string, string> = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    getItem: vi.fn((key: string) => data.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      data.set(key, value);
+    }),
+    read: (key: string) => data.get(key) ?? null,
+  };
+}
+
 describe('action navigation helpers', () => {
   it('builds speech targets with action index metadata', () => {
     const actions = [
@@ -116,6 +134,81 @@ describe('action navigation helpers', () => {
     expect(canJumpWithinReconstructablePrefix(actions, 0, 0)).toBe(true);
     expect(canJumpWithinReconstructablePrefix(actions, 0, 2)).toBe(false);
     expect(canJumpWithinReconstructablePrefix(actions, 2, 0)).toBe(false);
+  });
+});
+
+describe('action resume storage', () => {
+  it('stores action-level resume positions without time or progress fields', () => {
+    const storage = createMemoryStorage();
+    const actions = [speech('a'), speech('b')];
+    const position = createActionResumePosition(actions, 1);
+
+    expect(position).toEqual({ actionIndex: 1, actionId: 'b', actionType: 'speech' });
+    saveActionResumePosition(storage, 'resume-key', 'scene-1', position!);
+
+    const raw = storage.read('resume-key');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.scenes['scene-1']).toEqual({
+      actionIndex: 1,
+      actionId: 'b',
+      actionType: 'speech',
+    });
+    expect(raw).not.toContain('milliseconds');
+    expect(raw).not.toContain('currentTime');
+    expect(raw).not.toContain('duration');
+    expect(raw).not.toContain('progress');
+  });
+
+  it('drops malformed and stale resume positions safely', () => {
+    const malformed = createMemoryStorage({ key: '{"scenes":{"scene-1":{"actionIndex":"1"}}}' });
+    expect(readActionResumeState(malformed, 'key')).toEqual({ version: 1, scenes: {} });
+
+    const storage = createMemoryStorage();
+    saveActionResumePosition(storage, 'key', 'scene-1', {
+      actionIndex: 1,
+      actionId: 'old-id',
+      actionType: 'speech',
+    });
+    const state = readActionResumeState(storage, 'key');
+    expect(getValidActionResumePosition(state, 'scene-1', [speech('a')])).toBeNull();
+    expect(getValidActionResumePosition(state, 'scene-1', [speech('a'), speech('b')])).toBeNull();
+  });
+
+  it('clears completed scene resume positions', () => {
+    const storage = createMemoryStorage();
+    saveActionResumePosition(storage, 'key', 'scene-1', {
+      actionIndex: 0,
+      actionId: 'a',
+      actionType: 'speech',
+    });
+    clearActionResumePosition(storage, 'key', 'scene-1');
+    expect(readActionResumeState(storage, 'key').scenes).toEqual({});
+  });
+
+  it('restores a saved action boundary and resumes from that action', async () => {
+    const storage = createMemoryStorage();
+    const actions = [speech('a'), speech('b'), speech('c')];
+    const position = createActionResumePosition(actions, 2)!;
+    saveActionResumePosition(storage, 'key', 'scene-1', position);
+
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => true);
+    const onSpeechStart = vi.fn();
+    const saved = getValidActionResumePosition(
+      readActionResumeState(storage, 'key'),
+      'scene-1',
+      actions,
+    );
+    const engine = new PlaybackEngine([scene(actions)], actionEngine, player, { onSpeechStart });
+
+    expect(saved).toEqual(position);
+    expect(await engine.jumpToAction(saved!.actionIndex, { autoplay: false })).toBe(true);
+    engine.continuePlayback();
+    await flushPromises();
+
+    expect(onSpeechStart).toHaveBeenCalledTimes(1);
+    expect(onSpeechStart).toHaveBeenCalledWith('c');
   });
 });
 
@@ -183,6 +276,67 @@ describe('PlaybackEngine action navigation', () => {
       { action: actions[1], silent: true },
     ]);
     expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it('jumping to speech before a spotlight does not fire the later spotlight', async () => {
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer();
+    const onEffectFire = vi.fn();
+    const actions = [
+      speech('third'),
+      { id: 'spotlight-4', type: 'spotlight', elementId: 'component-4' } as Action,
+      speech('fourth'),
+    ];
+    const engine = new PlaybackEngine([scene(actions)], actionEngine, player, { onEffectFire });
+
+    expect(await engine.jumpToAction(0, { autoplay: false })).toBe(true);
+
+    expect(onEffectFire).not.toHaveBeenCalled();
+    expect(actionEngine.execute).not.toHaveBeenCalledWith(actions[1]);
+    expect(engine.getSnapshot().actionIndex).toBe(0);
+  });
+
+  it('stale spotlight microtask after jump is ignored by generation token', async () => {
+    vi.useFakeTimers();
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => false);
+    const onComplete = vi.fn();
+    const actions = [
+      { id: 'spotlight', type: 'spotlight', elementId: 'box' } as Action,
+      speech('a'),
+    ];
+    const engine = new PlaybackEngine([scene(actions)], actionEngine, player, { onComplete });
+
+    engine.start();
+    expect(await engine.jumpToAction(1, { autoplay: false })).toBe(true);
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(2500);
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(engine.getSnapshot().actionIndex).toBe(1);
+  });
+
+  it('normal playback still shows spotlight when its own action is reached', async () => {
+    vi.useFakeTimers();
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => false);
+    const onEffectFire = vi.fn();
+    const actions = [
+      speech('a'),
+      { id: 'spotlight', type: 'spotlight', elementId: 'box' } as Action,
+    ];
+    const engine = new PlaybackEngine([scene(actions)], actionEngine, player, { onEffectFire });
+
+    engine.start();
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(2500);
+    await flushPromises();
+
+    expect(onEffectFire).toHaveBeenCalledWith({
+      kind: 'spotlight',
+      targetId: 'box',
+      dimOpacity: undefined,
+    });
   });
 
   it('does not duplicate whiteboard actions after a backward jump and replay', async () => {

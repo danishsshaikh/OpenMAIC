@@ -184,6 +184,7 @@ export class PlaybackEngine {
     }
 
     if (!this.isCurrentGeneration(generation)) return false;
+    this.actionEngine.clearEffects();
     this.sceneIndex = 0;
     this.actionIndex = actionIndex;
     this.callbacks.onProgress?.(this.getSnapshot());
