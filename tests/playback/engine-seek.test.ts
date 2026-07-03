@@ -71,13 +71,13 @@ describe('PlaybackEngine seek', () => {
     ['widget action', { id: 'widget-1', type: 'widget_reveal', target: 'part-a' }],
     ['discussion action', { id: 'discussion-1', type: 'discussion', topic: 'Question?' }],
     ['play_video action', { id: 'video-1', type: 'play_video', elementId: 'video-1' }],
-  ])('classifies a scene with %s as not seekable', (_label, unsafeAction) => {
+  ])('keeps a scene with %s seekable for internal best-effort controls', (_label, action) => {
     expect(
       isPlaybackSceneSeekable([
         { id: 'speech-1', type: 'speech', text: 'A line.' },
-        unsafeAction,
+        action,
       ] as NonNullable<Scene['actions']>),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('freezes estimated progress immediately when paused', () => {
@@ -276,7 +276,7 @@ describe('PlaybackEngine seek', () => {
     expect(play).toHaveBeenCalledWith('tts-1', '/audio/tts-1.mp3', 1000);
   });
 
-  it('marks unsafe scene progress as not seekable and no-ops seekTo', async () => {
+  it('allows best-effort seek across widget actions', async () => {
     const actionEngine = fakeActionEngine();
     const engine = new PlaybackEngine(
       [
@@ -291,14 +291,52 @@ describe('PlaybackEngine seek', () => {
       { getPlaybackSpeed: () => 1 },
     );
 
-    expect(engine.getProgress()).toMatchObject({ currentTimeMs: 0, seekable: false });
+    expect(engine.getProgress()).toMatchObject({ currentTimeMs: 0, seekable: true });
 
     const progress = await engine.seekTo(2500);
 
-    expect(progress).toMatchObject({ currentTimeMs: 0, seekable: false });
-    expect(engine.getSnapshot().actionIndex).toBe(0);
-    expect(actionEngine.resetPlaybackVisualState).not.toHaveBeenCalled();
+    expect(progress).toMatchObject({ currentTimeMs: 2500, seekable: true, actionIndex: 2 });
+    expect(engine.getSnapshot().actionIndex).toBe(2);
+    expect(actionEngine.resetPlaybackVisualState).toHaveBeenCalledTimes(1);
+    expect(actionEngine.execute).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'widget_reveal' }),
+      { silent: true },
+    );
   });
+
+  it.each([
+    ['discussion', { id: 'discussion-1', type: 'discussion', topic: 'Question?' }, 1, 2000],
+    ['play_video', { id: 'video-1', type: 'play_video', elementId: 'video-1' }, 2, 2500],
+  ])(
+    'does not block best-effort seek in scenes with %s actions',
+    async (_label, action, expectedActionIndex, expectedCurrentTimeMs) => {
+      const actionEngine = fakeActionEngine();
+      const engine = new PlaybackEngine(
+        [
+          scene([
+            { id: 'speech-1', type: 'speech', text: 'First line.' },
+            action,
+            { id: 'speech-2', type: 'speech', text: 'Second line.' },
+          ] as NonNullable<Scene['actions']>),
+        ],
+        actionEngine,
+        fakeAudio(),
+        { getPlaybackSpeed: () => 1 },
+      );
+
+      expect(engine.getProgress().seekable).toBe(true);
+
+      const progress = await engine.seekTo(2500);
+
+      expect(progress).toMatchObject({
+        currentTimeMs: expectedCurrentTimeMs,
+        seekable: true,
+        actionIndex: expectedActionIndex,
+      });
+      expect(engine.getSnapshot().actionIndex).toBe(expectedActionIndex);
+      expect(actionEngine.resetPlaybackVisualState).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('silently replays whiteboard actions before the target speech', async () => {
     const actionEngine = fakeActionEngine();

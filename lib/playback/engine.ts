@@ -46,17 +46,13 @@ const log = createLogger('PlaybackEngine');
 const DISCUSSION_PROMPT_DELAY_MS = 3000;
 const MIN_SPEECH_DURATION_MS = 2000;
 const INSTANT_ACTION_DURATION_MS = 0;
-const SEEK_UNSAFE_ACTION_TYPES = new Set<Action['type']>([
-  'discussion',
-  'play_video',
-  'widget_highlight',
-  'widget_setState',
-  'widget_annotation',
-  'widget_reveal',
-]);
 
-export function isPlaybackSceneSeekable(actions: readonly Action[] = []): boolean {
-  return !actions.some((action) => SEEK_UNSAFE_ACTION_TYPES.has(action.type));
+export function isPlaybackSceneSeekable(_actions: readonly Action[] = []): boolean {
+  // Internal/org branch: keep scene-wide timeline controls enabled for every
+  // action family. Widget, discussion, and video side effects remain
+  // best-effort because the runtime has no deterministic reset/replay contract
+  // for those systems yet.
+  return true;
 }
 
 function isSeekReplayAction(action: Action): boolean {
