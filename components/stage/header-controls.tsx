@@ -5,6 +5,7 @@ import {
   Archive,
   Download,
   FileDown,
+  Images,
   Loader2,
   Monitor,
   Moon,
@@ -19,6 +20,7 @@ import { useStageStore } from '@/lib/store';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { useExportClassroom } from '@/lib/export/use-export-classroom';
+import { useExportVideoFrames } from '@/lib/export/use-export-video-frames';
 import { LanguageSwitcher } from '../language-switcher';
 import { SettingsDialog } from '../settings';
 import {
@@ -77,6 +79,7 @@ export function HeaderControls({
   const mediaTasks = useMediaGenerationStore((s) => s.tasks);
   const { exporting: isExporting, exportPPTX, exportResourcePack } = useExportPPTX();
   const { exporting: isExportingZip, exportClassroomZip } = useExportClassroom();
+  const { exporting: isExportingVideoFrames, exportVideoFrames } = useExportVideoFrames();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
@@ -240,27 +243,27 @@ export function HeaderControls({
       <div className="relative" ref={exportRef}>
         <button
           onClick={() => {
-            if (canExport && !isExporting && !isExportingZip) {
+            if (canExport && !isExporting && !isExportingZip && !isExportingVideoFrames) {
               setExportMenuOpen(!exportMenuOpen);
             }
           }}
-          disabled={!canExport || isExporting || isExportingZip}
+          disabled={!canExport || isExporting || isExportingZip || isExportingVideoFrames}
           title={
             canExport
-              ? isExporting || isExportingZip
+              ? isExporting || isExportingZip || isExportingVideoFrames
                 ? t('export.exporting')
                 : t('export.pptx')
               : t('share.notReady')
           }
           className={cn(
             'shrink-0 p-2 rounded-full transition-all',
-            canExport && !isExporting && !isExportingZip
+            canExport && !isExporting && !isExportingZip && !isExportingVideoFrames
               ? 'text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm'
               : 'text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50',
           )}
           aria-label={t('export.pptx')}
         >
-          {isExporting || isExportingZip ? (
+          {isExporting || isExportingZip || isExportingVideoFrames ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <Download className="w-4 h-4" />
@@ -290,6 +293,22 @@ export function HeaderControls({
                 <div>{t('export.resourcePack')}</div>
                 <div className="text-[11px] text-gray-400 dark:text-gray-500">
                   {t('export.resourcePackDesc')}
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setExportMenuOpen(false);
+                exportVideoFrames();
+              }}
+              disabled={isExportingVideoFrames}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2.5"
+            >
+              <Images className="w-4 h-4 text-gray-400 shrink-0" />
+              <div>
+                <div>{t('export.videoFrames.title')}</div>
+                <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                  {t('export.videoFrames.desc')}
                 </div>
               </div>
             </button>

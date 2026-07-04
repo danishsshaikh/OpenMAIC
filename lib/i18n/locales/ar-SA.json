@@ -49,6 +49,19 @@
     "exporting": "جارٍ التصدير...",
     "exportSuccess": "تم التصدير بنجاح",
     "exportFailed": "فشل التصدير",
+    "videoFrames": {
+      "title": "تصدير إطارات PNG",
+      "desc": "ملف ZIP لإطارات المشاهد بالترتيب",
+      "exporting": "جارٍ تصدير إطارات PNG...",
+      "exportSuccess": "تم تصدير إطارات PNG",
+      "exportFailed": "فشل تصدير إطارات PNG",
+      "noScenes": "لا توجد مشاهد فصل متاحة للتصدير.",
+      "placeholderBrand": "تصدير فيديو OpenMAIC",
+      "placeholderScene": "المشهد {{index}}",
+      "placeholderHeading": "إطار بديل لمشهد {{sceneType}}",
+      "placeholderMessage": "يتطلب هذا المشهد التشغيل التفاعلي داخل OpenMAIC.",
+      "placeholderHint": "افتحه في OpenMAIC للحصول على التجربة التفاعلية الكاملة."
+    },
     "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت."
   },
   "import": {

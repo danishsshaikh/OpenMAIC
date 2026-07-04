@@ -49,6 +49,19 @@
     "exportFailed": "匯出失敗",
     "classroomZip": "匯出課堂 ZIP",
     "classroomZipDesc": "課程結構 + 媒體檔案",
+    "videoFrames": {
+      "title": "匯出 PNG 影格",
+      "desc": "依序匯出場景影格 ZIP",
+      "exporting": "正在匯出 PNG 影格...",
+      "exportSuccess": "PNG 影格已匯出",
+      "exportFailed": "PNG 影格匯出失敗",
+      "noScenes": "沒有可匯出的課堂場景。",
+      "placeholderBrand": "OpenMAIC 影片匯出",
+      "placeholderScene": "場景 {{index}}",
+      "placeholderHeading": "{{sceneType}} 場景佔位影格",
+      "placeholderMessage": "此場景需要在 OpenMAIC 中進行互動式播放。",
+      "placeholderHint": "請在 OpenMAIC 中開啟以取得完整互動體驗。"
+    },
     "inlinePartial": "{{count}} 個外部資源未能打包，離線時課程可能無法正常顯示。"
   },
   "import": {

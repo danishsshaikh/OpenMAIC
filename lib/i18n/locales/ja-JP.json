@@ -49,6 +49,19 @@
     "exportFailed": "エクスポートに失敗しました",
     "classroomZip": "教室ZIPをエクスポート",
     "classroomZipDesc": "コース構造 + メディアファイル",
+    "videoFrames": {
+      "title": "PNG フレームをエクスポート",
+      "desc": "順序付きシーンフレーム ZIP",
+      "exporting": "PNG フレームをエクスポート中...",
+      "exportSuccess": "PNG フレームをエクスポートしました",
+      "exportFailed": "PNG フレームのエクスポートに失敗しました",
+      "noScenes": "エクスポートできる教室シーンがありません。",
+      "placeholderBrand": "OpenMAIC 動画エクスポート",
+      "placeholderScene": "シーン {{index}}",
+      "placeholderHeading": "{{sceneType}} シーンのプレースホルダー",
+      "placeholderMessage": "このシーンは OpenMAIC のインタラクティブ再生が必要です。",
+      "placeholderHint": "完全なインタラクティブ体験には OpenMAIC で開いてください。"
+    },
     "inlinePartial": "{{count}} 個の外部リソースをバンドルできませんでした。オフラインでは正しく表示されない可能性があります。"
   },
   "import": {
