@@ -1,7 +1,9 @@
 import type { Scene } from '@/lib/types/stage';
+import type { SpeechAction } from '@/lib/types/action';
 import {
   VIDEO_FRAME_EXPORT_TYPE,
   VIDEO_FRAME_EXPORT_VERSION,
+  type VideoFrameAudioEntry,
   type VideoFrameEntry,
   type VideoFrameExportPlan,
 } from '@/lib/export/video-frame-types';
@@ -54,10 +56,12 @@ export function buildVideoFrameExportPlan({
     const renderMode =
       scene.type === 'slide' && scene.content.type === 'slide' ? 'slide-snapshot' : 'placeholder';
     const suffix = renderMode === 'placeholder' ? '-placeholder' : '';
-    const baseName = `${String(index).padStart(3, '0')}-${sanitizeVideoFrameFilenamePart(
+    const sceneBaseName = `${String(index).padStart(3, '0')}-${sanitizeVideoFrameFilenamePart(
       scene.title,
-    )}${suffix}`;
-    const file = uniqueFileName(`${baseName}.png`, usedFiles);
+    )}`;
+    const frameBaseName = `${sceneBaseName}${suffix}`;
+    const file = uniqueFileName(`frames/${frameBaseName}.png`, usedFiles);
+    const sceneFile = uniqueFileName(`scenes/${sceneBaseName}.json`, usedFiles);
 
     return {
       index,
@@ -66,6 +70,8 @@ export function buildVideoFrameExportPlan({
       sceneType: scene.type,
       file,
       renderMode,
+      sceneFile,
+      audio: planSceneAudioEntries(scene, sceneBaseName, usedFiles),
     };
   });
 
@@ -77,8 +83,49 @@ export function buildVideoFrameExportPlan({
       exportType: VIDEO_FRAME_EXPORT_TYPE,
       exportedAt,
       frames,
+      media: [],
     },
   };
+}
+
+function planSceneAudioEntries(
+  scene: Scene,
+  sceneBaseName: string,
+  usedFiles: Map<string, number>,
+): VideoFrameAudioEntry[] {
+  let speechIndex = 0;
+  const entries: VideoFrameAudioEntry[] = [];
+
+  for (const [actionIndex, action] of (scene.actions ?? []).entries()) {
+    if (action.type !== 'speech') continue;
+    speechIndex++;
+    const speech = action as SpeechAction;
+    const text = typeof speech.text === 'string' ? speech.text : '';
+    const file =
+      speech.audioId && text.trim()
+        ? uniqueFileName(
+            `audio/${sceneBaseName}/speech-${String(speechIndex).padStart(3, '0')}.mp3`,
+            usedFiles,
+          )
+        : null;
+
+    entries.push({
+      actionId: typeof speech.id === 'string' ? speech.id : undefined,
+      actionIndex,
+      text,
+      file,
+      missing: !file,
+      ...(file ? {} : { reason: getMissingAudioReason(speech) }),
+    });
+  }
+
+  return entries;
+}
+
+function getMissingAudioReason(speech: SpeechAction): string {
+  if (!speech.text?.trim()) return 'empty speech text';
+  if (speech.audioUrl) return 'audioUrl not bundled';
+  return 'no audioId';
 }
 
 function uniqueFileName(fileName: string, usedFiles: Map<string, number>): string {

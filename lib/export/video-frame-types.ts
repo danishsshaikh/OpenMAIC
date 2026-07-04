@@ -5,6 +5,28 @@ export const VIDEO_FRAME_EXPORT_TYPE = 'video-frame-foundation';
 
 export type VideoFrameRenderMode = 'slide-snapshot' | 'placeholder';
 
+export interface VideoFrameAudioEntry {
+  actionId?: string;
+  actionIndex: number;
+  text: string;
+  file: string | null;
+  missing: boolean;
+  reason?: string;
+  duration?: number;
+  voice?: string;
+  format?: string;
+}
+
+export interface VideoFrameMediaEntry {
+  elementId: string;
+  file: string;
+  type: 'image' | 'video';
+  mimeType: string;
+  size: number;
+  prompt?: string;
+  posterFile?: string;
+}
+
 export interface VideoFrameEntry {
   index: number;
   sceneId: string;
@@ -12,6 +34,8 @@ export interface VideoFrameEntry {
   sceneType: SceneType;
   file: string;
   renderMode: VideoFrameRenderMode;
+  sceneFile: string;
+  audio: VideoFrameAudioEntry[];
 }
 
 export interface VideoFrameManifest {
@@ -20,6 +44,7 @@ export interface VideoFrameManifest {
   exportType: typeof VIDEO_FRAME_EXPORT_TYPE;
   exportedAt: string;
   frames: VideoFrameEntry[];
+  media: VideoFrameMediaEntry[];
 }
 
 export interface VideoFrameExportPlan {

@@ -22,7 +22,14 @@ describe('video frame export planner', () => {
     });
 
     expect(plan.frames.map((frame) => frame.sceneId)).toEqual(['a', 'b']);
-    expect(plan.frames.map((frame) => frame.file)).toEqual(['001-first.png', '002-second.png']);
+    expect(plan.frames.map((frame) => frame.file)).toEqual([
+      'frames/001-first.png',
+      'frames/002-second.png',
+    ]);
+    expect(plan.frames.map((frame) => frame.sceneFile)).toEqual([
+      'scenes/001-first.json',
+      'scenes/002-second.json',
+    ]);
   });
 
   it('uses slide snapshots for slide scenes and placeholders for interactive scene types', () => {
@@ -43,10 +50,10 @@ describe('video frame export planner', () => {
       'placeholder',
     ]);
     expect(plan.frames.map((frame) => frame.file)).toEqual([
-      '001-lecture.png',
-      '002-quiz-placeholder.png',
-      '003-widget-placeholder.png',
-      '004-project-placeholder.png',
+      'frames/001-lecture.png',
+      'frames/002-quiz-placeholder.png',
+      'frames/003-widget-placeholder.png',
+      'frames/004-project-placeholder.png',
     ]);
   });
 
@@ -59,7 +66,10 @@ describe('video frame export planner', () => {
       ],
     });
 
-    expect(plan.frames.map((frame) => frame.file)).toEqual(['001-intro.png', '002-intro.png']);
+    expect(plan.frames.map((frame) => frame.file)).toEqual([
+      'frames/001-intro.png',
+      'frames/002-intro.png',
+    ]);
   });
 
   it('sanitizes unsafe filename characters', () => {
@@ -85,11 +95,50 @@ describe('video frame export planner', () => {
           sceneId: 's1',
           sceneTitle: 'Intro',
           sceneType: 'slide',
-          file: '001-intro.png',
+          file: 'frames/001-intro.png',
           renderMode: 'slide-snapshot',
+          sceneFile: 'scenes/001-intro.json',
+          audio: [],
         },
       ],
+      media: [],
     });
+  });
+
+  it('plans speech audio sidecar entries without requiring cached audio', () => {
+    const plan = buildVideoFrameExportPlan({
+      stageTitle: 'Narrated Course',
+      scenes: [
+        scene({
+          id: 's1',
+          title: 'Intro',
+          order: 1,
+          actions: [
+            { id: 'a1', type: 'speech', text: 'Hello', audioId: 'audio-1' },
+            { id: 'a2', type: 'speech', text: 'No audio yet' },
+            { id: 'a3', type: 'spotlight', elementId: 'shape-1' },
+          ],
+        }),
+      ],
+    });
+
+    expect(plan.frames[0].audio).toEqual([
+      {
+        actionId: 'a1',
+        actionIndex: 0,
+        text: 'Hello',
+        file: 'audio/001-intro/speech-001.mp3',
+        missing: false,
+      },
+      {
+        actionId: 'a2',
+        actionIndex: 1,
+        text: 'No audio yet',
+        file: null,
+        missing: true,
+        reason: 'no audioId',
+      },
+    ]);
   });
 
   it('rejects empty scene lists', () => {
@@ -104,11 +153,13 @@ function scene({
   title,
   order,
   type = 'slide',
+  actions,
 }: {
   id: string;
   title: string;
   order: number;
   type?: 'slide' | 'quiz' | 'interactive' | 'pbl';
+  actions?: Scene['actions'];
 }): Scene {
   const content =
     type === 'slide'
@@ -134,5 +185,6 @@ function scene({
     order,
     type,
     content,
+    actions,
   } as Scene;
 }

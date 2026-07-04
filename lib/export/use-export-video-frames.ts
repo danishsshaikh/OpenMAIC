@@ -9,9 +9,15 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import type { Scene } from '@/lib/types/stage';
+import type { SpeechAction } from '@/lib/types/action';
 import { db, type MediaFileRecord } from '@/lib/utils/database';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
-import type { VideoFrameEntry } from './video-frame-types';
+import {
+  type VideoFrameEntry,
+  type VideoFrameManifest,
+  type VideoFrameMediaEntry,
+} from './video-frame-types';
+import { collectAudioFiles, collectMediaFiles } from './classroom-zip-utils';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
@@ -53,6 +59,10 @@ export function useExportVideoFrames() {
       const plan = buildVideoFrameExportPlan({ stageTitle, scenes });
       const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
       const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
+      const audioRecords = await collectAudioFiles(scenes);
+      const generatedMedia = await collectMediaFiles(stage.id);
+      const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
+      const manifest = withSidecarMetadata(plan.manifest, scenes, audioById, generatedMedia);
       const zip = new JSZip();
 
       for (const frame of plan.frames) {
@@ -62,9 +72,28 @@ export function useExportVideoFrames() {
             ? await renderSlideFrame(scene, mediaRecords)
             : await renderPlaceholderFrame(frame, t);
         zip.file(frame.file, blob);
+        if (scene) zip.file(frame.sceneFile, JSON.stringify(scene, null, 2));
       }
 
-      zip.file('manifest.json', JSON.stringify(plan.manifest, null, 2));
+      for (const frame of manifest.frames) {
+        for (const audio of frame.audio) {
+          if (!audio.file) continue;
+          const scene = sceneById.get(frame.sceneId);
+          const action = scene?.actions?.[audio.actionIndex];
+          const audioId = action?.type === 'speech' ? (action as SpeechAction).audioId : undefined;
+          const record = audioId ? audioById.get(audioId) : undefined;
+          if (record) zip.file(audio.file, record.blob);
+        }
+      }
+
+      for (const media of generatedMedia) {
+        zip.file(media.zipPath, media.record.blob);
+        if (media.record.poster) {
+          zip.file(media.zipPath.replace(/\.\w+$/, '.poster.jpg'), media.record.poster);
+        }
+      }
+
+      zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-frames.zip`);
@@ -79,6 +108,75 @@ export function useExportVideoFrames() {
   }, [t]);
 
   return { exporting, exportVideoFrames };
+}
+
+function withSidecarMetadata(
+  manifest: VideoFrameManifest,
+  scenes: Scene[],
+  audioById: Map<string, { format?: string; duration?: number; voice?: string; blob: Blob }>,
+  generatedMedia: Awaited<ReturnType<typeof collectMediaFiles>>,
+): VideoFrameManifest {
+  const scenesById = new Map(scenes.map((scene) => [scene.id, scene]));
+
+  return {
+    ...manifest,
+    frames: manifest.frames.map((frame) => {
+      const scene = scenesById.get(frame.sceneId);
+      return {
+        ...frame,
+        audio: frame.audio.map((audio) => {
+          const action = scene?.actions?.[audio.actionIndex];
+          const audioId = action?.type === 'speech' ? (action as SpeechAction).audioId : undefined;
+          if (!audioId) return audio;
+
+          const record = audioById.get(audioId);
+          if (!record) {
+            return {
+              ...audio,
+              file: null,
+              missing: true,
+              reason: 'audio file not found',
+            };
+          }
+
+          const format = record.format || 'mp3';
+          const file = replaceFileExtension(audio.file, format);
+          return {
+            ...audio,
+            file,
+            missing: false,
+            reason: undefined,
+            format,
+            duration: record.duration,
+            voice: record.voice,
+          };
+        }),
+      };
+    }),
+    media: generatedMedia.map(toVideoFrameMediaEntry),
+  };
+}
+
+function toVideoFrameMediaEntry(
+  media: Awaited<ReturnType<typeof collectMediaFiles>>[number],
+): VideoFrameMediaEntry {
+  const posterFile = media.record.poster
+    ? media.zipPath.replace(/\.\w+$/, '.poster.jpg')
+    : undefined;
+  return {
+    elementId: media.elementId,
+    file: media.zipPath,
+    type: media.record.type,
+    mimeType: media.record.mimeType,
+    size: media.record.size,
+    prompt: media.record.prompt,
+    ...(posterFile ? { posterFile } : {}),
+  };
+}
+
+function replaceFileExtension(file: string | null, extension: string): string | null {
+  if (!file) return file;
+  return file.replace(/\.[^.]+$/, `.${extension || 'mp3'}`);
 }
 
 async function renderSlideFrame(scene: Scene, mediaRecords: MediaFileRecord[]): Promise<Blob> {
