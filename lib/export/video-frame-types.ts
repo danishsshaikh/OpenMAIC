@@ -30,6 +30,7 @@ export interface VideoFrameMediaEntry {
 export interface VideoFrameHtmlEntry {
   file: string | null;
   supported: boolean;
+  kind?: 'interactive' | 'quiz';
   reason?: string;
 }
 

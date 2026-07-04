@@ -127,24 +127,30 @@ describe('video frame export planner', () => {
     expect(plan.frames[0].html).toEqual({
       file: 'html/001-robot-helper-quiz/index.html',
       supported: true,
+      kind: 'interactive',
     });
   });
 
-  it('marks quiz and PBL HTML sidecars unsupported when no reusable exporter exists', () => {
+  it('plans quiz HTML sidecars from quiz scene data', () => {
+    const plan = buildVideoFrameExportPlan({
+      stageTitle: 'Quiz Course',
+      scenes: [scene({ id: 'quiz', title: 'Robot Helper Quiz', order: 7, type: 'quiz' })],
+    });
+
+    expect(plan.frames[0].html).toEqual({
+      file: 'html/001-robot-helper-quiz/index.html',
+      supported: true,
+      kind: 'quiz',
+    });
+  });
+
+  it('marks PBL HTML sidecars unsupported when no reusable exporter exists', () => {
     const plan = buildVideoFrameExportPlan({
       stageTitle: 'Unsupported HTML',
-      scenes: [
-        scene({ id: 'quiz', title: 'Quiz', order: 1, type: 'quiz' }),
-        scene({ id: 'pbl', title: 'Project', order: 2, type: 'pbl' }),
-      ],
+      scenes: [scene({ id: 'pbl', title: 'Project', order: 2, type: 'pbl' })],
     });
 
     expect(plan.frames.map((frame) => frame.html)).toEqual([
-      {
-        file: null,
-        supported: false,
-        reason: 'No reusable standalone HTML exporter exists for this scene type yet',
-      },
       {
         file: null,
         supported: false,

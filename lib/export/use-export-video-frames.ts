@@ -20,6 +20,7 @@ import {
 import { collectAudioFiles, collectMediaFiles } from './classroom-zip-utils';
 import { inlineHtmlAssets, createAssetFetcher } from './inline-assets';
 import { createProxiedFetch } from './proxied-fetch';
+import { generateStandaloneQuizHtml } from './quiz-html';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
@@ -81,6 +82,7 @@ export function useExportVideoFrames() {
           scene?.content.type === 'interactive' &&
           scene.content.html &&
           frame.html.supported &&
+          frame.html.kind === 'interactive' &&
           frame.html.file
         ) {
           const { html, report } = await inlineHtmlAssets(scene.content.html, {
@@ -88,6 +90,18 @@ export function useExportVideoFrames() {
           });
           for (const failure of report.failed) failedHtmlAssetUrls.add(failure.url);
           zip.file(frame.html.file, html);
+        }
+        if (
+          scene?.content.type === 'quiz' &&
+          frame.html.supported &&
+          frame.html.kind === 'quiz' &&
+          frame.html.file
+        ) {
+          const result = generateStandaloneQuizHtml({
+            sceneTitle: scene.title,
+            content: scene.content,
+          });
+          if (result.supported) zip.file(frame.html.file, result.html);
         }
       }
 

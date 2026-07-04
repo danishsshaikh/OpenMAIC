@@ -99,6 +99,15 @@ function planSceneHtmlEntry(scene: Scene, sceneBaseName: string) {
     return {
       file: `html/${sceneBaseName}/index.html`,
       supported: true,
+      kind: 'interactive' as const,
+    };
+  }
+
+  if (scene.content.type === 'quiz' && Array.isArray(scene.content.questions)) {
+    return {
+      file: `html/${sceneBaseName}/index.html`,
+      supported: true,
+      kind: 'quiz' as const,
     };
   }
 
