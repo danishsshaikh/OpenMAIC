@@ -60,6 +60,8 @@
       "placeholderScene": "Scene {{index}}",
       "placeholderHeading": "{{sceneType}} scene placeholder",
       "placeholderMessage": "This scene requires OpenMAIC interactive playback.",
+      "placeholderHtmlMessage": "Open the HTML sidecar for interactive playback.",
+      "placeholderHtmlHint": "See {{file}} in this export.",
       "placeholderHint": "Open in OpenMAIC for the full interactive experience."
     },
     "inlinePartial": "{{count}} external asset(s) couldn't be bundled; the course may not display correctly offline."

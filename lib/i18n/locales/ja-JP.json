@@ -60,6 +60,8 @@
       "placeholderScene": "シーン {{index}}",
       "placeholderHeading": "{{sceneType}} シーンのプレースホルダー",
       "placeholderMessage": "このシーンは OpenMAIC のインタラクティブ再生が必要です。",
+      "placeholderHtmlMessage": "インタラクティブ再生には HTML サイドカーを開いてください。",
+      "placeholderHtmlHint": "このエクスポート内の {{file}} を確認してください。",
       "placeholderHint": "完全なインタラクティブ体験には OpenMAIC で開いてください。"
     },
     "inlinePartial": "{{count}} 個の外部リソースをバンドルできませんでした。オフラインでは正しく表示されない可能性があります。"

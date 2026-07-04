@@ -60,6 +60,8 @@
       "placeholderScene": "المشهد {{index}}",
       "placeholderHeading": "إطار بديل لمشهد {{sceneType}}",
       "placeholderMessage": "يتطلب هذا المشهد التشغيل التفاعلي داخل OpenMAIC.",
+      "placeholderHtmlMessage": "افتح ملف HTML الجانبي للتشغيل التفاعلي.",
+      "placeholderHtmlHint": "راجع {{file}} في هذا التصدير.",
       "placeholderHint": "افتحه في OpenMAIC للحصول على التجربة التفاعلية الكاملة."
     },
     "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت."

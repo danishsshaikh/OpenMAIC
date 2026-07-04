@@ -72,6 +72,7 @@ export function buildVideoFrameExportPlan({
       renderMode,
       sceneFile,
       audio: planSceneAudioEntries(scene, sceneBaseName, usedFiles),
+      html: planSceneHtmlEntry(scene, sceneBaseName),
     };
   });
 
@@ -85,6 +86,29 @@ export function buildVideoFrameExportPlan({
       frames,
       media: [],
     },
+  };
+}
+
+function planSceneHtmlEntry(scene: Scene, sceneBaseName: string) {
+  if (
+    scene.content.type === 'interactive' &&
+    'html' in scene.content &&
+    typeof scene.content.html === 'string' &&
+    scene.content.html.trim()
+  ) {
+    return {
+      file: `html/${sceneBaseName}/index.html`,
+      supported: true,
+    };
+  }
+
+  return {
+    file: null,
+    supported: false,
+    reason:
+      scene.content.type === 'interactive'
+        ? 'Interactive scene has no embedded HTML content'
+        : 'No reusable standalone HTML exporter exists for this scene type yet',
   };
 }
 

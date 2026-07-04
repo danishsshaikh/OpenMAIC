@@ -60,6 +60,8 @@
       "placeholderScene": "场景 {{index}}",
       "placeholderHeading": "{{sceneType}} 场景占位帧",
       "placeholderMessage": "此场景需要在 OpenMAIC 中进行交互式播放。",
+      "placeholderHtmlMessage": "打开 HTML 附带文件以进行交互式播放。",
+      "placeholderHtmlHint": "请查看此导出中的 {{file}}。",
       "placeholderHint": "请在 OpenMAIC 中打开以获得完整交互体验。"
     },
     "inlinePartial": "{{count}} 个外部资源未能打包，离线时课程可能无法正常显示。"

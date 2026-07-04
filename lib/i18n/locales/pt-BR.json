@@ -60,6 +60,8 @@
       "placeholderScene": "Cena {{index}}",
       "placeholderHeading": "Placeholder de cena {{sceneType}}",
       "placeholderMessage": "Esta cena requer reprodução interativa no OpenMAIC.",
+      "placeholderHtmlMessage": "Abra o HTML sidecar para a reprodução interativa.",
+      "placeholderHtmlHint": "Veja {{file}} nesta exportação.",
       "placeholderHint": "Abra no OpenMAIC para a experiência interativa completa."
     },
     "inlinePartial": "{{count}} recurso(s) externo(s) não puderam ser empacotados; o curso pode não ser exibido corretamente offline."

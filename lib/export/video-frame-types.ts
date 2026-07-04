@@ -27,6 +27,12 @@ export interface VideoFrameMediaEntry {
   posterFile?: string;
 }
 
+export interface VideoFrameHtmlEntry {
+  file: string | null;
+  supported: boolean;
+  reason?: string;
+}
+
 export interface VideoFrameEntry {
   index: number;
   sceneId: string;
@@ -36,6 +42,7 @@ export interface VideoFrameEntry {
   renderMode: VideoFrameRenderMode;
   sceneFile: string;
   audio: VideoFrameAudioEntry[];
+  html: VideoFrameHtmlEntry;
 }
 
 export interface VideoFrameManifest {

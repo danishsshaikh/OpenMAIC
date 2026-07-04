@@ -18,6 +18,8 @@ import {
   type VideoFrameMediaEntry,
 } from './video-frame-types';
 import { collectAudioFiles, collectMediaFiles } from './classroom-zip-utils';
+import { inlineHtmlAssets, createAssetFetcher } from './inline-assets';
+import { createProxiedFetch } from './proxied-fetch';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
@@ -63,6 +65,8 @@ export function useExportVideoFrames() {
       const generatedMedia = await collectMediaFiles(stage.id);
       const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
       const manifest = withSidecarMetadata(plan.manifest, scenes, audioById, generatedMedia);
+      const htmlAssetFetcher = createAssetFetcher({ fetchImpl: createProxiedFetch() });
+      const failedHtmlAssetUrls = new Set<string>();
       const zip = new JSZip();
 
       for (const frame of plan.frames) {
@@ -73,6 +77,18 @@ export function useExportVideoFrames() {
             : await renderPlaceholderFrame(frame, t);
         zip.file(frame.file, blob);
         if (scene) zip.file(frame.sceneFile, JSON.stringify(scene, null, 2));
+        if (
+          scene?.content.type === 'interactive' &&
+          scene.content.html &&
+          frame.html.supported &&
+          frame.html.file
+        ) {
+          const { html, report } = await inlineHtmlAssets(scene.content.html, {
+            fetcher: htmlAssetFetcher,
+          });
+          for (const failure of report.failed) failedHtmlAssetUrls.add(failure.url);
+          zip.file(frame.html.file, html);
+        }
       }
 
       for (const frame of manifest.frames) {
@@ -98,6 +114,11 @@ export function useExportVideoFrames() {
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-frames.zip`);
       toast.success(t('export.videoFrames.exportSuccess'), { id: toastId });
+      if (failedHtmlAssetUrls.size > 0) {
+        toast.warning(t('export.inlinePartial', { count: failedHtmlAssetUrls.size }), {
+          description: formatHosts([...failedHtmlAssetUrls]),
+        });
+      }
     } catch (error) {
       log.error('Video frame export failed:', error);
       toast.error(t('export.videoFrames.exportFailed'), { id: toastId });
@@ -177,6 +198,20 @@ function toVideoFrameMediaEntry(
 function replaceFileExtension(file: string | null, extension: string): string | null {
   if (!file) return file;
   return file.replace(/\.[^.]+$/, `.${extension || 'mp3'}`);
+}
+
+function formatHosts(urls: string[]): string {
+  return [
+    ...new Set(
+      urls.map((url) => {
+        try {
+          return new URL(url).host;
+        } catch {
+          return url;
+        }
+      }),
+    ),
+  ].join(', ');
 }
 
 async function renderSlideFrame(scene: Scene, mediaRecords: MediaFileRecord[]): Promise<Blob> {
@@ -315,14 +350,26 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
   ctx.font = '400 24px Inter, system-ui, sans-serif';
   drawWrappedText(
     ctx,
-    t('export.videoFrames.placeholderMessage'),
+    frame.html.supported && frame.html.file
+      ? t('export.videoFrames.placeholderHtmlMessage')
+      : t('export.videoFrames.placeholderMessage'),
     116,
     430,
     FRAME_WIDTH - 232,
     34,
     2,
   );
-  drawWrappedText(ctx, t('export.videoFrames.placeholderHint'), 116, 500, FRAME_WIDTH - 232, 34, 2);
+  drawWrappedText(
+    ctx,
+    frame.html.supported && frame.html.file
+      ? t('export.videoFrames.placeholderHtmlHint', { file: frame.html.file })
+      : t('export.videoFrames.placeholderHint'),
+    116,
+    500,
+    FRAME_WIDTH - 232,
+    34,
+    2,
+  );
 
   ctx.fillStyle = '#94a3b8';
   ctx.font = '600 20px Inter, system-ui, sans-serif';

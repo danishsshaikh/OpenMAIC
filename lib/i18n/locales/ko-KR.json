@@ -60,6 +60,8 @@
       "placeholderScene": "장면 {{index}}",
       "placeholderHeading": "{{sceneType}} 장면 자리 표시자",
       "placeholderMessage": "이 장면은 OpenMAIC 인터랙티브 재생이 필요합니다.",
+      "placeholderHtmlMessage": "인터랙티브 재생은 HTML 사이드카를 열어 확인하세요.",
+      "placeholderHtmlHint": "이 내보내기의 {{file}} 파일을 확인하세요.",
       "placeholderHint": "전체 인터랙티브 경험은 OpenMAIC에서 열어 확인하세요."
     },
     "inlinePartial": "{{count}}개의 외부 에셋을 번들에 포함할 수 없어 오프라인에서 강좌가 올바르게 표시되지 않을 수 있습니다."

@@ -99,10 +99,58 @@ describe('video frame export planner', () => {
           renderMode: 'slide-snapshot',
           sceneFile: 'scenes/001-intro.json',
           audio: [],
+          html: {
+            file: null,
+            supported: false,
+            reason: 'No reusable standalone HTML exporter exists for this scene type yet',
+          },
         },
       ],
       media: [],
     });
+  });
+
+  it('plans interactive HTML sidecars when embedded HTML exists', () => {
+    const plan = buildVideoFrameExportPlan({
+      stageTitle: 'Interactive Course',
+      scenes: [
+        scene({
+          id: 'interactive',
+          title: 'Robot Helper: Quiz?',
+          order: 7,
+          type: 'interactive',
+          html: '<!doctype html><html><body>Widget</body></html>',
+        }),
+      ],
+    });
+
+    expect(plan.frames[0].html).toEqual({
+      file: 'html/001-robot-helper-quiz/index.html',
+      supported: true,
+    });
+  });
+
+  it('marks quiz and PBL HTML sidecars unsupported when no reusable exporter exists', () => {
+    const plan = buildVideoFrameExportPlan({
+      stageTitle: 'Unsupported HTML',
+      scenes: [
+        scene({ id: 'quiz', title: 'Quiz', order: 1, type: 'quiz' }),
+        scene({ id: 'pbl', title: 'Project', order: 2, type: 'pbl' }),
+      ],
+    });
+
+    expect(plan.frames.map((frame) => frame.html)).toEqual([
+      {
+        file: null,
+        supported: false,
+        reason: 'No reusable standalone HTML exporter exists for this scene type yet',
+      },
+      {
+        file: null,
+        supported: false,
+        reason: 'No reusable standalone HTML exporter exists for this scene type yet',
+      },
+    ]);
   });
 
   it('plans speech audio sidecar entries without requiring cached audio', () => {
@@ -154,12 +202,14 @@ function scene({
   order,
   type = 'slide',
   actions,
+  html,
 }: {
   id: string;
   title: string;
   order: number;
   type?: 'slide' | 'quiz' | 'interactive' | 'pbl';
   actions?: Scene['actions'];
+  html?: string;
 }): Scene {
   const content =
     type === 'slide'
@@ -175,7 +225,7 @@ function scene({
       : type === 'quiz'
         ? { type: 'quiz', questions: [] }
         : type === 'interactive'
-          ? { type: 'interactive', url: 'https://example.com' }
+          ? { type: 'interactive', url: 'https://example.com', ...(html ? { html } : {}) }
           : { type: 'pbl', projectConfig: {} };
 
   return {
