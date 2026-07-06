@@ -49,6 +49,21 @@
     "exportFailed": "내보내기 실패",
     "classroomZip": "교실 ZIP 내보내기",
     "classroomZipDesc": "강좌 구조 + 미디어 파일",
+    "videoFrames": {
+      "title": "비디오 아티팩트 내보내기",
+      "desc": "프레임 + 매니페스트 + 사이드카 ZIP",
+      "exporting": "비디오 아티팩트 내보내는 중...",
+      "exportSuccess": "비디오 아티팩트를 내보냈습니다",
+      "exportFailed": "비디오 아티팩트 내보내기 실패",
+      "noScenes": "내보낼 교실 장면이 없습니다.",
+      "placeholderBrand": "OpenMAIC 비디오 아티팩트",
+      "placeholderScene": "장면 {{index}}",
+      "placeholderHeading": "{{sceneType}} 장면 자리 표시자",
+      "placeholderMessage": "이 장면은 OpenMAIC 인터랙티브 재생이 필요합니다.",
+      "placeholderHtmlMessage": "인터랙티브 재생은 HTML 사이드카를 열어 확인하세요.",
+      "placeholderHtmlHint": "이 내보내기의 {{file}} 파일을 확인하세요.",
+      "placeholderHint": "전체 인터랙티브 경험은 OpenMAIC에서 열어 확인하세요."
+    },
     "inlinePartial": "{{count}}개의 외부 에셋을 번들에 포함할 수 없어 오프라인에서 강좌가 올바르게 표시되지 않을 수 있습니다."
   },
   "import": {
