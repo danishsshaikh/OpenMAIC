@@ -7,7 +7,7 @@ import type { SpeechAction } from '@/lib/types/action';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
 import { collectAudioFiles } from './classroom-zip-utils';
-import { buildLocalMp4Manifest, sanitizeMp4PathPart } from './mp4/planner';
+import { buildLocalMp4Manifest, sanitizeMp4PathPart, speechAudioLookupIds } from './mp4/planner';
 import type { LocalMp4MissingAudio } from './mp4/types';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
 import { renderVideoFrame, VIDEO_FRAME_HEIGHT, VIDEO_FRAME_WIDTH } from './use-export-video-frames';
@@ -64,7 +64,7 @@ export function useExportVideoMp4() {
           if (!speech.text?.trim()) continue;
           speechIndex++;
 
-          const audio = await resolveSpeechAudioBlob(speech, audioById);
+          const audio = await resolveSpeechAudioBlob(scene.order, speech, audioById);
           if (!audio) continue;
 
           const file = audioFileForSpeech(frame.file, speechIndex, audio.extension);
@@ -128,11 +128,12 @@ export function useExportVideoMp4() {
 }
 
 async function resolveSpeechAudioBlob(
+  sceneOrder: number,
   speech: SpeechAction,
   audioById: Map<string, AudioFileRecord>,
 ): Promise<{ blob: Blob; extension: string } | null> {
-  if (speech.audioId) {
-    const record = audioById.get(speech.audioId);
+  for (const audioId of speechAudioLookupIds(sceneOrder, speech)) {
+    const record = audioById.get(audioId) ?? (await db.audioFiles.get(audioId));
     if (record) {
       return {
         blob: record.blob,

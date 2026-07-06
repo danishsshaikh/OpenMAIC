@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildLocalMp4Manifest, sanitizeMp4PathPart } from '@/lib/export/mp4/planner';
+import {
+  buildLocalMp4Manifest,
+  sanitizeMp4PathPart,
+  speechAudioLookupIds,
+} from '@/lib/export/mp4/planner';
 import type { Scene } from '@/lib/types/stage';
 import type { VideoFrameEntry } from '@/lib/export/video-frame-types';
 
@@ -102,6 +106,18 @@ describe('local MP4 export planner', () => {
 
   it('sanitizes local MP4 path parts', () => {
     expect(sanitizeMp4PathPart('  Intro: A/B?  ')).toBe('intro-a-b');
+  });
+
+  it('checks stamped, canonical, and legacy generated TTS cache ids', () => {
+    expect(speechAudioLookupIds(3, { id: 'speech-1', audioId: 'custom-audio' })).toEqual([
+      'custom-audio',
+      'tts_s3_speech-1',
+      'tts_speech-1',
+    ]);
+    expect(speechAudioLookupIds(3, { id: 'speech-1', audioId: 'tts_s3_speech-1' })).toEqual([
+      'tts_s3_speech-1',
+      'tts_speech-1',
+    ]);
   });
 });
 

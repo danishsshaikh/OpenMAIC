@@ -131,3 +131,21 @@ export function sanitizeMp4PathPart(value: string): string {
     .replace(/^[.-]+|[.-]+$/g, '')
     .slice(0, 80);
 }
+
+export function speechAudioLookupIds(
+  sceneOrder: number,
+  action: Pick<SpeechAction, 'id' | 'audioId'>,
+): string[] {
+  const ids: string[] = [];
+  const add = (id: string | undefined) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+
+  add(action.audioId);
+  if (typeof action.id === 'string' && action.id.trim()) {
+    add(`tts_s${sceneOrder}_${action.id}`);
+    add(`tts_${action.id}`);
+  }
+
+  return ids;
+}
