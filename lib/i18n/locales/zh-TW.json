@@ -64,6 +64,14 @@
       "placeholderHtmlHint": "請查看此匯出中的 {{file}}。",
       "placeholderHint": "請在 OpenMAIC 中開啟以取得完整互動體驗。"
     },
+    "videoMp4": {
+      "title": "匯出 MP4 影片",
+      "desc": "本機 FFmpeg 靜態影片",
+      "exporting": "正在匯出 MP4 影片...",
+      "exportSuccess": "MP4 影片已匯出",
+      "exportFailed": "MP4 影片匯出失敗",
+      "noScenes": "沒有可匯出的課堂場景。"
+    },
     "inlinePartial": "{{count}} 個外部資源未能打包，離線時課程可能無法正常顯示。"
   },
   "import": {

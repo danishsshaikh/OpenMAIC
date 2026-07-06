@@ -64,6 +64,14 @@
       "placeholderHtmlHint": "راجع {{file}} في هذا التصدير.",
       "placeholderHint": "افتحه في OpenMAIC للحصول على التجربة التفاعلية الكاملة."
     },
+    "videoMp4": {
+      "title": "تصدير فيديو MP4",
+      "desc": "فيديو ثابت عبر FFmpeg المحلي",
+      "exporting": "جارٍ تصدير فيديو MP4...",
+      "exportSuccess": "تم تصدير فيديو MP4",
+      "exportFailed": "فشل تصدير فيديو MP4",
+      "noScenes": "لا توجد مشاهد فصل متاحة للتصدير."
+    },
     "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت."
   },
   "import": {

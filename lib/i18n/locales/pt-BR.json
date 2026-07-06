@@ -64,6 +64,14 @@
       "placeholderHtmlHint": "Veja {{file}} nesta exportação.",
       "placeholderHint": "Abra no OpenMAIC para a experiência interativa completa."
     },
+    "videoMp4": {
+      "title": "Exportar vídeo MP4",
+      "desc": "Vídeo estático com FFmpeg local",
+      "exporting": "Exportando vídeo MP4...",
+      "exportSuccess": "Vídeo MP4 exportado",
+      "exportFailed": "Falha ao exportar vídeo MP4",
+      "noScenes": "Nenhuma cena da sala disponível para exportar."
+    },
     "inlinePartial": "{{count}} recurso(s) externo(s) não puderam ser empacotados; o curso pode não ser exibido corretamente offline."
   },
   "import": {

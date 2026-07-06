@@ -22,8 +22,8 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
 
-const FRAME_WIDTH = 1280;
-const FRAME_HEIGHT = 720;
+export const VIDEO_FRAME_WIDTH = 1280;
+export const VIDEO_FRAME_HEIGHT = 720;
 
 type ExportT = (key: string, options?: Record<string, unknown>) => string;
 
@@ -74,10 +74,7 @@ export function useExportVideoFrames() {
 
       for (const frame of plan.frames) {
         const scene = sceneById.get(frame.sceneId);
-        const blob =
-          scene && frame.renderMode === 'slide-snapshot' && scene.content.type === 'slide'
-            ? await renderSlideFrame(scene, mediaRecords)
-            : await renderPlaceholderFrame(frame, t);
+        const blob = await renderVideoFrame(frame, scene, mediaRecords, t);
         zip.file(frame.file, blob);
         if (scene) zip.file(frame.sceneFile, JSON.stringify(scene, null, 2));
         if (
@@ -161,7 +158,21 @@ function formatHosts(urls: string[]): string {
   ].join(', ');
 }
 
-async function renderSlideFrame(scene: Scene, mediaRecords: MediaFileRecord[]): Promise<Blob> {
+export async function renderVideoFrame(
+  frame: VideoFrameEntry,
+  scene: Scene | undefined,
+  mediaRecords: MediaFileRecord[],
+  t: ExportT,
+): Promise<Blob> {
+  return scene && frame.renderMode === 'slide-snapshot' && scene.content.type === 'slide'
+    ? renderSlideFrame(scene, mediaRecords)
+    : renderPlaceholderFrame(frame, t);
+}
+
+export async function renderSlideFrame(
+  scene: Scene,
+  mediaRecords: MediaFileRecord[],
+): Promise<Blob> {
   if (scene.content.type !== 'slide') {
     throw new Error(`Scene ${scene.id} is not a slide scene`);
   }
@@ -169,7 +180,7 @@ async function renderSlideFrame(scene: Scene, mediaRecords: MediaFileRecord[]): 
   const { slide, revoke } = resolveGeneratedMediaForSnapshot(scene.content.canvas, mediaRecords);
   try {
     const output = await slideToPng(slide, {
-      width: FRAME_WIDTH,
+      width: VIDEO_FRAME_WIDTH,
       pixelRatio: 1,
       backgroundColor: '#ffffff',
       format: 'blob',
@@ -257,21 +268,21 @@ function blobWithType(blob: Blob, mimeType: string): Blob {
   return blob.type ? blob : new Blob([blob], { type: mimeType });
 }
 
-async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promise<Blob> {
+export async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  canvas.width = FRAME_WIDTH;
-  canvas.height = FRAME_HEIGHT;
+  canvas.width = VIDEO_FRAME_WIDTH;
+  canvas.height = VIDEO_FRAME_HEIGHT;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D context is unavailable');
 
   ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+  ctx.fillRect(0, 0, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT);
 
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillRect(72, 72, FRAME_WIDTH - 144, FRAME_HEIGHT - 144);
+  ctx.fillRect(72, 72, VIDEO_FRAME_WIDTH - 144, VIDEO_FRAME_HEIGHT - 144);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(76, 76, FRAME_WIDTH - 152, FRAME_HEIGHT - 152);
+  ctx.fillRect(76, 76, VIDEO_FRAME_WIDTH - 152, VIDEO_FRAME_HEIGHT - 152);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '600 24px Inter, system-ui, sans-serif';
@@ -284,14 +295,14 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
     t('export.videoFrames.placeholderHeading', { sceneType: frame.sceneType }),
     116,
     228,
-    FRAME_WIDTH - 232,
+    VIDEO_FRAME_WIDTH - 232,
     56,
     2,
   );
 
   ctx.fillStyle = '#334155';
   ctx.font = '500 30px Inter, system-ui, sans-serif';
-  drawWrappedText(ctx, frame.sceneTitle, 116, 330, FRAME_WIDTH - 232, 42, 2);
+  drawWrappedText(ctx, frame.sceneTitle, 116, 330, VIDEO_FRAME_WIDTH - 232, 42, 2);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '400 24px Inter, system-ui, sans-serif';
@@ -302,7 +313,7 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
       : t('export.videoFrames.placeholderMessage'),
     116,
     430,
-    FRAME_WIDTH - 232,
+    VIDEO_FRAME_WIDTH - 232,
     34,
     2,
   );
@@ -313,7 +324,7 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
       : t('export.videoFrames.placeholderHint'),
     116,
     500,
-    FRAME_WIDTH - 232,
+    VIDEO_FRAME_WIDTH - 232,
     34,
     2,
   );

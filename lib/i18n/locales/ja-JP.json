@@ -64,6 +64,14 @@
       "placeholderHtmlHint": "このエクスポート内の {{file}} を確認してください。",
       "placeholderHint": "完全なインタラクティブ体験には OpenMAIC で開いてください。"
     },
+    "videoMp4": {
+      "title": "MP4 動画をエクスポート",
+      "desc": "ローカル FFmpeg 静止画動画",
+      "exporting": "MP4 動画をエクスポート中...",
+      "exportSuccess": "MP4 動画をエクスポートしました",
+      "exportFailed": "MP4 動画のエクスポートに失敗しました",
+      "noScenes": "エクスポートできる教室シーンがありません。"
+    },
     "inlinePartial": "{{count}} 個の外部リソースをバンドルできませんでした。オフラインでは正しく表示されない可能性があります。"
   },
   "import": {
