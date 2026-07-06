@@ -20,59 +20,88 @@ export class AudioPlayer {
   private muted: boolean = false;
   private volume: number = 1;
   private playbackRate: number = 1;
+  private playRequestId: number = 0;
+
+  private clearAudio(resetTime = true): void {
+    if (!this.audio) return;
+    this.audio.pause();
+    if (resetTime) {
+      this.audio.currentTime = 0;
+    }
+    this.audio = null;
+  }
+
+  private isCurrentRequest(requestId: number): boolean {
+    return requestId === this.playRequestId;
+  }
 
   /**
    * Play audio (from URL or IndexedDB pre-generated cache)
    * @param audioId Audio ID
    * @param audioUrl Optional server-generated audio URL (takes priority over IndexedDB)
+   * @param startTimeMs Optional start offset in milliseconds
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
-  public async play(audioId: string, audioUrl?: string): Promise<boolean> {
+  public async play(audioId: string, audioUrl?: string, startTimeMs = 0): Promise<boolean> {
+    const requestId = ++this.playRequestId;
+    this.clearAudio();
+
     try {
       // 1. Try audioUrl first (server-generated TTS)
       if (audioUrl) {
-        this.stop();
-        this.audio = new Audio();
-        this.audio.src = audioUrl;
-        if (this.muted) this.audio.volume = 0;
-        else this.audio.volume = this.volume;
-        this.audio.defaultPlaybackRate = this.playbackRate;
-        this.audio.playbackRate = this.playbackRate;
-        this.audio.addEventListener('ended', () => {
+        const audio = new Audio();
+        this.audio = audio;
+        audio.src = audioUrl;
+        if (this.muted) audio.volume = 0;
+        else audio.volume = this.volume;
+        audio.defaultPlaybackRate = this.playbackRate;
+        audio.playbackRate = this.playbackRate;
+        audio.addEventListener('ended', () => {
+          if (!this.isCurrentRequest(requestId) || this.audio !== audio) return;
+          this.audio = null;
           this.onEndedCallback?.();
         });
-        await this.audio.play();
-        this.audio.playbackRate = this.playbackRate;
+        this.seekTo(startTimeMs);
+        await audio.play();
+        if (!this.isCurrentRequest(requestId) || this.audio !== audio) {
+          audio.pause();
+          return false;
+        }
+        audio.playbackRate = this.playbackRate;
         return true;
       }
 
       // 2. Fall back to IndexedDB (client-generated TTS)
       const audioRecord = await db.audioFiles.get(audioId);
+      if (!this.isCurrentRequest(requestId)) {
+        return false;
+      }
 
       if (!audioRecord) {
         // Pre-generated audio does not exist (generation failed), skip silently
         return false;
       }
 
-      // Stop current playback
-      this.stop();
-
       // Create audio element
-      this.audio = new Audio();
+      const audio = new Audio();
+      this.audio = audio;
 
       // Set audio source
       const blobUrl = URL.createObjectURL(audioRecord.blob);
-      this.audio.src = blobUrl;
-      if (this.muted) this.audio.volume = 0;
-      else this.audio.volume = this.volume;
+      audio.src = blobUrl;
+      if (this.muted) audio.volume = 0;
+      else audio.volume = this.volume;
 
       // Apply playback rate
-      this.audio.defaultPlaybackRate = this.playbackRate;
-      this.audio.playbackRate = this.playbackRate;
+      audio.defaultPlaybackRate = this.playbackRate;
+      audio.playbackRate = this.playbackRate;
+      this.seekTo(startTimeMs);
 
       // Set ended callback
-      this.audio.addEventListener('ended', () => {
+      audio.addEventListener('ended', () => {
         URL.revokeObjectURL(blobUrl);
+        if (!this.isCurrentRequest(requestId) || this.audio !== audio) return;
+        this.audio = null;
         this.onEndedCallback?.();
       });
 
@@ -80,15 +109,26 @@ export class AudioPlayer {
       // load) the 'ended' listener never fires, so revoke the blob URL here to
       // avoid leaking it for the lifetime of the document.
       try {
-        await this.audio.play();
+        await audio.play();
       } catch (playError) {
         URL.revokeObjectURL(blobUrl);
+        if (this.isCurrentRequest(requestId) && this.audio === audio) {
+          this.audio = null;
+        }
         throw playError;
       }
+      if (!this.isCurrentRequest(requestId) || this.audio !== audio) {
+        audio.pause();
+        URL.revokeObjectURL(blobUrl);
+        return false;
+      }
       // Re-apply after play() — some browsers reset during load
-      this.audio.playbackRate = this.playbackRate;
+      audio.playbackRate = this.playbackRate;
       return true;
     } catch (error) {
+      if (!this.isCurrentRequest(requestId)) {
+        return false;
+      }
       log.error('Failed to play audio:', error);
       throw error;
     }
@@ -107,11 +147,8 @@ export class AudioPlayer {
    * Stop playback
    */
   public stop(): void {
-    if (this.audio) {
-      this.audio.pause();
-      this.audio.currentTime = 0;
-      this.audio = null;
-    }
+    this.playRequestId += 1;
+    this.clearAudio();
     // Note: onEndedCallback intentionally NOT cleared here because play()
     // calls stop() internally — clearing would break the callback chain.
     // Stale callbacks are harmless: engine mode check prevents processNext().
@@ -156,6 +193,22 @@ export class AudioPlayer {
    */
   public getDuration(): number {
     return this.audio && !isNaN(this.audio.duration) ? this.audio.duration * 1000 : 0;
+  }
+
+  /**
+   * Seek active audio to a position in milliseconds.
+   */
+  public seekTo(timeMs: number): boolean {
+    if (!this.audio) return false;
+    const durationMs = this.getDuration();
+    const clampedMs =
+      durationMs > 0 ? Math.max(0, Math.min(timeMs, durationMs)) : Math.max(0, timeMs);
+    try {
+      this.audio.currentTime = clampedMs / 1000;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -19,7 +19,7 @@ import { Header } from '@/components/header';
 import { CanvasArea } from '@/components/canvas/canvas-area';
 import { Roundtable } from '@/components/roundtable';
 import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
-import type { EngineMode, TriggerEvent, Effect } from '@/lib/playback';
+import type { EngineMode, PlaybackProgress, TriggerEvent, Effect } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
 import { createAudioPlayer } from '@/lib/utils/audio-player';
 import { useDiscussionTTS } from '@/lib/hooks/use-discussion-tts';
@@ -41,6 +41,42 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AlertTriangle } from 'lucide-react';
 import { VisuallyHidden } from 'radix-ui';
+
+const PLAYBACK_POSITIONS_STORAGE_PREFIX = 'openmaic:classroom-playback-positions';
+const PLAYBACK_POSITION_END_PADDING_MS = 250;
+
+function getStoredPlaybackPositions(storageKey: string | null): Record<string, number> {
+  if (!storageKey || typeof window === 'undefined') return {};
+
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(storageKey) || '{}') as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, number] =>
+          typeof entry[0] === 'string' &&
+          typeof entry[1] === 'number' &&
+          Number.isFinite(entry[1]) &&
+          entry[1] >= 0,
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function setStoredPlaybackPositions(
+  storageKey: string | null,
+  positions: Record<string, number>,
+): void {
+  if (!storageKey || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(storageKey, JSON.stringify(positions));
+  } catch {
+    // Session resume is best-effort; playback should keep working without storage.
+  }
+}
 
 /**
  * Imperative handle exposed via `ref` so the parent (`Stage`) can tear
@@ -73,6 +109,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
   function PlaybackChromeRoot({ onRetryOutline, canEnterProMode, onEnterProMode }, ref) {
     const { t } = useI18n();
     const {
+      stage,
       mode,
       getCurrentScene,
       scenes,
@@ -85,6 +122,10 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const generationComplete = useStageStore.use.generationComplete();
 
     const currentScene = getCurrentScene();
+    const playbackPositionsStorageKey = useMemo(
+      () => (stage?.id ? `${PLAYBACK_POSITIONS_STORAGE_PREFIX}:${stage.id}` : null),
+      [stage?.id],
+    );
 
     // Layout state from settings store (persisted via localStorage)
     const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
@@ -102,6 +143,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const [lectureSpeech, setLectureSpeech] = useState<string | null>(null); // From PlaybackEngine (lecture)
     const [liveSpeech, setLiveSpeech] = useState<string | null>(null); // From buffer (discussion/QA)
     const [speechProgress, setSpeechProgress] = useState<number | null>(null); // StreamBuffer reveal progress (0–1)
+    const [playbackProgress, setPlaybackProgress] = useState<PlaybackProgress | null>(null);
     const [discussionTrigger, setDiscussionTrigger] = useState<TriggerEvent | null>(null);
 
     // Speaking agent tracking (Issue 2)
@@ -200,6 +242,8 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const discussionAbortRef = useRef<AbortController | null>(null);
     const presentationIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const stageRef = useRef<HTMLDivElement>(null);
+    const playbackProgressRef = useRef<PlaybackProgress | null>(null);
+    const scenePlaybackPositionsRef = useRef<Record<string, number>>({});
     // Guard to prevent double flash when manual stop triggers onDiscussionEnd
     const manualStopRef = useRef(false);
     // Monotonic counter incremented on each scene switch — used to discard stale SSE callbacks
@@ -208,6 +252,44 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const autoStartRef = useRef(false);
     // Discussion buffer-level pause state (distinct from soft-pause which aborts SSE)
     const [isDiscussionPaused, setIsDiscussionPaused] = useState(false);
+
+    const updatePlaybackProgress = useCallback(
+      (progress: PlaybackProgress | null) => {
+        playbackProgressRef.current = progress;
+        setPlaybackProgress(progress);
+        if (progress?.sceneId && progress.durationMs > 0) {
+          scenePlaybackPositionsRef.current[progress.sceneId] = Math.max(
+            0,
+            Math.min(
+              progress.currentTimeMs,
+              Math.max(0, progress.durationMs - PLAYBACK_POSITION_END_PADDING_MS),
+            ),
+          );
+          setStoredPlaybackPositions(
+            playbackPositionsStorageKey,
+            scenePlaybackPositionsRef.current,
+          );
+        }
+      },
+      [playbackPositionsStorageKey],
+    );
+
+    const savePlaybackProgress = useCallback(() => {
+      const progress = playbackProgressRef.current;
+      if (!progress?.sceneId || progress.durationMs <= 0) return;
+      scenePlaybackPositionsRef.current[progress.sceneId] = Math.max(
+        0,
+        Math.min(
+          progress.currentTimeMs,
+          Math.max(0, progress.durationMs - PLAYBACK_POSITION_END_PADDING_MS),
+        ),
+      );
+      setStoredPlaybackPositions(playbackPositionsStorageKey, scenePlaybackPositionsRef.current);
+    }, [playbackPositionsStorageKey]);
+
+    useEffect(() => {
+      scenePlaybackPositionsRef.current = getStoredPlaybackPositions(playbackPositionsStorageKey);
+    }, [playbackPositionsStorageKey]);
 
     /**
      * Resume a soft-paused topic: re-call /chat with existing session messages.
@@ -297,6 +379,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       ref,
       () => ({
         teardown: async () => {
+          savePlaybackProgress();
           await chatAreaRef.current?.endActiveSession();
           if (discussionAbortRef.current) {
             discussionAbortRef.current.abort();
@@ -307,7 +390,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           resetSceneState();
         },
       }),
-      [discussionTTS, resetSceneState],
+      [discussionTTS, resetSceneState, savePlaybackProgress],
     );
 
     const clearPresentationIdleTimer = useCallback(() => {
@@ -408,6 +491,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
 
     // Initialize playback engine when scene changes
     useEffect(() => {
+      savePlaybackProgress();
       // Bump epoch so any stale SSE callbacks from the previous scene are discarded
       sceneEpochRef.current++;
 
@@ -441,6 +525,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       if (!currentScene || !hasPlayableActions) {
         engineRef.current = null;
         setEngineMode('idle');
+        updatePlaybackProgress(null);
 
         return;
       }
@@ -626,7 +711,17 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           engine.start();
         })();
       } else {
-        // Load saved playback state and restore position (but never auto-play).
+        // Restore this scene's session-only position, but never auto-play.
+        const savedPositionMs = scenePlaybackPositionsRef.current[currentScene.id] ?? 0;
+        if (savedPositionMs > 0) {
+          void engine.seekTo(savedPositionMs).then((progress) => {
+            if (engineRef.current === engine) {
+              updatePlaybackProgress(progress);
+            }
+          });
+        } else {
+          updatePlaybackProgress(engine.getProgress());
+        }
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps -- Only re-run when scene changes, functions are stable refs
     }, [currentScene]);
@@ -636,6 +731,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       const audioPlayer = audioPlayerRef.current;
       const chatArea = chatAreaRef.current;
       return () => {
+        savePlaybackProgress();
         if (engineRef.current) {
           engineRef.current.stop();
         }
@@ -668,6 +764,15 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     useEffect(() => {
       audioPlayerRef.current.setPlaybackRate(playbackSpeed);
     }, [playbackSpeed]);
+
+    useEffect(() => {
+      const timer = setInterval(() => {
+        const engine = engineRef.current;
+        if (!engine) return;
+        updatePlaybackProgress(engine.getProgress());
+      }, 250);
+      return () => clearInterval(timer);
+    }, [updatePlaybackProgress]);
 
     /**
      * Handle discussion SSE — POST /api/chat and push events to engine
@@ -786,6 +891,10 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
         }
       } else if (mode === 'paused') {
+        if (!lectureSessionIdRef.current && currentScene && chatAreaRef.current) {
+          const sessionId = await chatAreaRef.current.startLecture(currentScene.id);
+          lectureSessionIdRef.current = sessionId;
+        }
         engine.resume();
         // Resume lecture buffer
         if (lectureSessionIdRef.current) {
@@ -809,6 +918,22 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         }
       }
     }, [playbackCompleted, currentScene]);
+
+    const handleSeek = useCallback(
+      (timeMs: number) => {
+        const engine = engineRef.current;
+        if (!engine) return;
+        setPlaybackCompleted(false);
+        void engine.seekTo(timeMs).then((progress) => {
+          if (engineRef.current !== engine) return;
+          updatePlaybackProgress(progress);
+          if (lectureSessionIdRef.current && engine.getMode() !== 'playing') {
+            chatAreaRef.current?.pauseBuffer(lectureSessionIdRef.current);
+          }
+        });
+      },
+      [updatePlaybackProgress],
+    );
 
     // get scene information
     const isPendingScene = currentSceneId === PENDING_SCENE_ID;
@@ -1096,6 +1221,8 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                 (chatIsStreaming && (chatSessionType === 'qa' || chatSessionType === 'discussion'))
               }
               onStopDiscussion={handleStopDiscussion}
+              playbackProgress={playbackProgress}
+              onSeek={handleSeek}
               hideToolbar={mode === 'playback' || (isPresenting && !controlsVisible)}
               isPendingScene={isPendingScene}
               isCourseComplete={isCourseComplete}
@@ -1245,6 +1372,8 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                 isPresenting={isPresenting}
                 controlsVisible={controlsVisible}
                 onTogglePresentation={togglePresentation}
+                playbackProgress={playbackProgress}
+                onSeek={handleSeek}
                 onPresentationInteractionChange={setIsPresentationInteractionActive}
                 fullscreenContainerRef={stageRef}
               />

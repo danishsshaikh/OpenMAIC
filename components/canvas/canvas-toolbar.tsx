@@ -20,6 +20,8 @@ import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Slider } from '@/components/ui/slider';
+import type { PlaybackProgress } from '@/lib/playback';
 
 export interface CanvasToolbarProps {
   readonly currentSceneIndex: number;
@@ -50,6 +52,8 @@ export interface CanvasToolbarProps {
   readonly onToggleAutoPlay?: () => void;
   readonly playbackSpeed?: number;
   readonly onCycleSpeed?: () => void;
+  readonly playbackProgress?: PlaybackProgress | null;
+  readonly onSeek?: (timeMs: number) => void;
 }
 
 /* Compact control button */
@@ -62,6 +66,13 @@ const ctrlBtn = cn(
 /* Subtle separator */
 function CtrlDivider() {
   return <div className="w-px h-3 bg-gray-200/80 dark:bg-gray-700/60 mx-0.5 shrink-0" />;
+}
+
+function formatPlaybackTime(timeMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(timeMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 /* Volume icon based on level */
@@ -108,6 +119,8 @@ export function CanvasToolbar({
   onToggleAutoPlay,
   playbackSpeed = 1,
   onCycleSpeed,
+  playbackProgress,
+  onSeek,
 }: CanvasToolbarProps) {
   const { t } = useI18n();
   const canGoPrev = currentSceneIndex > 0;
@@ -120,6 +133,7 @@ export function CanvasToolbar({
 
   // Volume slider hover state
   const [volumeHover, setVolumeHover] = useState(false);
+  const [seekDraft, setSeekDraft] = useState<number | null>(null);
   const volumeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +152,19 @@ export function CanvasToolbar({
   // Effective volume for display
   const effectiveVolume = ttsMuted ? 0 : ttsVolume;
   const presentationLabel = isPresenting ? t('stage.exitFullscreen') : t('stage.fullscreen');
+  const hasPlaybackProgress = !!playbackProgress;
+  const seekable =
+    !!playbackProgress?.seekable && playbackProgress.durationMs > 0 && !!onSeek && !isLiveSession;
+  const seekValue = Math.min(
+    seekDraft ?? playbackProgress?.currentTimeMs ?? 0,
+    playbackProgress?.durationMs ?? 0,
+  );
+  const currentTimeLabel = formatPlaybackTime(seekValue);
+  const durationLabel = formatPlaybackTime(playbackProgress?.durationMs ?? 0);
+  const playbackTimeLabel = t('stage.playbackTime', {
+    current: currentTimeLabel,
+    duration: durationLabel,
+  });
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -168,7 +195,7 @@ export function CanvasToolbar({
       <CtrlDivider />
 
       {/* ── Center: unified playback controls ── */}
-      <div className="flex-1 flex items-center justify-center min-w-0">
+      <div className="flex-1 flex items-center justify-center min-w-0 gap-2">
         <div
           className={cn(
             'inline-flex items-center gap-0.5 px-1 h-7',
@@ -394,6 +421,33 @@ export function CanvasToolbar({
             )}
           </button>
         </div>
+
+        {hasPlaybackProgress && (
+          <div className="hidden sm:flex items-center gap-2 min-w-[140px] w-[min(28vw,260px)]">
+            <Slider
+              value={[seekValue]}
+              min={0}
+              max={Math.max(1, playbackProgress?.durationMs ?? 1)}
+              step={250}
+              disabled={!seekable}
+              aria-label={t('stage.playbackSeekLabel')}
+              aria-valuetext={playbackTimeLabel}
+              onValueChange={([value]) => {
+                if (typeof value === 'number') setSeekDraft(value);
+              }}
+              onValueCommit={([value]) => {
+                setSeekDraft(null);
+                if (typeof value === 'number' && seekable) onSeek?.(value);
+              }}
+              className={cn(!seekable && 'opacity-45')}
+            />
+            <span className="w-[72px] shrink-0 text-[10px] leading-none tabular-nums text-gray-400 dark:text-gray-500 select-none">
+              {currentTimeLabel}
+              <span className="opacity-35 mx-px">/</span>
+              {durationLabel}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Right: fullscreen + chat toggle ── */}

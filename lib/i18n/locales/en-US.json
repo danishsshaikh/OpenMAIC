@@ -159,6 +159,8 @@
     "courseComplete": "Course complete",
     "fullscreen": "Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
+    "playbackSeekLabel": "Playback position",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "Edit course",
     "doneEditing": "Done editing",
     "proModeDisabledHint": "Editing isn't available on this page — open a course slide to edit with Pro mode."

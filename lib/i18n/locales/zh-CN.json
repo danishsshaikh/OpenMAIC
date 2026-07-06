@@ -159,6 +159,8 @@
     "courseComplete": "课程完成",
     "fullscreen": "全屏",
     "exitFullscreen": "退出全屏",
+    "playbackSeekLabel": "播放位置",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "编辑课程",
     "doneEditing": "完成编辑",
     "proModeDisabledHint": "本页不支持编辑——打开任意课程页即可使用 Pro 模式编辑。"

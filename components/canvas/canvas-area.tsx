@@ -43,6 +43,8 @@ export function CanvasArea({
   onTogglePresentation,
   showStopDiscussion,
   onStopDiscussion,
+  playbackProgress,
+  onSeek,
   hideToolbar,
   isPendingScene,
   isCourseComplete,
@@ -267,6 +269,8 @@ export function CanvasArea({
           onTogglePresentation={onTogglePresentation}
           showStopDiscussion={showStopDiscussion}
           onStopDiscussion={onStopDiscussion}
+          playbackProgress={playbackProgress}
+          onSeek={onSeek}
         />
       )}
     </div>

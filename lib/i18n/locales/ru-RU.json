@@ -159,6 +159,8 @@
     "courseComplete": "Курс завершён",
     "fullscreen": "Полный экран",
     "exitFullscreen": "Свернуть",
+    "playbackSeekLabel": "Позиция воспроизведения",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "Редактировать курс",
     "doneEditing": "Завершить редактирование",
     "proModeDisabledHint": "Редактирование недоступно на этой странице — откройте слайд курса, чтобы редактировать в Pro-режиме."

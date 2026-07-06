@@ -422,6 +422,8 @@
     "courseComplete": "Curso concluído",
     "fullscreen": "Tela cheia",
     "exitFullscreen": "Sair da tela cheia",
+    "playbackSeekLabel": "Posição da reprodução",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "Editar curso",
     "doneEditing": "Concluir edição",
     "proModeDisabledHint": "A edição não está disponível nesta página — abra um slide do curso para editar no modo Pro."

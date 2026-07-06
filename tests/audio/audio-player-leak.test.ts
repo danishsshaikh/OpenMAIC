@@ -57,4 +57,30 @@ describe('AudioPlayer blob URL lifecycle', () => {
     await expect(new AudioPlayer().play('audio-1')).resolves.toBe(true);
     expect(revokeObjectURL).not.toHaveBeenCalled();
   });
+
+  it('does not let a stale IndexedDB lookup create audio after a newer play request', async () => {
+    let resolveFirstLookup: (record: { blob: Blob }) => void = () => {};
+    getMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ blob: Blob }>((resolve) => {
+            resolveFirstLookup = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const { createObjectURL } = stubObjectUrl();
+    const play = vi.fn(() => Promise.resolve());
+    stubAudio(play);
+
+    const { AudioPlayer } = await import('@/lib/utils/audio-player');
+    const player = new AudioPlayer();
+
+    const stalePlay = player.play('old-audio');
+    await expect(player.play('missing-audio')).resolves.toBe(false);
+    resolveFirstLookup({ blob: new Blob(['old audio']) });
+
+    await expect(stalePlay).resolves.toBe(false);
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+  });
 });

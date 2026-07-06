@@ -159,6 +159,8 @@
     "courseComplete": "コース完了",
     "fullscreen": "全画面表示",
     "exitFullscreen": "全画面表示を終了",
+    "playbackSeekLabel": "再生位置",
+    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "コースを編集",
     "doneEditing": "編集を完了",
     "proModeDisabledHint": "このページでは編集できません。コースのスライドを開くと Pro モードで編集できます。"
