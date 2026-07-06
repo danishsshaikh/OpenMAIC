@@ -1,11 +1,15 @@
 import type { Scene } from '@/lib/types/stage';
 import type { SpeechAction } from '@/lib/types/action';
 import {
+  VIDEO_FRAME_COMPILER_NAME,
+  VIDEO_FRAME_EXPORT_SCHEMA,
   VIDEO_FRAME_EXPORT_TYPE,
   VIDEO_FRAME_EXPORT_VERSION,
+  VIDEO_FRAME_TARGET_RENDERER,
   type VideoFrameAudioEntry,
   type VideoFrameEntry,
   type VideoFrameExportPlan,
+  type VideoFrameUnsupportedEntry,
 } from '@/lib/export/video-frame-types';
 
 export class VideoFramePlanError extends Error {
@@ -55,6 +59,7 @@ export function buildVideoFrameExportPlan({
     const index = frameIndex + 1;
     const renderMode =
       scene.type === 'slide' && scene.content.type === 'slide' ? 'slide-snapshot' : 'placeholder';
+    const unsupported = planSceneUnsupportedEntry(scene);
     const suffix = renderMode === 'placeholder' ? '-placeholder' : '';
     const sceneBaseName = `${String(index).padStart(3, '0')}-${sanitizeVideoFrameFilenamePart(
       scene.title,
@@ -70,6 +75,8 @@ export function buildVideoFrameExportPlan({
       sceneType: scene.type,
       file,
       renderMode,
+      supportStatus: renderMode === 'slide-snapshot' ? 'rendered' : 'placeholder',
+      ...(unsupported ? { unsupported } : {}),
       sceneFile,
       audio: planSceneAudioEntries(scene, sceneBaseName, usedFiles),
       html: planSceneHtmlEntry(scene, sceneBaseName),
@@ -79,14 +86,46 @@ export function buildVideoFrameExportPlan({
   return {
     frames,
     manifest: {
+      schema: VIDEO_FRAME_EXPORT_SCHEMA,
       version: VIDEO_FRAME_EXPORT_VERSION,
       stageTitle,
       exportType: VIDEO_FRAME_EXPORT_TYPE,
+      compiler: {
+        name: VIDEO_FRAME_COMPILER_NAME,
+        version: VIDEO_FRAME_EXPORT_VERSION,
+      },
+      renderTarget: {
+        renderer: VIDEO_FRAME_TARGET_RENDERER,
+        execution: 'not-included',
+        outputFormats: [],
+      },
       exportedAt,
       frames,
       media: [],
     },
   };
+}
+
+function planSceneUnsupportedEntry(scene: Scene): VideoFrameUnsupportedEntry | null {
+  if (scene.type === 'slide' && scene.content.type === 'slide') return null;
+
+  return {
+    family: scene.type,
+    reason: getScenePlaceholderReason(scene),
+  };
+}
+
+function getScenePlaceholderReason(scene: Scene): string {
+  switch (scene.type) {
+    case 'quiz':
+      return 'Quiz scenes are preserved as scene JSON and standalone HTML sidecars; video rendering is deferred to the Hyperframes renderer follow-up.';
+    case 'interactive':
+      return 'Interactive/widget scenes require runtime playback; this artifact preserves scene JSON and reusable HTML sidecars when available.';
+    case 'pbl':
+      return 'PBL scenes require OpenMAIC task runtime; this artifact preserves scene JSON for future renderer support.';
+    default:
+      return 'This scene type is preserved as sidecar data but is not rendered by this compiler slice.';
+  }
 }
 
 function planSceneHtmlEntry(scene: Scene, sceneBaseName: string) {

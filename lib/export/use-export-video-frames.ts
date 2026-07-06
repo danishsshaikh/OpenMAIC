@@ -12,15 +12,12 @@ import type { Scene } from '@/lib/types/stage';
 import type { SpeechAction } from '@/lib/types/action';
 import { db, type MediaFileRecord } from '@/lib/utils/database';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
-import {
-  type VideoFrameEntry,
-  type VideoFrameManifest,
-  type VideoFrameMediaEntry,
-} from './video-frame-types';
+import { type VideoFrameEntry } from './video-frame-types';
 import { collectAudioFiles, collectMediaFiles } from './classroom-zip-utils';
 import { inlineHtmlAssets, createAssetFetcher } from './inline-assets';
 import { createProxiedFetch } from './proxied-fetch';
 import { generateStandaloneQuizHtml } from './quiz-html';
+import { withVideoFrameSidecarMetadata } from './video-frame-manifest';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
@@ -65,7 +62,12 @@ export function useExportVideoFrames() {
       const audioRecords = await collectAudioFiles(scenes);
       const generatedMedia = await collectMediaFiles(stage.id);
       const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
-      const manifest = withSidecarMetadata(plan.manifest, scenes, audioById, generatedMedia);
+      const manifest = withVideoFrameSidecarMetadata(
+        plan.manifest,
+        scenes,
+        audioById,
+        generatedMedia,
+      );
       const htmlAssetFetcher = createAssetFetcher({ fetchImpl: createProxiedFetch() });
       const failedHtmlAssetUrls = new Set<string>();
       const zip = new JSZip();
@@ -126,7 +128,7 @@ export function useExportVideoFrames() {
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-frames.zip`);
+      saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-artifact.zip`);
       toast.success(t('export.videoFrames.exportSuccess'), { id: toastId });
       if (failedHtmlAssetUrls.size > 0) {
         toast.warning(t('export.inlinePartial', { count: failedHtmlAssetUrls.size }), {
@@ -143,75 +145,6 @@ export function useExportVideoFrames() {
   }, [t]);
 
   return { exporting, exportVideoFrames };
-}
-
-function withSidecarMetadata(
-  manifest: VideoFrameManifest,
-  scenes: Scene[],
-  audioById: Map<string, { format?: string; duration?: number; voice?: string; blob: Blob }>,
-  generatedMedia: Awaited<ReturnType<typeof collectMediaFiles>>,
-): VideoFrameManifest {
-  const scenesById = new Map(scenes.map((scene) => [scene.id, scene]));
-
-  return {
-    ...manifest,
-    frames: manifest.frames.map((frame) => {
-      const scene = scenesById.get(frame.sceneId);
-      return {
-        ...frame,
-        audio: frame.audio.map((audio) => {
-          const action = scene?.actions?.[audio.actionIndex];
-          const audioId = action?.type === 'speech' ? (action as SpeechAction).audioId : undefined;
-          if (!audioId) return audio;
-
-          const record = audioById.get(audioId);
-          if (!record) {
-            return {
-              ...audio,
-              file: null,
-              missing: true,
-              reason: 'audio file not found',
-            };
-          }
-
-          const format = record.format || 'mp3';
-          const file = replaceFileExtension(audio.file, format);
-          return {
-            ...audio,
-            file,
-            missing: false,
-            reason: undefined,
-            format,
-            duration: record.duration,
-            voice: record.voice,
-          };
-        }),
-      };
-    }),
-    media: generatedMedia.map(toVideoFrameMediaEntry),
-  };
-}
-
-function toVideoFrameMediaEntry(
-  media: Awaited<ReturnType<typeof collectMediaFiles>>[number],
-): VideoFrameMediaEntry {
-  const posterFile = media.record.poster
-    ? media.zipPath.replace(/\.\w+$/, '.poster.jpg')
-    : undefined;
-  return {
-    elementId: media.elementId,
-    file: media.zipPath,
-    type: media.record.type,
-    mimeType: media.record.mimeType,
-    size: media.record.size,
-    prompt: media.record.prompt,
-    ...(posterFile ? { posterFile } : {}),
-  };
-}
-
-function replaceFileExtension(file: string | null, extension: string): string | null {
-  if (!file) return file;
-  return file.replace(/\.[^.]+$/, `.${extension || 'mp3'}`);
 }
 
 function formatHosts(urls: string[]): string {
