@@ -1,9 +1,15 @@
 import type { Action } from '@/lib/types/action';
+import { canJumpWithinReconstructablePrefix } from '@/lib/playback/action-navigation';
 
 export interface StoredActionResumePosition {
   actionIndex: number;
   actionId: string;
   actionType: Action['type'];
+}
+
+export interface ActionResumeRestoreCursor {
+  actionIndex: number;
+  position: StoredActionResumePosition | null;
 }
 
 interface StoredActionResumeState {
@@ -90,6 +96,19 @@ export function getValidActionResumePosition(
   if (!action) return null;
   if (action.id !== position.actionId || action.type !== position.actionType) return null;
   return position;
+}
+
+export function getActionResumeRestoreCursor(
+  state: StoredActionResumeState,
+  sceneId: string,
+  actions: readonly Action[],
+): ActionResumeRestoreCursor {
+  const position = getValidActionResumePosition(state, sceneId, actions);
+  if (!position) return { actionIndex: 0, position: null };
+  if (!canJumpWithinReconstructablePrefix(actions, 0, position.actionIndex)) {
+    return { actionIndex: 0, position: null };
+  }
+  return { actionIndex: position.actionIndex, position };
 }
 
 export function createActionResumePosition(

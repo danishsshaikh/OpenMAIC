@@ -44,7 +44,6 @@ export function CanvasArea({
   showStopDiscussion,
   onStopDiscussion,
   hideToolbar,
-  actionNavigation,
   isPendingScene,
   isCourseComplete,
   isGenerationFailed,
@@ -268,7 +267,6 @@ export function CanvasArea({
           onTogglePresentation={onTogglePresentation}
           showStopDiscussion={showStopDiscussion}
           onStopDiscussion={onStopDiscussion}
-          actionNavigation={actionNavigation}
         />
       )}
     </div>

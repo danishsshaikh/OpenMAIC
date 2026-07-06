@@ -11,6 +11,7 @@ import {
 import {
   clearActionResumePosition,
   createActionResumePosition,
+  getActionResumeRestoreCursor,
   getValidActionResumePosition,
   readActionResumeState,
   saveActionResumePosition,
@@ -184,6 +185,45 @@ describe('action resume storage', () => {
     });
     clearActionResumePosition(storage, 'key', 'scene-1');
     expect(readActionResumeState(storage, 'key').scenes).toEqual({});
+  });
+
+  it('uses the saved action as the mount cursor instead of overwriting it with first speech', () => {
+    const storage = createMemoryStorage();
+    const actions = [
+      speech('speech-1', 'First'),
+      { id: 'wb-open', type: 'wb_open' } as Action,
+      { id: 'wb-text', type: 'wb_draw_text', content: 'A', x: 1, y: 2 } as Action,
+      speech('speech-2', 'Second'),
+      speech('speech-3', 'Third'),
+    ];
+    saveActionResumePosition(storage, 'key', 'scene-1', {
+      actionIndex: 3,
+      actionId: 'speech-2',
+      actionType: 'speech',
+    });
+
+    const restoreCursor = getActionResumeRestoreCursor(
+      readActionResumeState(storage, 'key'),
+      'scene-1',
+      actions,
+    );
+    expect(restoreCursor).toEqual({
+      actionIndex: 3,
+      position: {
+        actionIndex: 3,
+        actionId: 'speech-2',
+        actionType: 'speech',
+      },
+    });
+
+    const mountPosition = createActionResumePosition(actions, restoreCursor.actionIndex);
+    saveActionResumePosition(storage, 'key', 'scene-1', mountPosition!);
+
+    expect(readActionResumeState(storage, 'key').scenes['scene-1']).toEqual({
+      actionIndex: 3,
+      actionId: 'speech-2',
+      actionType: 'speech',
+    });
   });
 
   it('restores a saved action boundary and resumes from that action', async () => {
