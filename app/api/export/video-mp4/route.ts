@@ -13,9 +13,12 @@ import { cleanupMp4TempDir, createMp4TempDir } from '@/lib/export/mp4/temp-files
 import { LocalMp4ExportError } from '@/lib/export/mp4/types';
 import { parseLocalMp4Manifest, requireUploadedFile } from '@/lib/export/mp4/validation';
 import { sanitizeVideoFrameFilenamePart } from '@/lib/export/video-frame-planner';
+import { createLogger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+const log = createLogger('ExportVideoMp4Api');
 
 export async function POST(request: Request) {
   let tempDir: string | null = null;
@@ -23,6 +26,11 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const manifest = parseLocalMp4Manifest(formData.get('manifest'));
+    const diagnostics = getFormDataDiagnostics(formData);
+    log.info('Received local MP4 export request:', {
+      ...diagnostics,
+      segmentCount: manifest.segments.length,
+    });
 
     try {
       await assertFfmpegAvailable();
@@ -37,17 +45,20 @@ export async function POST(request: Request) {
 
     tempDir = await createMp4TempDir();
     const segmentPaths: string[] = [];
+    const writtenAssets = new Map<string, string>();
 
     for (const segment of manifest.segments) {
       const framePath = await writeUploadedAsset(
         tempDir,
         segment.frameFile,
         requireUploadedFile(formData, `frame:${segment.frameFile}`),
+        writtenAssets,
       );
       const audioPath = await writeUploadedAsset(
         tempDir,
         segment.audioFile,
         requireUploadedFile(formData, `audio:${segment.audioFile}`),
+        writtenAssets,
       );
       const durationSeconds = await probeAudioDuration(audioPath);
       const segmentPath = join(tempDir, `segment-${String(segment.index).padStart(4, '0')}.mp4`);
@@ -92,11 +103,16 @@ async function writeUploadedAsset(
   tempDir: string,
   logicalPath: string,
   file: File,
+  writtenAssets: Map<string, string>,
 ): Promise<string> {
   const safePath = safeAssetPath(logicalPath);
+  const cached = writtenAssets.get(safePath);
+  if (cached) return cached;
+
   const destination = join(tempDir, safePath);
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(destination, Buffer.from(await file.arrayBuffer()));
+  writtenAssets.set(safePath, destination);
   return destination;
 }
 
@@ -114,6 +130,7 @@ function safeAssetPath(logicalPath: string): string {
 }
 
 function jsonError(code: string, message: string, details: unknown, status: number) {
+  log.error(`Local MP4 export error [${code}]: ${message}`, details);
   return NextResponse.json(
     {
       error: {
@@ -124,4 +141,39 @@ function jsonError(code: string, message: string, details: unknown, status: numb
     },
     { status },
   );
+}
+
+function getFormDataDiagnostics(formData: FormData) {
+  let fileCount = 0;
+  let frameCount = 0;
+  let audioCount = 0;
+  let totalBytes = 0;
+  let frameBytes = 0;
+  let audioBytes = 0;
+  let largestFileBytes = 0;
+
+  for (const [key, value] of formData.entries()) {
+    if (!(value instanceof File)) continue;
+    fileCount++;
+    totalBytes += value.size;
+    largestFileBytes = Math.max(largestFileBytes, value.size);
+    if (key.startsWith('frame:')) {
+      frameCount++;
+      frameBytes += value.size;
+    } else if (key.startsWith('audio:')) {
+      audioCount++;
+      audioBytes += value.size;
+    }
+  }
+
+  return {
+    fileCount,
+    frameCount,
+    audioCount,
+    totalBytes,
+    totalMb: (totalBytes / 1024 / 1024).toFixed(2),
+    frameBytes,
+    audioBytes,
+    largestFileBytes,
+  };
 }

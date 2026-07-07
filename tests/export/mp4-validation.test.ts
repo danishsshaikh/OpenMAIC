@@ -60,4 +60,15 @@ describe('local MP4 request validation', () => {
     expect(requireUploadedFile(form, 'frame:frames/001.png')).toBeInstanceOf(File);
     expect(() => requireUploadedFile(form, 'audio:a.mp3')).toThrow('Missing uploaded file');
   });
+
+  it('accepts compressed JPEG frame uploads', () => {
+    const form = new FormData();
+    form.set(
+      'frame:frames-mp4/001-intro.jpg',
+      new File(['jpeg-bytes'], '001-intro.jpg', { type: 'image/jpeg' }),
+    );
+
+    const file = requireUploadedFile(form, 'frame:frames-mp4/001-intro.jpg');
+    expect(file.type).toBe('image/jpeg');
+  });
 });

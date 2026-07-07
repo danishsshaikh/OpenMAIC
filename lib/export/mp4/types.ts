@@ -11,7 +11,6 @@ export interface LocalMp4Segment {
   sceneIndex: number;
   actionId?: string;
   actionIndex: number;
-  text: string;
   frameFile: string;
   audioFile: string;
 }

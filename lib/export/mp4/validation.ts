@@ -39,7 +39,7 @@ export function parseLocalMp4Manifest(value: FormDataEntryValue | null): LocalMp
     if (!isRecord(segment)) {
       throw new LocalMp4ExportError('INVALID_MANIFEST', 'MP4 segment must be an object');
     }
-    for (const key of ['id', 'frameFile', 'audioFile', 'sceneId', 'sceneTitle', 'text']) {
+    for (const key of ['id', 'frameFile', 'audioFile', 'sceneId', 'sceneTitle']) {
       if (typeof segment[key] !== 'string' || !segment[key]) {
         throw new LocalMp4ExportError('INVALID_MANIFEST', `MP4 segment is missing ${key}`);
       }

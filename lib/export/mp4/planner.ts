@@ -93,7 +93,6 @@ export function buildLocalMp4Manifest({
         sceneIndex: frame.index,
         actionId: typeof speech.id === 'string' ? speech.id : undefined,
         actionIndex,
-        text: speech.text,
         frameFile: frame.file,
         audioFile,
       });

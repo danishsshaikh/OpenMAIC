@@ -70,7 +70,19 @@
       "exporting": "Exportando vídeo MP4...",
       "exportSuccess": "Vídeo MP4 exportado",
       "exportFailed": "Falha ao exportar vídeo MP4",
-      "noScenes": "Nenhuma cena da sala disponível para exportar."
+      "noScenes": "Nenhuma cena da sala disponível para exportar.",
+      "progress": {
+        "preparing": "Preparando exportação da sala...",
+        "renderingFrame": "Renderizando frame {{current}} de {{total}}...",
+        "compressingFrame": "Comprimindo frame {{current}} de {{total}}...",
+        "resolvingAudio": "Resolvendo áudio da narração {{current}} de {{total}}...",
+        "generatingAudio": "Gerando narração {{current}} de {{total}}...",
+        "preparingUpload": "Preparando upload do MP4...",
+        "uploading": "Enviando recursos da exportação...",
+        "uploadingPercent": "Enviando recursos da exportação... {{percent}}%",
+        "composing": "Compondo MP4 no servidor...",
+        "downloading": "Baixando MP4..."
+      }
     },
     "inlinePartial": "{{count}} recurso(s) externo(s) não puderam ser empacotados; o curso pode não ser exibido corretamente offline."
   },

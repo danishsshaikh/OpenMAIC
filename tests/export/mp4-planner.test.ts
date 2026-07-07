@@ -49,6 +49,7 @@ describe('local MP4 export planner', () => {
       'frames/001-first.png',
       'frames/002-second.png',
     ]);
+    expect(plan.manifest.segments[0]).not.toHaveProperty('text');
   });
 
   it('reports missing generated audio instead of creating Browser Native TTS segments', () => {

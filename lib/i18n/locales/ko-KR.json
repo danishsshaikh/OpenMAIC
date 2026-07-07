@@ -70,7 +70,19 @@
       "exporting": "MP4 비디오를 내보내는 중...",
       "exportSuccess": "MP4 비디오를 내보냈습니다",
       "exportFailed": "MP4 비디오 내보내기 실패",
-      "noScenes": "내보낼 교실 장면이 없습니다."
+      "noScenes": "내보낼 교실 장면이 없습니다.",
+      "progress": {
+        "preparing": "교실 내보내기를 준비하는 중...",
+        "renderingFrame": "프레임 {{current}} / {{total}} 렌더링 중...",
+        "compressingFrame": "프레임 {{current}} / {{total}} 압축 중...",
+        "resolvingAudio": "내레이션 오디오 {{current}} / {{total}} 처리 중...",
+        "generatingAudio": "내레이션 {{current}} / {{total}} 생성 중...",
+        "preparingUpload": "MP4 업로드 준비 중...",
+        "uploading": "내보내기 에셋 업로드 중...",
+        "uploadingPercent": "내보내기 에셋 업로드 중... {{percent}}%",
+        "composing": "서버에서 MP4 구성 중...",
+        "downloading": "MP4 다운로드 중..."
+      }
     },
     "inlinePartial": "{{count}}개의 외부 에셋을 번들에 포함할 수 없어 오프라인에서 강좌가 올바르게 표시되지 않을 수 있습니다."
   },
