@@ -12,6 +12,7 @@ import type { LocalMp4MissingAudio } from './mp4/types';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
 import { renderVideoFrame, VIDEO_FRAME_HEIGHT, VIDEO_FRAME_WIDTH } from './use-export-video-frames';
 import { db, type AudioFileRecord } from '@/lib/utils/database';
+import { generateAndStoreTTS } from '@/lib/hooks/use-scene-generator';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoMp4');
@@ -39,6 +40,7 @@ export function useExportVideoMp4() {
     try {
       const latestStage = await db.stages.get(stage.id).catch(() => undefined);
       const stageTitle = latestStage?.name || stage.name || 'classroom';
+      const language = latestStage?.languageDirective || stage.languageDirective;
       const plan = buildVideoFrameExportPlan({ stageTitle, scenes });
       const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
       const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
@@ -64,7 +66,7 @@ export function useExportVideoMp4() {
           if (!speech.text?.trim()) continue;
           speechIndex++;
 
-          const audio = await resolveSpeechAudioBlob(scene.order, speech, audioById);
+          const audio = await resolveSpeechAudioBlob(scene.order, speech, audioById, language);
           if (!audio) continue;
 
           const file = audioFileForSpeech(frame.file, speechIndex, audio.extension);
@@ -131,9 +133,23 @@ async function resolveSpeechAudioBlob(
   sceneOrder: number,
   speech: SpeechAction,
   audioById: Map<string, AudioFileRecord>,
+  language?: string,
 ): Promise<{ blob: Blob; extension: string } | null> {
-  for (const audioId of speechAudioLookupIds(sceneOrder, speech)) {
+  const lookupIds = speechAudioLookupIds(sceneOrder, speech);
+  for (const audioId of lookupIds) {
     const record = audioById.get(audioId) ?? (await db.audioFiles.get(audioId));
+    if (record) {
+      return {
+        blob: record.blob,
+        extension: normalizeAudioExtension(record.format || extensionFromMime(record.blob.type)),
+      };
+    }
+  }
+
+  const generatedAudioId = lookupIds[0];
+  if (generatedAudioId && speech.text?.trim()) {
+    await generateAndStoreTTS(generatedAudioId, speech.text, language);
+    const record = await db.audioFiles.get(generatedAudioId);
     if (record) {
       return {
         blob: record.blob,

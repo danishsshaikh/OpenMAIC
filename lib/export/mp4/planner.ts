@@ -75,9 +75,11 @@ export function buildLocalMp4Manifest({
           sceneTitle: scene.title,
           actionId: typeof speech.id === 'string' ? speech.id : undefined,
           actionIndex,
-          reason: speech.audioUrl
-            ? 'audioUrl could not be bundled'
-            : 'missing generated audioId/audioUrl',
+          reason: speech.audioId
+            ? 'generated audio file not found'
+            : speech.audioUrl
+              ? 'audioUrl could not be bundled'
+              : 'missing generated audioId/audioUrl',
         });
         continue;
       }

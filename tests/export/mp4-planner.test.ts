@@ -82,6 +82,36 @@ describe('local MP4 export planner', () => {
     ]);
   });
 
+  it('reports missing cached audio separately when a speech action has an audioId', () => {
+    const scenes = [
+      scene({
+        id: 's1',
+        title: 'Intro',
+        order: 1,
+        actions: [{ id: 'a1', type: 'speech', text: 'Generated line', audioId: 'tts_s1_a1' }],
+      }),
+    ];
+
+    const plan = buildLocalMp4Manifest({
+      stageTitle: 'Course',
+      scenes,
+      frames: [frame({ scene: scenes[0], index: 1, file: 'frames/001-intro.png' })],
+      frameWidth: 1280,
+      frameHeight: 720,
+      resolveAudioFile: () => null,
+    });
+
+    expect(plan.missingAudio).toEqual([
+      {
+        sceneId: 's1',
+        sceneTitle: 'Intro',
+        actionId: 'a1',
+        actionIndex: 0,
+        reason: 'generated audio file not found',
+      },
+    ]);
+  });
+
   it('records no-audio scenes as warnings without inventing long silence', () => {
     const scenes = [scene({ id: 's1', title: 'Quiz', order: 1, type: 'quiz', actions: [] })];
 
