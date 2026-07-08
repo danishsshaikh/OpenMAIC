@@ -7,6 +7,7 @@ describe('patchHtmlForIframe', () => {
       '<!DOCTYPE html><html><head><title>t</title></head><body></body></html>',
     );
     expect(out).toContain('data-iframe-storage-shim');
+    expect(out).toContain('data-iframe-fit-shim');
     expect(out).toContain('data-iframe-patch');
   });
 
@@ -65,7 +66,18 @@ describe('patchHtmlForIframe', () => {
     expect(out.indexOf('data-iframe-error-shim')).toBeLessThan(
       out.indexOf('data-iframe-storage-shim'),
     );
-    expect(out.indexOf('data-iframe-storage-shim')).toBeLessThan(out.indexOf('boom()'));
+    expect(out.indexOf('data-iframe-storage-shim')).toBeLessThan(
+      out.indexOf('data-iframe-fit-shim'),
+    );
+    expect(out.indexOf('data-iframe-fit-shim')).toBeLessThan(out.indexOf('boom()'));
+  });
+
+  it('injects an iframe fit shim that wraps authored content as one scaled unit', () => {
+    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
+    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
+    expect(shim).toBeTruthy();
+    expect(shim).toContain('data-openmaic-fit-root');
+    expect(shim).toContain('scale(');
   });
 
   it('the error shim posts runtime errors (onerror / resource / rejection / console.error) to the parent', () => {

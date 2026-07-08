@@ -1,12 +1,29 @@
 const MARKDOWN_BOLD_PATTERN = /\*\*([^*\n]+(?:\*(?!\*)[^*\n]*)*)\*\*/g;
+const LATEX_ARROW_PATTERN =
+  /\$?\\{1,2}(leftrightarrow|rightarrow|leftarrow|Rightarrow|to)(?![A-Za-z])\$?/g;
 const SKIP_INLINE_MARKDOWN_TAGS = new Set(['code', 'pre', 'kbd', 'samp']);
 
 function formatTextSegment(segment: string): string {
-  return segment.replace(MARKDOWN_BOLD_PATTERN, '<strong>$1</strong>');
+  return segment
+    .replace(LATEX_ARROW_PATTERN, (_match, command: string) => {
+      switch (command) {
+        case 'leftarrow':
+          return '←';
+        case 'leftrightarrow':
+          return '↔';
+        case 'Rightarrow':
+          return '⇒';
+        case 'rightarrow':
+        case 'to':
+        default:
+          return '→';
+      }
+    })
+    .replace(MARKDOWN_BOLD_PATTERN, '<strong>$1</strong>');
 }
 
 export function formatInlineMarkdownBold(html: string): string {
-  if (!html.includes('**')) return html;
+  if (!html.includes('**') && !html.includes('\\')) return html;
 
   const tokens = html.split(/(<\/?[^>]+>)/g);
   const tagStack: string[] = [];

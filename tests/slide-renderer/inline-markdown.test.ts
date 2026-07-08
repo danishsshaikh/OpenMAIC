@@ -3,13 +3,13 @@ import { formatInlineMarkdownBold as formatClassroomInlineMarkdownBold } from '@
 import { formatInlineMarkdownBold as formatSnapshotInlineMarkdownBold } from '../../packages/@openmaic/renderer/src/utils/inlineMarkdown';
 
 describe('slide inline markdown formatting', () => {
+  function expectBoth(input: string, output: string) {
+    expect(formatClassroomInlineMarkdownBold(input)).toBe(output);
+    expect(formatSnapshotInlineMarkdownBold(input)).toBe(output);
+  }
+
   it('renders simple inline bold without visible markdown markers', () => {
-    expect(formatClassroomInlineMarkdownBold('This is **important** text')).toBe(
-      'This is <strong>important</strong> text',
-    );
-    expect(formatSnapshotInlineMarkdownBold('This is **important** text')).toBe(
-      'This is <strong>important</strong> text',
-    );
+    expectBoth('This is **important** text', 'This is <strong>important</strong> text');
   });
 
   it('does not format code/pre content', () => {
@@ -22,7 +22,34 @@ describe('slide inline markdown formatting', () => {
   });
 
   it('leaves unmatched markers unchanged', () => {
-    expect(formatClassroomInlineMarkdownBold('This is **unfinished')).toBe('This is **unfinished');
-    expect(formatSnapshotInlineMarkdownBold('This is **unfinished')).toBe('This is **unfinished');
+    expectBoth('This is **unfinished', 'This is **unfinished');
+  });
+
+  it('normalizes common generated LaTeX arrow commands in prose', () => {
+    expectBoth('Source $\\rightarrow$ All', 'Source → All');
+    expectBoth('Reduce $\\\\rightarrow$ All', 'Reduce → All');
+    expectBoth('A \\rightarrow B', 'A → B');
+    expectBoth('A $\\leftarrow$ B', 'A ← B');
+    expectBoth('A $\\leftrightarrow$ B', 'A ↔ B');
+    expectBoth('A $\\Rightarrow$ B', 'A ⇒ B');
+    expectBoth('A $\\to$ B', 'A → B');
+  });
+
+  it('combines arrow normalization with inline bold', () => {
+    expectBoth(
+      'This is **important** and A $\\rightarrow$ B',
+      'This is <strong>important</strong> and A → B',
+    );
+  });
+
+  it('keeps code-like expressions unchanged', () => {
+    expectBoth('Arrays use arr[i]', 'Arrays use arr[i]');
+    expectBoth('a * b', 'a * b');
+    expect(formatClassroomInlineMarkdownBold('<code>A \\rightarrow B</code>')).toBe(
+      '<code>A \\rightarrow B</code>',
+    );
+    expect(formatSnapshotInlineMarkdownBold('<pre>A \\rightarrow B</pre>')).toBe(
+      '<pre>A \\rightarrow B</pre>',
+    );
   });
 });

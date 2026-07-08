@@ -99,6 +99,72 @@ const ERROR_CAPTURE_SHIM = `<script data-iframe-error-shim>
 </script>`;
 
 /**
+ * Generated interactive pages often paint a fixed-size diagram into a smaller
+ * iframe. If only the iframe clips/scrolls, paths and labels can appear
+ * disconnected from their intended layout. Fit the authored page as one unit
+ * when it overflows, preserving relative arrow/label geometry.
+ */
+const FIT_SHIM = `<script data-iframe-fit-shim>
+(function () {
+  function isIgnorable(node) {
+    return node.tagName === 'SCRIPT' || node.tagName === 'STYLE' || node.tagName === 'LINK';
+  }
+  function installWrapper() {
+    var body = document.body;
+    if (!body || body.querySelector('[data-openmaic-fit-root]')) return;
+    var wrapper = document.createElement('div');
+    wrapper.setAttribute('data-openmaic-fit-root', '');
+    var children = Array.prototype.slice.call(body.children).filter(function (child) {
+      return !isIgnorable(child);
+    });
+    if (children.length === 0) return;
+    children.forEach(function (child) { wrapper.appendChild(child); });
+    body.appendChild(wrapper);
+  }
+  function fit() {
+    var body = document.body;
+    var root = body && body.querySelector('[data-openmaic-fit-root]');
+    if (!body || !root) return;
+
+    root.style.transform = '';
+    root.style.left = '0';
+    root.style.top = '0';
+    var bodyWidth = body.clientWidth || window.innerWidth;
+    var bodyHeight = body.clientHeight || window.innerHeight;
+    var rect = root.getBoundingClientRect();
+    if (!bodyWidth || !bodyHeight || !rect.width || !rect.height) return;
+
+    var padding = 12;
+    var availableWidth = Math.max(1, bodyWidth - padding * 2);
+    var availableHeight = Math.max(1, bodyHeight - padding * 2);
+    var scale = Math.min(1, availableWidth / rect.width, availableHeight / rect.height);
+    var fittedWidth = rect.width * scale;
+    var fittedHeight = rect.height * scale;
+    var left = padding + (availableWidth - fittedWidth) / 2 - rect.left * scale;
+    var top = padding + (availableHeight - fittedHeight) / 2 - rect.top * scale;
+
+    root.style.transformOrigin = 'top left';
+    root.style.transform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
+  }
+  function scheduleFit() {
+    window.requestAnimationFrame(function () {
+      installWrapper();
+      fit();
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleFit);
+  } else {
+    scheduleFit();
+  }
+  window.addEventListener('load', scheduleFit);
+  window.addEventListener('resize', scheduleFit);
+  setTimeout(scheduleFit, 100);
+  setTimeout(scheduleFit, 500);
+})();
+</script>`;
+
+/**
  * Patch embedded HTML to display correctly inside an iframe.
  *
  * Injects a runtime-error capture shim + a storage shim (so sandboxed pages that
@@ -120,9 +186,26 @@ export function patchHtmlForIframe(html: string): string {
   /* Fix min-h-screen: in iframes 100vh is the iframe height, which is correct,
      but ensure body actually fills it */
   body { min-height: 100vh; }
+  body {
+    position: relative;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  [data-openmaic-fit-root] {
+    position: relative;
+    width: max-content;
+    min-width: 100%;
+    min-height: 100%;
+    transform-origin: top left;
+  }
+  [data-openmaic-fit-root] svg,
+  [data-openmaic-fit-root] canvas {
+    max-width: 100%;
+  }
 </style>`;
 
-  const injection = '\n' + ERROR_CAPTURE_SHIM + '\n' + STORAGE_SHIM + '\n' + iframeCss;
+  const injection =
+    '\n' + ERROR_CAPTURE_SHIM + '\n' + STORAGE_SHIM + '\n' + FIT_SHIM + '\n' + iframeCss;
 
   // Insert right after <head> or at the start of the document
   const headIdx = html.indexOf('<head>');
