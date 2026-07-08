@@ -64,6 +64,26 @@
       "placeholderHtmlHint": "См. {{file}} в этом экспорте.",
       "placeholderHint": "Откройте в OpenMAIC для полного интерактивного опыта."
     },
+    "videoMp4": {
+      "title": "Экспортировать MP4 видео",
+      "desc": "Локальное статичное видео FFmpeg",
+      "exporting": "Экспорт MP4 видео...",
+      "exportSuccess": "MP4 видео экспортировано",
+      "exportFailed": "Не удалось экспортировать MP4 видео",
+      "noScenes": "Нет сцен класса для экспорта.",
+      "progress": {
+        "preparing": "Подготовка экспорта класса...",
+        "renderingFrame": "Рендеринг кадра {{current}} из {{total}}...",
+        "compressingFrame": "Сжатие кадра {{current}} из {{total}}...",
+        "resolvingAudio": "Подготовка аудио озвучки {{current}} из {{total}}...",
+        "generatingAudio": "Генерация озвучки {{current}} из {{total}}...",
+        "preparingUpload": "Подготовка загрузки MP4...",
+        "uploading": "Загрузка ресурсов экспорта...",
+        "uploadingPercent": "Загрузка ресурсов экспорта... {{percent}}%",
+        "composing": "Сборка MP4 на сервере...",
+        "downloading": "Скачивание MP4..."
+      }
+    },
     "inlinePartial": "Не удалось упаковать {{count}} внешн. ресурс(ов); курс может отображаться некорректно офлайн."
   },
   "import": {

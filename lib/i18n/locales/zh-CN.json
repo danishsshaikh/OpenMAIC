@@ -64,6 +64,26 @@
       "placeholderHtmlHint": "请查看此导出中的 {{file}}。",
       "placeholderHint": "请在 OpenMAIC 中打开以获得完整交互体验。"
     },
+    "videoMp4": {
+      "title": "导出 MP4 视频",
+      "desc": "本地 FFmpeg 静态视频",
+      "exporting": "正在导出 MP4 视频...",
+      "exportSuccess": "MP4 视频已导出",
+      "exportFailed": "MP4 视频导出失败",
+      "noScenes": "没有可导出的课堂场景。",
+      "progress": {
+        "preparing": "正在准备课堂导出...",
+        "renderingFrame": "正在渲染第 {{current}}/{{total}} 帧...",
+        "compressingFrame": "正在压缩第 {{current}}/{{total}} 帧...",
+        "resolvingAudio": "正在处理第 {{current}}/{{total}} 段旁白音频...",
+        "generatingAudio": "正在生成第 {{current}}/{{total}} 段旁白...",
+        "preparingUpload": "正在准备 MP4 上传...",
+        "uploading": "正在上传导出资源...",
+        "uploadingPercent": "正在上传导出资源... {{percent}}%",
+        "composing": "正在服务器上合成 MP4...",
+        "downloading": "正在下载 MP4..."
+      }
+    },
     "inlinePartial": "{{count}} 个外部资源未能打包，离线时课程可能无法正常显示。"
   },
   "import": {

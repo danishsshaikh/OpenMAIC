@@ -64,6 +64,26 @@
       "placeholderHtmlHint": "راجع {{file}} في هذا التصدير.",
       "placeholderHint": "افتحه في OpenMAIC للحصول على التجربة التفاعلية الكاملة."
     },
+    "videoMp4": {
+      "title": "تصدير فيديو MP4",
+      "desc": "فيديو ثابت عبر FFmpeg المحلي",
+      "exporting": "جارٍ تصدير فيديو MP4...",
+      "exportSuccess": "تم تصدير فيديو MP4",
+      "exportFailed": "فشل تصدير فيديو MP4",
+      "noScenes": "لا توجد مشاهد فصل متاحة للتصدير.",
+      "progress": {
+        "preparing": "جارٍ تحضير تصدير الفصل...",
+        "renderingFrame": "جارٍ عرض الإطار {{current}} من {{total}}...",
+        "compressingFrame": "جارٍ ضغط الإطار {{current}} من {{total}}...",
+        "resolvingAudio": "جارٍ تجهيز صوت السرد {{current}} من {{total}}...",
+        "generatingAudio": "جارٍ إنشاء السرد {{current}} من {{total}}...",
+        "preparingUpload": "جارٍ تحضير رفع MP4...",
+        "uploading": "جارٍ رفع أصول التصدير...",
+        "uploadingPercent": "جارٍ رفع أصول التصدير... {{percent}}%",
+        "composing": "جارٍ تركيب MP4 على الخادم...",
+        "downloading": "جارٍ تنزيل MP4..."
+      }
+    },
     "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت."
   },
   "import": {

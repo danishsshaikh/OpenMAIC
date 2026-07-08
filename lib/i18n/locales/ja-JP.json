@@ -64,6 +64,26 @@
       "placeholderHtmlHint": "このエクスポート内の {{file}} を確認してください。",
       "placeholderHint": "完全なインタラクティブ体験には OpenMAIC で開いてください。"
     },
+    "videoMp4": {
+      "title": "MP4 動画をエクスポート",
+      "desc": "ローカル FFmpeg 静止画動画",
+      "exporting": "MP4 動画をエクスポート中...",
+      "exportSuccess": "MP4 動画をエクスポートしました",
+      "exportFailed": "MP4 動画のエクスポートに失敗しました",
+      "noScenes": "エクスポートできる教室シーンがありません。",
+      "progress": {
+        "preparing": "教室エクスポートを準備中...",
+        "renderingFrame": "フレーム {{current}} / {{total}} をレンダリング中...",
+        "compressingFrame": "フレーム {{current}} / {{total}} を圧縮中...",
+        "resolvingAudio": "ナレーション音声 {{current}} / {{total}} を解決中...",
+        "generatingAudio": "ナレーション {{current}} / {{total}} を生成中...",
+        "preparingUpload": "MP4 アップロードを準備中...",
+        "uploading": "エクスポート素材をアップロード中...",
+        "uploadingPercent": "エクスポート素材をアップロード中... {{percent}}%",
+        "composing": "サーバーで MP4 を作成中...",
+        "downloading": "MP4 をダウンロード中..."
+      }
+    },
     "inlinePartial": "{{count}} 個の外部リソースをバンドルできませんでした。オフラインでは正しく表示されない可能性があります。"
   },
   "import": {

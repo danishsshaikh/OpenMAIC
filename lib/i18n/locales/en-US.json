@@ -64,6 +64,26 @@
       "placeholderHtmlHint": "See {{file}} in this export.",
       "placeholderHint": "Open in OpenMAIC for the full interactive experience."
     },
+    "videoMp4": {
+      "title": "Export MP4 video",
+      "desc": "Local FFmpeg static video",
+      "exporting": "Exporting MP4 video...",
+      "exportSuccess": "MP4 video exported",
+      "exportFailed": "MP4 video export failed",
+      "noScenes": "No classroom scenes available to export.",
+      "progress": {
+        "preparing": "Preparing classroom export...",
+        "renderingFrame": "Rendering frame {{current}} of {{total}}...",
+        "compressingFrame": "Compressing frame {{current}} of {{total}}...",
+        "resolvingAudio": "Resolving narration audio {{current}} of {{total}}...",
+        "generatingAudio": "Generating narration {{current}} of {{total}}...",
+        "preparingUpload": "Preparing MP4 upload...",
+        "uploading": "Uploading export assets...",
+        "uploadingPercent": "Uploading export assets... {{percent}}%",
+        "composing": "Composing MP4 on server...",
+        "downloading": "Downloading MP4..."
+      }
+    },
     "inlinePartial": "{{count}} external asset(s) couldn't be bundled; the course may not display correctly offline."
   },
   "import": {
