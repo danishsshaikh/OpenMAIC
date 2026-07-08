@@ -109,6 +109,44 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
   function isIgnorable(node) {
     return node.tagName === 'SCRIPT' || node.tagName === 'STYLE' || node.tagName === 'LINK';
   }
+  function textOf(node) {
+    return String(node && node.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  }
+  function commonAncestor(a, b) {
+    var seen = [];
+    var n = a;
+    while (n) { seen.push(n); n = n.parentElement; }
+    n = b;
+    while (n) {
+      if (seen.indexOf(n) !== -1) return n;
+      n = n.parentElement;
+    }
+    return null;
+  }
+  function findStepControls(root) {
+    var elements = Array.prototype.slice.call(root.querySelectorAll('button, [role="button"], div, section, nav'));
+    var prev = null;
+    var next = null;
+    var step = null;
+    for (var i = 0; i < elements.length; i++) {
+      var text = textOf(elements[i]);
+      if (!prev && text.indexOf('previous') !== -1 && text.indexOf('step') !== -1) prev = elements[i];
+      if (!next && text.indexOf('next') !== -1 && text.indexOf('step') !== -1) next = elements[i];
+      if (!step && /step\\s*\\d+\\s*\\/\\s*\\d+/.test(text)) step = elements[i];
+    }
+    if (!prev || !next) return null;
+    var controls = commonAncestor(prev, next);
+    if (controls && step) controls = commonAncestor(controls, step) || controls;
+    while (controls && controls !== root) {
+      var text = textOf(controls);
+      if (text.indexOf('previous') !== -1 && text.indexOf('next') !== -1 && text.indexOf('step') !== -1) {
+        return controls;
+      }
+      if (controls.parentElement === root) return controls;
+      controls = controls.parentElement;
+    }
+    return null;
+  }
   function installWrapper() {
     var body = document.body;
     if (!body || body.querySelector('[data-openmaic-fit-root]')) return;
@@ -120,6 +158,61 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     if (children.length === 0) return;
     children.forEach(function (child) { wrapper.appendChild(child); });
     body.appendChild(wrapper);
+    var controls = findStepControls(wrapper);
+    if (controls) {
+      controls.setAttribute('data-openmaic-step-controls', '');
+      body.appendChild(controls);
+    }
+  }
+  function rectUnion(a, b) {
+    if (!a) return b;
+    return {
+      left: Math.min(a.left, b.left),
+      top: Math.min(a.top, b.top),
+      right: Math.max(a.right, b.right),
+      bottom: Math.max(a.bottom, b.bottom)
+    };
+  }
+  function getContentBounds(root) {
+    var bounds = null;
+    var nodes = Array.prototype.slice.call(root.querySelectorAll('*'));
+    nodes.unshift(root);
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (isIgnorable(node) || node.closest('[data-openmaic-step-controls]')) continue;
+      var rect = node.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        bounds = rectUnion(bounds, { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+      }
+      if (
+        typeof SVGGraphicsElement !== 'undefined' &&
+        typeof DOMPoint !== 'undefined' &&
+        node instanceof SVGGraphicsElement &&
+        typeof node.getBBox === 'function'
+      ) {
+        try {
+          var bbox = node.getBBox();
+          var matrix = node.getScreenCTM && node.getScreenCTM();
+          if (matrix && bbox.width > 0 && bbox.height > 0) {
+            var points = [
+              new DOMPoint(bbox.x, bbox.y).matrixTransform(matrix),
+              new DOMPoint(bbox.x + bbox.width, bbox.y).matrixTransform(matrix),
+              new DOMPoint(bbox.x, bbox.y + bbox.height).matrixTransform(matrix),
+              new DOMPoint(bbox.x + bbox.width, bbox.y + bbox.height).matrixTransform(matrix)
+            ];
+            var xs = points.map(function (p) { return p.x; });
+            var ys = points.map(function (p) { return p.y; });
+            bounds = rectUnion(bounds, {
+              left: Math.min.apply(Math, xs),
+              top: Math.min.apply(Math, ys),
+              right: Math.max.apply(Math, xs),
+              bottom: Math.max.apply(Math, ys)
+            });
+          }
+        } catch (e) {}
+      }
+    }
+    return bounds;
   }
   function fit() {
     var body = document.body;
@@ -131,23 +224,47 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     root.style.top = '0';
     var bodyWidth = body.clientWidth || window.innerWidth;
     var bodyHeight = body.clientHeight || window.innerHeight;
-    var rect = root.getBoundingClientRect();
-    if (!bodyWidth || !bodyHeight || !rect.width || !rect.height) return;
+    var controls = body.querySelector('[data-openmaic-step-controls]');
+    if (controls) {
+      controls.style.position = 'fixed';
+      controls.style.left = '50%';
+      controls.style.right = 'auto';
+      controls.style.top = 'auto';
+      controls.style.bottom = '12px';
+      controls.style.transform = 'translateX(-50%)';
+      controls.style.zIndex = '2147483647';
+      controls.style.maxWidth = 'calc(100% - 24px)';
+      controls.style.boxSizing = 'border-box';
+    }
+    var controlsRect = controls && controls.getBoundingClientRect ? controls.getBoundingClientRect() : null;
+    var reservedBottom = controlsRect && controlsRect.height > 0 ? controlsRect.height + 24 : 0;
+    var contentBounds = getContentBounds(root);
+    var rootRect = root.getBoundingClientRect();
+    if (!bodyWidth || !bodyHeight || !contentBounds || !rootRect.width || !rootRect.height) return;
+
+    var contentWidth = Math.max(1, contentBounds.right - contentBounds.left);
+    var contentHeight = Math.max(1, contentBounds.bottom - contentBounds.top);
+    var localLeft = contentBounds.left - rootRect.left;
+    var localTop = contentBounds.top - rootRect.top;
 
     var padding = 12;
     var availableWidth = Math.max(1, bodyWidth - padding * 2);
-    var availableHeight = Math.max(1, bodyHeight - padding * 2);
-    var scale = Math.min(1, availableWidth / rect.width, availableHeight / rect.height);
-    var fittedWidth = rect.width * scale;
-    var fittedHeight = rect.height * scale;
-    var left = padding + (availableWidth - fittedWidth) / 2 - rect.left * scale;
-    var top = padding + (availableHeight - fittedHeight) / 2 - rect.top * scale;
+    var availableHeight = Math.max(1, bodyHeight - padding * 2 - reservedBottom);
+    var scale = Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight);
+    var fittedWidth = contentWidth * scale;
+    var fittedHeight = contentHeight * scale;
+    var left = padding + (availableWidth - fittedWidth) / 2 - rootRect.left - localLeft * scale;
+    var top = padding + (availableHeight - fittedHeight) / 2 - rootRect.top - localTop * scale;
 
     root.style.transformOrigin = 'top left';
     root.style.transform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
   }
+  var pending = false;
   function scheduleFit() {
+    if (pending) return;
+    pending = true;
     window.requestAnimationFrame(function () {
+      pending = false;
       installWrapper();
       fit();
     });
@@ -159,6 +276,11 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
   }
   window.addEventListener('load', scheduleFit);
   window.addEventListener('resize', scheduleFit);
+  document.addEventListener('click', scheduleFit, true);
+  if (window.MutationObserver) {
+    var observer = new MutationObserver(scheduleFit);
+    if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
   setTimeout(scheduleFit, 100);
   setTimeout(scheduleFit, 500);
 })();
@@ -192,11 +314,16 @@ export function patchHtmlForIframe(html: string): string {
     overflow: hidden;
   }
   [data-openmaic-fit-root] {
-    position: relative;
+    position: absolute;
+    left: 0;
+    top: 0;
     width: max-content;
     min-width: 100%;
     min-height: 100%;
     transform-origin: top left;
+  }
+  [data-openmaic-step-controls] {
+    transform-origin: center bottom;
   }
   [data-openmaic-fit-root] svg,
   [data-openmaic-fit-root] canvas {

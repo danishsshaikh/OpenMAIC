@@ -77,7 +77,17 @@ describe('patchHtmlForIframe', () => {
     const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
     expect(shim).toBeTruthy();
     expect(shim).toContain('data-openmaic-fit-root');
+    expect(shim).toContain('getContentBounds');
     expect(shim).toContain('scale(');
+  });
+
+  it('the fit shim reserves bottom step controls and refits after interactions', () => {
+    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
+    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
+    expect(shim).toBeTruthy();
+    expect(shim).toContain('data-openmaic-step-controls');
+    expect(shim).toContain("document.addEventListener('click', scheduleFit, true)");
+    expect(shim).toContain('MutationObserver');
   });
 
   it('the error shim posts runtime errors (onerror / resource / rejection / console.error) to the parent', () => {
