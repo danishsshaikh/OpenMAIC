@@ -126,7 +126,9 @@
       "empty": "播放課程後，筆記將在此顯示",
       "emptyHint": "點擊播放按鈕開始授課",
       "pageLabel": "第 {{n}} 頁",
-      "currentPage": "目前頁"
+      "currentPage": "目前頁",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "Q&A",

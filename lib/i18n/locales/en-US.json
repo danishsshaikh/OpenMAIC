@@ -126,7 +126,9 @@
       "empty": "Notes will appear here after lecture playback",
       "emptyHint": "Press play to start the lecture",
       "pageLabel": "Page {{n}}",
-      "currentPage": "Current"
+      "currentPage": "Current",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "Q&A",

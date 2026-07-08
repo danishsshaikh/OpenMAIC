@@ -126,7 +126,9 @@
       "empty": "As anotações aparecerão aqui após a reprodução da aula",
       "emptyHint": "Pressione play para iniciar a aula",
       "pageLabel": "Página {{n}}",
-      "currentPage": "Atual"
+      "currentPage": "Atual",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "P&R",

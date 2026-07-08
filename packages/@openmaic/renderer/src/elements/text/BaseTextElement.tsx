@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import type { PPTTextElement } from '@openmaic/dsl';
 import { useElementShadow } from '../shared/useElementShadow';
 import { ElementOutline } from '../shared/ElementOutline';
+import { formatInlineMarkdownBold } from '../../utils/inlineMarkdown';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
@@ -12,6 +13,9 @@ export interface BaseTextElementProps {
 
 export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
+  const content = formatInlineMarkdownBold(
+    typeof elementInfo.content === 'string' ? elementInfo.content : '',
+  );
 
   const vAlign = elementInfo.vAlign ?? 'top';
   const justifyContent =
@@ -36,6 +40,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         // background would bleed through below.
         backgroundColor: elementInfo.fill,
         opacity: elementInfo.opacity,
+        overflow: 'hidden',
       }}
     >
       <div
@@ -55,6 +60,12 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             position: 'relative',
             width: elementInfo.vertical ? 'auto' : '100%',
             height: elementInfo.vertical ? '100%' : 'auto',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
             textShadow: shadowStyle,
             lineHeight: elementInfo.lineHeight,
             letterSpacing:
@@ -77,8 +88,13 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             style={{
               position: 'relative',
               pointerEvents: target === 'thumbnail' ? 'none' : undefined,
+              maxWidth: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}
-            dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+            dangerouslySetInnerHTML={{ __html: content }}
           />
         </div>
       </div>

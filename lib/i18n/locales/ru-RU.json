@@ -126,7 +126,9 @@
       "empty": "Заметки появятся здесь после воспроизведения лекции",
       "emptyHint": "Нажмите воспроизведение для начала лекции",
       "pageLabel": "Страница {{n}}",
-      "currentPage": "Текущая"
+      "currentPage": "Текущая",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "Вопросы",
