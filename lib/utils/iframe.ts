@@ -173,13 +173,15 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
       bottom: Math.max(a.bottom, b.bottom)
     };
   }
+  function isInsideControls(node) {
+    return !!(node && node.closest && node.closest('[data-openmaic-step-controls]'));
+  }
   function getContentBounds(root) {
     var bounds = null;
     var nodes = Array.prototype.slice.call(root.querySelectorAll('*'));
-    nodes.unshift(root);
     for (var i = 0; i < nodes.length; i++) {
       var node = nodes[i];
-      if (isIgnorable(node) || node.closest('[data-openmaic-step-controls]')) continue;
+      if (isIgnorable(node) || isInsideControls(node)) continue;
       var rect = node.getBoundingClientRect();
       if (rect && rect.width > 0 && rect.height > 0) {
         bounds = rectUnion(bounds, { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
@@ -214,6 +216,26 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     }
     return bounds;
   }
+  function shouldRefitForMutations(mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var mutation = mutations[i];
+      if (mutation.type !== 'childList') continue;
+      var nodes = Array.prototype.slice.call(mutation.addedNodes || []).concat(Array.prototype.slice.call(mutation.removedNodes || []));
+      for (var j = 0; j < nodes.length; j++) {
+        var node = nodes[j];
+        if (node.nodeType !== 1) continue;
+        if (isIgnorable(node) || isInsideControls(node)) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+  function shouldRefitForClick(event) {
+    var target = event && event.target;
+    if (!target || !target.closest) return false;
+    return !!target.closest('[data-openmaic-step-controls], button, [role="button"], a, input, select, textarea');
+  }
+  var lastTransform = '';
   function fit() {
     var body = document.body;
     var root = body && body.querySelector('[data-openmaic-fit-root]');
@@ -240,7 +262,10 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     var reservedBottom = controlsRect && controlsRect.height > 0 ? controlsRect.height + 24 : 0;
     var contentBounds = getContentBounds(root);
     var rootRect = root.getBoundingClientRect();
-    if (!bodyWidth || !bodyHeight || !contentBounds || !rootRect.width || !rootRect.height) return;
+    if (!bodyWidth || !bodyHeight || !rootRect.width || !rootRect.height) return;
+    if (!contentBounds) {
+      contentBounds = { left: rootRect.left, top: rootRect.top, right: rootRect.right, bottom: rootRect.bottom };
+    }
 
     var contentWidth = Math.max(1, contentBounds.right - contentBounds.left);
     var contentHeight = Math.max(1, contentBounds.bottom - contentBounds.top);
@@ -257,7 +282,11 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     var top = padding + (availableHeight - fittedHeight) / 2 - rootRect.top - localTop * scale;
 
     root.style.transformOrigin = 'top left';
-    root.style.transform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
+    var nextTransform = 'translate(' + left + 'px, ' + top + 'px) scale(' + scale + ')';
+    if (nextTransform !== lastTransform) {
+      root.style.transform = nextTransform;
+      lastTransform = nextTransform;
+    }
   }
   var pending = false;
   function scheduleFit() {
@@ -276,9 +305,14 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
   }
   window.addEventListener('load', scheduleFit);
   window.addEventListener('resize', scheduleFit);
-  document.addEventListener('click', scheduleFit, true);
+  document.addEventListener('fullscreenchange', scheduleFit, true);
+  document.addEventListener('click', function (event) {
+    if (shouldRefitForClick(event)) scheduleFit();
+  }, true);
   if (window.MutationObserver) {
-    var observer = new MutationObserver(scheduleFit);
+    var observer = new MutationObserver(function (mutations) {
+      if (shouldRefitForMutations(mutations)) scheduleFit();
+    });
     if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true });
   }
   setTimeout(scheduleFit, 100);
@@ -321,6 +355,12 @@ export function patchHtmlForIframe(html: string): string {
     min-width: 100%;
     min-height: 100%;
     transform-origin: top left;
+  }
+  [data-openmaic-fit-root] * {
+    transition-property: color, background-color, border-color, box-shadow, opacity, filter !important;
+  }
+  [data-openmaic-fit-root] *:hover {
+    transform: none !important;
   }
   [data-openmaic-step-controls] {
     transform-origin: center bottom;
