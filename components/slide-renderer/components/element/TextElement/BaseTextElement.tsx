@@ -4,6 +4,7 @@ import type { PPTTextElement } from '@openmaic/dsl';
 import { useElementShadow } from '../hooks/useElementShadow';
 import { ElementOutline } from '../ElementOutline';
 import { formatInlineMarkdownBold } from './inlineMarkdown';
+import { getTextFitStyle, useTextAutoFit } from './textAutoFit';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
@@ -18,6 +19,9 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
   const content = formatInlineMarkdownBold(
     typeof elementInfo.content === 'string' ? elementInfo.content : '',
+  );
+  const { containerRef, textRef, textFitScale } = useTextAutoFit(
+    `${content}:${elementInfo.width}:${elementInfo.height}:${elementInfo.lineHeight ?? ''}:${elementInfo.defaultFontName ?? ''}`,
   );
 
   return (
@@ -36,10 +40,11 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         style={{ transform: `rotate(${elementInfo.rotate}deg)` }}
       >
         <div
+          ref={containerRef}
           className="element-content relative p-[10px] leading-[1.5] break-words"
           style={{
             width: elementInfo.vertical ? 'auto' : '100%',
-            height: elementInfo.vertical ? '100%' : 'auto',
+            height: '100%',
             maxWidth: '100%',
             maxHeight: '100%',
             boxSizing: 'border-box',
@@ -64,6 +69,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             outline={elementInfo.outline}
           />
           <div
+            ref={textRef}
             className={`text ProseMirror-static relative ${target === 'thumbnail' ? 'pointer-events-none' : ''}`}
             style={{
               maxWidth: '100%',
@@ -71,6 +77,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
               overflow: 'hidden',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
+              ...getTextFitStyle(textFitScale),
             }}
             dangerouslySetInnerHTML={{ __html: content }}
           />

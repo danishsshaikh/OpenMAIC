@@ -17,6 +17,25 @@ export const SLIDE_RENDERER_STYLES = `
 .slide-renderer-prose p:last-child {
   margin-bottom: 0;
 }
+.slide-renderer-prose ul,
+.slide-renderer-prose ol {
+  margin-top: 0;
+  margin-bottom: var(--paragraphSpace, 0);
+  padding-inline-start: 1.15em;
+}
+.slide-renderer-prose ul {
+  list-style: disc outside;
+}
+.slide-renderer-prose ol {
+  list-style: decimal outside;
+}
+.slide-renderer-prose li {
+  display: list-item;
+  margin: 0 0 0.16em;
+}
+.slide-renderer-prose li:last-child {
+  margin-bottom: 0;
+}
 .slide-renderer-prose .katex-display {
   margin: 0 !important;
 }
