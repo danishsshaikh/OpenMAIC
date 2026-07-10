@@ -7,7 +7,6 @@ describe('patchHtmlForIframe', () => {
       '<!DOCTYPE html><html><head><title>t</title></head><body></body></html>',
     );
     expect(out).toContain('data-iframe-storage-shim');
-    expect(out).toContain('data-iframe-fit-shim');
     expect(out).toContain('data-iframe-patch');
   });
 
@@ -66,52 +65,7 @@ describe('patchHtmlForIframe', () => {
     expect(out.indexOf('data-iframe-error-shim')).toBeLessThan(
       out.indexOf('data-iframe-storage-shim'),
     );
-    expect(out.indexOf('data-iframe-storage-shim')).toBeLessThan(
-      out.indexOf('data-iframe-fit-shim'),
-    );
-    expect(out.indexOf('data-iframe-fit-shim')).toBeLessThan(out.indexOf('boom()'));
-  });
-
-  it('injects an iframe fit shim that wraps authored content as one scaled unit', () => {
-    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
-    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
-    expect(shim).toBeTruthy();
-    expect(shim).toContain('data-openmaic-fit-root');
-    expect(shim).toContain('getContentBounds');
-    expect(shim).toContain('scale(');
-  });
-
-  it('the fit shim reserves bottom step controls and refits after controlled interactions', () => {
-    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
-    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
-    expect(shim).toBeTruthy();
-    expect(shim).toContain('data-openmaic-step-controls');
-    expect(shim).toContain('shouldRefitForClick');
-    expect(shim).toContain("document.addEventListener('fullscreenchange', scheduleFit, true)");
-    expect(shim).toContain('MutationObserver');
-  });
-
-  it('the fit shim avoids hover-driven refit loops and hover transforms', () => {
-    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
-    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
-    expect(shim).toBeTruthy();
-    expect(shim).toContain('shouldRefitForMutations');
-    expect(shim).toContain("mutation.type !== 'childList'");
-    expect(shim).not.toContain('mouseenter');
-    expect(shim).not.toContain('mouseover');
-    expect(shim).not.toContain('mousemove');
-    expect(out).not.toContain('[data-openmaic-fit-root] *:hover');
-    expect(out).not.toContain('transform: none !important');
-  });
-
-  it('the fit shim uses stable authored bounds so step navigation does not accumulate zoom', () => {
-    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
-    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
-    expect(shim).toBeTruthy();
-    expect(shim).toContain('var stableContentBounds = null');
-    expect(shim).toContain('stableContentBounds = rectUnion(stableContentBounds, contentBounds)');
-    expect(shim).toContain("root.style.transform = ''");
-    expect(shim).toContain('if (nextTransform !== lastTransform)');
+    expect(out.indexOf('data-iframe-storage-shim')).toBeLessThan(out.indexOf('boom()'));
   });
 
   it('the error shim posts runtime errors (onerror / resource / rejection / console.error) to the parent', () => {

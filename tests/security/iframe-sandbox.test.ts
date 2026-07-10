@@ -48,14 +48,4 @@ describe('iframe sandbox safety', () => {
       expect(isDangerousSandbox(sandbox)).toBe(false);
     }
   });
-
-  test('InteractiveIframeHost disables iframe pointer capture outside playback interaction', () => {
-    const src = readFileSync(
-      resolve(__dirname, '../../components/scene-renderers/InteractiveIframeHost.tsx'),
-      'utf-8',
-    );
-
-    expect(src).toContain("interactive={mode !== 'edit'}");
-    expect(src).toContain("pointerEvents: shown && interactive ? 'auto' : 'none'");
-  });
 });

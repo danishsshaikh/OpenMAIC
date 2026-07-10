@@ -8,7 +8,6 @@ import {
   type IframePoolEntry,
 } from '@/lib/store/interactive-iframe-pool';
 import { useSceneRuntimeErrors } from '@/lib/store/scene-runtime-errors';
-import { useStageStore } from '@/lib/store/stage';
 
 /**
  * Stable host for interactive scene iframes (#619).
@@ -35,7 +34,6 @@ export function InteractiveIframeHost() {
   const activeSceneId = useInteractiveIframePool((s) => s.activeSceneId);
   const reset = useInteractiveIframePool((s) => s.reset);
   const setActiveScene = useWidgetIframeStore((s) => s.setActiveScene);
-  const mode = useStageStore((s) => s.mode);
 
   // Portal into the fullscreen element when one is active (presentation mode
   // fullscreens the stage, and a body-portaled iframe would not be part of that
@@ -69,7 +67,6 @@ export function InteractiveIframeHost() {
           sceneId={sceneId}
           entry={entry}
           visible={entry.owner !== null && sceneId === activeSceneId}
-          interactive={mode !== 'edit'}
         />
       ))}
     </>,
@@ -81,7 +78,6 @@ interface PooledIframeProps {
   readonly sceneId: string;
   readonly entry: IframePoolEntry;
   readonly visible: boolean;
-  readonly interactive: boolean;
 }
 
 /**
@@ -101,7 +97,7 @@ interface PooledIframeProps {
  * works correctly with a null origin because the host sends with
  * targetOrigin='*'.
  */
-function PooledIframe({ sceneId, entry, visible, interactive }: PooledIframeProps) {
+function PooledIframe({ sceneId, entry, visible }: PooledIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const registerIframe = useWidgetIframeStore((s) => s.registerIframe);
 
@@ -165,7 +161,7 @@ function PooledIframe({ sceneId, entry, visible, interactive }: PooledIframeProp
     zIndex: 1,
     // visibility (not display) — display:none can drop the document on re-show.
     visibility: shown ? 'visible' : 'hidden',
-    pointerEvents: shown && interactive ? 'auto' : 'none',
+    pointerEvents: shown ? 'auto' : 'none',
   };
 
   return (
