@@ -47,7 +47,13 @@ export async function POST(request: Request) {
     const segmentPaths: string[] = [];
     const writtenAssets = new Map<string, string>();
 
-    for (const segment of manifest.segments) {
+    for (const [segmentOffset, segment] of manifest.segments.entries()) {
+      const segmentStartedAt = Date.now();
+      log.info('Local MP4 segment compose started:', {
+        segmentIndex: segment.index,
+        completedSegments: segmentOffset,
+        totalSegments: manifest.segments.length,
+      });
       const framePath = await writeUploadedAsset(
         tempDir,
         segment.frameFile,
@@ -72,13 +78,22 @@ export async function POST(request: Request) {
         }),
       );
       segmentPaths.push(segmentPath);
+      log.info('Local MP4 segment compose completed:', {
+        segmentIndex: segment.index,
+        completedSegments: segmentOffset + 1,
+        totalSegments: manifest.segments.length,
+        durationMs: Date.now() - segmentStartedAt,
+      });
     }
 
     const concatListPath = join(tempDir, 'segments.txt');
     await writeFile(concatListPath, `${segmentPaths.map(concatListLine).join('\n')}\n`);
 
     const outputPath = join(tempDir, 'openmaic-export.mp4');
+    const concatStartedAt = Date.now();
+    log.info('Local MP4 final concat started:', { segmentCount: segmentPaths.length });
     await runProcess('ffmpeg', buildConcatFfmpegArgs({ concatListPath, outputPath }));
+    log.info('Local MP4 final concat completed:', { durationMs: Date.now() - concatStartedAt });
     const output = await readFile(outputPath);
     const filename = `${sanitizeVideoFrameFilenamePart(manifest.stageTitle)}.mp4`;
 

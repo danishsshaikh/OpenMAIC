@@ -100,8 +100,18 @@ describe('patchHtmlForIframe', () => {
     expect(shim).not.toContain('mouseenter');
     expect(shim).not.toContain('mouseover');
     expect(shim).not.toContain('mousemove');
-    expect(out).toContain('[data-openmaic-fit-root] *:hover');
-    expect(out).toContain('transform: none !important');
+    expect(out).not.toContain('[data-openmaic-fit-root] *:hover');
+    expect(out).not.toContain('transform: none !important');
+  });
+
+  it('the fit shim uses stable authored bounds so step navigation does not accumulate zoom', () => {
+    const out = patchHtmlForIframe('<html><head></head><body><main></main></body></html>');
+    const shim = out.match(/<script data-iframe-fit-shim>([\s\S]*?)<\/script>/)?.[1];
+    expect(shim).toBeTruthy();
+    expect(shim).toContain('var stableContentBounds = null');
+    expect(shim).toContain('stableContentBounds = rectUnion(stableContentBounds, contentBounds)');
+    expect(shim).toContain("root.style.transform = ''");
+    expect(shim).toContain('if (nextTransform !== lastTransform)');
   });
 
   it('the error shim posts runtime errors (onerror / resource / rejection / console.error) to the parent', () => {

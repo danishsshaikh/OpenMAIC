@@ -52,4 +52,43 @@ describe('slide inline markdown formatting', () => {
       '<pre>A \\rightarrow B</pre>',
     );
   });
+
+  it('normalizes generated inline unicode bullets into visible list items', () => {
+    expectBoth(
+      '• Send message • Wait for reply • Continue work',
+      '<ul><li>Send message</li><li>Wait for reply</li><li>Continue work</li></ul>',
+    );
+    expectBoth(
+      'Blocking • Send message • Wait for receiver',
+      'Blocking<br><ul><li>Send message</li><li>Wait for receiver</li></ul>',
+    );
+  });
+
+  it('normalizes markdown and newline-separated generated list items', () => {
+    expectBoth(
+      '- Send message\n- Wait for reply',
+      '<ul><li>Send message</li><li>Wait for reply</li></ul>',
+    );
+    expectBoth(
+      '* Send message\n* Wait for reply',
+      '<ul><li>Send message</li><li>Wait for reply</li></ul>',
+    );
+    expectBoth('1. Send\n2. Wait', '<ol><li>Send</li><li>Wait</li></ol>');
+    expectBoth('3. Send\n4. Wait', '<ol start="3"><li>Send</li><li>Wait</li></ol>');
+  });
+
+  it('preserves hard line breaks without forcing prose into a list', () => {
+    expectBoth('First point\nSecond point', 'First point<br>Second point');
+    expectBoth('First point<br>Second point', 'First point<br>Second point');
+  });
+
+  it('leaves existing list markup and code blocks intact', () => {
+    expectBoth('<ul><li>Send</li><li>Wait</li></ul>', '<ul><li>Send</li><li>Wait</li></ul>');
+    expect(formatClassroomInlineMarkdownBold('<code>• Send • Wait</code>')).toBe(
+      '<code>• Send • Wait</code>',
+    );
+    expect(formatSnapshotInlineMarkdownBold('<pre>- Send\n- Wait</pre>')).toBe(
+      '<pre>- Send\n- Wait</pre>',
+    );
+  });
 });

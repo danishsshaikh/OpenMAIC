@@ -236,6 +236,7 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     return !!target.closest('[data-openmaic-step-controls], button, [role="button"], a, input, select, textarea');
   }
   var lastTransform = '';
+  var stableContentBounds = null;
   function fit() {
     var body = document.body;
     var root = body && body.querySelector('[data-openmaic-fit-root]');
@@ -266,6 +267,8 @@ const FIT_SHIM = `<script data-iframe-fit-shim>
     if (!contentBounds) {
       contentBounds = { left: rootRect.left, top: rootRect.top, right: rootRect.right, bottom: rootRect.bottom };
     }
+    stableContentBounds = rectUnion(stableContentBounds, contentBounds);
+    contentBounds = stableContentBounds;
 
     var contentWidth = Math.max(1, contentBounds.right - contentBounds.left);
     var contentHeight = Math.max(1, contentBounds.bottom - contentBounds.top);
@@ -358,9 +361,6 @@ export function patchHtmlForIframe(html: string): string {
   }
   [data-openmaic-fit-root] * {
     transition-property: color, background-color, border-color, box-shadow, opacity, filter !important;
-  }
-  [data-openmaic-fit-root] *:hover {
-    transform: none !important;
   }
   [data-openmaic-step-controls] {
     transform-origin: center bottom;

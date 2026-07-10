@@ -9,6 +9,12 @@ import { useStageStore } from '@/lib/store';
 import { collectAudioFiles } from './classroom-zip-utils';
 import { compressFrameForMp4Upload } from './mp4/frame-compression';
 import { buildLocalMp4Manifest, sanitizeMp4PathPart, speechAudioLookupIds } from './mp4/planner';
+import {
+  advanceLocalMp4ExportProgress,
+  createLocalMp4ExportProgress,
+  describeLocalMp4ExportProgress,
+  type LocalMp4ExportPhase,
+} from './mp4/progress';
 import type { LocalMp4MissingAudio } from './mp4/types';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
 import { renderVideoFrame, VIDEO_FRAME_HEIGHT, VIDEO_FRAME_WIDTH } from './use-export-video-frames';
@@ -51,10 +57,39 @@ export function useExportVideoMp4() {
     exportingRef.current = true;
     setExporting(true);
     const toastId = toast.loading(t('export.videoMp4.exporting'));
-    const updateProgress = (message: string) => toast.loading(message, { id: toastId });
+    const jobId = `local-mp4-${Date.now().toString(36)}`;
+    let progress = createLocalMp4ExportProgress(jobId, t('export.videoMp4.exporting'));
+    const renderProgress = () =>
+      toast.loading(progress.message, {
+        id: toastId,
+        description: describeLocalMp4ExportProgress(progress),
+      });
+    const updateProgress = (
+      phase: LocalMp4ExportPhase,
+      message: string,
+      units?: { completed: number; total: number },
+      percent?: number,
+    ) => {
+      progress = advanceLocalMp4ExportProgress(progress, {
+        phase,
+        message,
+        completedUnits: units?.completed,
+        totalUnits: units?.total,
+        percent,
+      });
+      log.info('Local MP4 progress update:', {
+        jobId,
+        phase: progress.phase,
+        completedUnits: progress.completedUnits,
+        totalUnits: progress.totalUnits,
+        percent: progress.percent,
+      });
+      renderProgress();
+    };
+    const heartbeat = window.setInterval(renderProgress, 1000);
 
     try {
-      updateProgress(t('export.videoMp4.progress.preparing'));
+      updateProgress('preparing', t('export.videoMp4.progress.preparing'));
       const latestStage = await db.stages.get(stage.id).catch(() => undefined);
       const stageTitle = latestStage?.name || stage.name || 'classroom';
       const language = latestStage?.languageDirective || stage.languageDirective;
@@ -73,10 +108,12 @@ export function useExportVideoMp4() {
 
       for (const [index, frame] of plan.frames.entries()) {
         updateProgress(
+          'rendering',
           t('export.videoMp4.progress.renderingFrame', {
             current: index + 1,
             total: plan.frames.length,
           }),
+          { completed: index + 1, total: plan.frames.length },
         );
         const scene = sceneById.get(frame.sceneId);
         frameBlobs.set(frame.file, await renderVideoFrame(frame, scene, mediaRecords, t));
@@ -84,10 +121,12 @@ export function useExportVideoMp4() {
 
       for (const [index, frame] of plan.frames.entries()) {
         updateProgress(
+          'compressing',
           t('export.videoMp4.progress.compressingFrame', {
             current: index + 1,
             total: plan.frames.length,
           }),
+          { completed: index + 1, total: plan.frames.length },
         );
         const blob = frameBlobs.get(frame.file);
         if (!blob) continue;
@@ -136,10 +175,12 @@ export function useExportVideoMp4() {
 
       for (const [index, item] of speechActions.entries()) {
         updateProgress(
+          'audio',
           t('export.videoMp4.progress.resolvingAudio', {
             current: index + 1,
             total: speechActions.length,
           }),
+          { completed: index + 1, total: speechActions.length },
         );
         const audio = await resolveSpeechAudioBlob(
           item.sceneOrder,
@@ -147,7 +188,11 @@ export function useExportVideoMp4() {
           audioById,
           language,
           (current, total) =>
-            updateProgress(t('export.videoMp4.progress.generatingAudio', { current, total })),
+            updateProgress(
+              'audio',
+              t('export.videoMp4.progress.generatingAudio', { current, total }),
+              { completed: current, total },
+            ),
           index + 1,
           speechActions.length,
         );
@@ -175,7 +220,7 @@ export function useExportVideoMp4() {
       const formData = new FormData();
       formData.append('manifest', JSON.stringify(mp4Plan.manifest));
 
-      updateProgress(t('export.videoMp4.progress.preparingUpload'));
+      updateProgress('uploading', t('export.videoMp4.progress.preparingUpload'));
       const usedFrameFiles = new Set(mp4Plan.manifest.segments.map((segment) => segment.frameFile));
       for (const frameFile of usedFrameFiles) {
         const blob = compressedFrameBlobs.get(frameFile);
@@ -195,15 +240,21 @@ export function useExportVideoMp4() {
       });
       log.info('Local MP4 upload diagnostics:', diagnostics);
 
-      updateProgress(t('export.videoMp4.progress.uploading'));
+      updateProgress('uploading', t('export.videoMp4.progress.uploading'));
       const mp4Blob = await uploadMp4Request(formData, {
         onProgress: (percent) =>
-          updateProgress(t('export.videoMp4.progress.uploadingPercent', { percent })),
-        onUploaded: () => updateProgress(t('export.videoMp4.progress.composing')),
+          updateProgress(
+            'uploading',
+            t('export.videoMp4.progress.uploadingPercent', { percent }),
+            undefined,
+            70 + percent * 0.15,
+          ),
+        onUploaded: () => updateProgress('composing', t('export.videoMp4.progress.composing')),
       });
 
-      updateProgress(t('export.videoMp4.progress.downloading'));
+      updateProgress('finalizing', t('export.videoMp4.progress.downloading'));
       saveAs(mp4Blob, `${sanitizeVideoFrameFilenamePart(stageTitle)}.mp4`);
+      updateProgress('complete', t('export.videoMp4.exportSuccess'), undefined, 100);
       toast.success(t('export.videoMp4.exportSuccess'), { id: toastId });
     } catch (error) {
       log.error('Local MP4 export failed:', error);
@@ -212,6 +263,7 @@ export function useExportVideoMp4() {
         description: getErrorMessage(error),
       });
     } finally {
+      window.clearInterval(heartbeat);
       exportingRef.current = false;
       setExporting(false);
     }
