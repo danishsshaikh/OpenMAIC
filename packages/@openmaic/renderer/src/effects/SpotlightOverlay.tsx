@@ -63,6 +63,7 @@ export function SpotlightOverlay({
   }, [measure]);
 
   const active = !!spotlightElementId && !!rect;
+  const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
 
   return (
     <div
@@ -76,7 +77,50 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && rect && (
+        {active && rect && options?.static ? (
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <svg
+              width="100%"
+              height="100%"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              style={{ position: 'absolute', inset: 0 }}
+            >
+              <defs>
+                <mask id={`mask-${spotlightElementId}`}>
+                  <rect x="0" y="0" width="100" height="100" fill="white" />
+                  <rect
+                    fill="black"
+                    x={rect.x - 0.4}
+                    y={rect.y - 0.6}
+                    width={rect.w + 0.8}
+                    height={rect.h + 1.2}
+                    rx={1}
+                  />
+                </mask>
+              </defs>
+
+              <rect
+                width="100"
+                height="100"
+                fill={`rgba(0,0,0,${dimOpacity})`}
+                mask={`url(#mask-${spotlightElementId})`}
+              />
+
+              <rect
+                x={rect.x - 0.4}
+                y={rect.y - 0.6}
+                width={rect.w + 0.8}
+                height={rect.h + 1.2}
+                rx={1}
+                fill="none"
+                stroke="rgba(255,255,255,0.7)"
+                strokeWidth="1.2"
+                style={{ vectorEffect: 'non-scaling-stroke' } as React.CSSProperties}
+              />
+            </svg>
+          </div>
+        ) : active && rect ? (
           <motion.div
             key={`spotlight-${spotlightElementId}`}
             initial={{ opacity: 0 }}
@@ -118,7 +162,7 @@ export function SpotlightOverlay({
               <rect
                 width="100"
                 height="100"
-                fill="rgba(0,0,0,0.7)"
+                fill={`rgba(0,0,0,${dimOpacity})`}
                 mask={`url(#mask-${spotlightElementId})`}
               />
 
@@ -147,8 +191,13 @@ export function SpotlightOverlay({
               />
             </svg>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );
+}
+
+function clampOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 0.7;
+  return Math.max(0, Math.min(1, value));
 }

@@ -8,14 +8,20 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
 import { collectAudioFiles } from './classroom-zip-utils';
 import { compressFrameForMp4Upload } from './mp4/frame-compression';
-import { buildLocalMp4Manifest, sanitizeMp4PathPart, speechAudioLookupIds } from './mp4/planner';
+import {
+  buildLocalMp4Manifest,
+  buildLocalMp4SpeechSegmentVisualPlan,
+  buildLocalMp4VisualFrameFile,
+  sanitizeMp4PathPart,
+  speechAudioLookupIds,
+} from './mp4/planner';
 import {
   advanceLocalMp4ExportProgress,
   createLocalMp4ExportProgress,
   describeLocalMp4ExportProgress,
   type LocalMp4ExportPhase,
 } from './mp4/progress';
-import type { LocalMp4MissingAudio } from './mp4/types';
+import type { LocalMp4MissingAudio, LocalMp4VisualEffects } from './mp4/types';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
 import { renderVideoFrame, VIDEO_FRAME_HEIGHT, VIDEO_FRAME_WIDTH } from './use-export-video-frames';
 import { db, type AudioFileRecord } from '@/lib/utils/database';
@@ -94,97 +100,103 @@ export function useExportVideoMp4() {
       const stageTitle = latestStage?.name || stage.name || 'classroom';
       const language = latestStage?.languageDirective || stage.languageDirective;
       const plan = buildVideoFrameExportPlan({ stageTitle, scenes });
-      const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
       const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
       const audioRecords = await collectAudioFiles(scenes);
       const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
       const frameBlobs = new Map<string, Blob>();
       const compressedFrameBlobs = new Map<string, Blob>();
-      const frameUploadFilesByPlanFile = new Map<string, string>();
       let compressedFrameWidth = VIDEO_FRAME_WIDTH;
       let compressedFrameHeight = VIDEO_FRAME_HEIGHT;
       const audioBlobs = new Map<string, Blob>();
       const audioFilesByAction = new Map<ActionAudioKey, string>();
+      const segmentVisualPlan = buildLocalMp4SpeechSegmentVisualPlan({
+        frames: plan.frames,
+        scenes,
+        getFrameFile: ({ frame, effects }) => mp4FrameFileForFrame(frame.file, effects),
+      });
 
-      for (const [index, frame] of plan.frames.entries()) {
+      log.info('Local MP4 teaching effects prepared:', {
+        jobId,
+        spotlightActions: segmentVisualPlan.stats.spotlightActions,
+        laserActions: segmentVisualPlan.stats.laserActions,
+        assignedEffects: segmentVisualPlan.stats.assignedEffects,
+        omittedEffects: segmentVisualPlan.stats.omittedEffects,
+        uniqueEffectFrames: segmentVisualPlan.stats.uniqueEffectFrames,
+        uniqueFrames: segmentVisualPlan.visualFrames.length,
+      });
+      for (const warning of segmentVisualPlan.warnings) {
+        if (warning.actionType === 'spotlight' || warning.actionType === 'laser') {
+          log.warn('Local MP4 teaching effect omitted:', {
+            jobId,
+            sceneIndex: warning.sceneIndex,
+            actionIndex: warning.actionIndex,
+            actionType: warning.actionType,
+            reason: warning.reason,
+          });
+        }
+      }
+
+      for (const [index, visualFrame] of segmentVisualPlan.visualFrames.entries()) {
         updateProgress(
           'rendering',
           t('export.videoMp4.progress.renderingFrame', {
             current: index + 1,
-            total: plan.frames.length,
+            total: segmentVisualPlan.visualFrames.length,
           }),
-          { completed: index + 1, total: plan.frames.length },
+          { completed: index + 1, total: segmentVisualPlan.visualFrames.length },
         );
-        const scene = sceneById.get(frame.sceneId);
-        frameBlobs.set(frame.file, await renderVideoFrame(frame, scene, mediaRecords, t));
+        log.info('Local MP4 visual frame render started:', {
+          jobId,
+          sceneIndex: visualFrame.frame.index,
+          hasSpotlight: !!visualFrame.effects?.spotlight,
+          hasLaser: !!visualFrame.effects?.laser,
+        });
+        const blob = await renderVideoFrame(
+          visualFrame.frame,
+          visualFrame.scene,
+          mediaRecords,
+          t,
+          visualFrame.effects,
+        );
+        frameBlobs.set(visualFrame.file, blob);
+        log.info('Local MP4 visual frame render completed:', {
+          jobId,
+          sceneIndex: visualFrame.frame.index,
+          hasSpotlight: !!visualFrame.effects?.spotlight,
+          hasLaser: !!visualFrame.effects?.laser,
+        });
       }
 
-      for (const [index, frame] of plan.frames.entries()) {
+      for (const [index, visualFrame] of segmentVisualPlan.visualFrames.entries()) {
         updateProgress(
           'compressing',
           t('export.videoMp4.progress.compressingFrame', {
             current: index + 1,
-            total: plan.frames.length,
+            total: segmentVisualPlan.visualFrames.length,
           }),
-          { completed: index + 1, total: plan.frames.length },
+          { completed: index + 1, total: segmentVisualPlan.visualFrames.length },
         );
-        const blob = frameBlobs.get(frame.file);
-        if (!blob) continue;
+        const blob = frameBlobs.get(visualFrame.file);
+        if (!blob)
+          throw new Error(`Missing rendered MP4 frame for scene #${visualFrame.frame.index}`);
         const compressed = await compressFrameForMp4Upload(blob);
-        const uploadFile = mp4FrameFileForFrame(frame.file);
-        frameUploadFilesByPlanFile.set(frame.file, uploadFile);
-        compressedFrameBlobs.set(uploadFile, compressed.blob);
+        compressedFrameBlobs.set(visualFrame.file, compressed.blob);
         compressedFrameWidth = compressed.width;
         compressedFrameHeight = compressed.height;
       }
 
-      const mp4Frames = plan.frames.map((frame) => ({
-        ...frame,
-        file: frameUploadFilesByPlanFile.get(frame.file) ?? mp4FrameFileForFrame(frame.file),
-      }));
-
-      const speechActions = plan.frames.flatMap((frame) => {
-        const scene = sceneById.get(frame.sceneId);
-        if (!scene) return [];
-
-        let speechIndex = 0;
-        const actions: Array<{
-          sceneId: string;
-          sceneOrder: number;
-          actionIndex: number;
-          speechIndex: number;
-          speech: SpeechAction;
-          frameFile: string;
-        }> = [];
-        for (const [actionIndex, action] of (scene.actions ?? []).entries()) {
-          if (action.type !== 'speech') continue;
-          const speech = action as SpeechAction;
-          if (!speech.text?.trim()) continue;
-          speechIndex++;
-          actions.push({
-            sceneId: scene.id,
-            sceneOrder: scene.order,
-            actionIndex,
-            speechIndex,
-            speech,
-            frameFile: frame.file,
-          });
-        }
-        return actions;
-      });
-
-      for (const [index, item] of speechActions.entries()) {
+      for (const [index, item] of segmentVisualPlan.segments.entries()) {
         updateProgress(
           'audio',
           t('export.videoMp4.progress.resolvingAudio', {
             current: index + 1,
-            total: speechActions.length,
+            total: segmentVisualPlan.segments.length,
           }),
-          { completed: index + 1, total: speechActions.length },
+          { completed: index + 1, total: segmentVisualPlan.segments.length },
         );
         const audio = await resolveSpeechAudioBlob(
-          item.sceneOrder,
-          item.speech,
+          item.scene.order,
+          item.action,
           audioById,
           language,
           (current, total) =>
@@ -194,21 +206,23 @@ export function useExportVideoMp4() {
               { completed: current, total },
             ),
           index + 1,
-          speechActions.length,
+          segmentVisualPlan.segments.length,
         );
         if (!audio) continue;
 
         const file = audioFileForSpeech(item.frameFile, item.speechIndex, audio.extension);
-        audioFilesByAction.set(actionAudioKey(item.sceneId, item.actionIndex), file);
+        audioFilesByAction.set(actionAudioKey(item.scene.id, item.actionIndex), file);
         audioBlobs.set(file, audio.blob);
       }
 
       const mp4Plan = buildLocalMp4Manifest({
         stageTitle,
-        frames: mp4Frames,
+        frames: plan.frames,
         scenes,
         frameWidth: compressedFrameWidth,
         frameHeight: compressedFrameHeight,
+        segmentVisuals: segmentVisualPlan.segments,
+        visualWarnings: segmentVisualPlan.warnings,
         resolveAudioFile: ({ scene, actionIndex }) =>
           audioFilesByAction.get(actionAudioKey(scene.id, actionIndex)) ?? null,
       });
@@ -326,17 +340,16 @@ async function resolveSpeechAudioBlob(
 
 function audioFileForSpeech(frameFile: string, speechIndex: number, extension: string): string {
   const frameName = fileName(frameFile)
-    .replace(/\.png$/i, '')
+    .replace(/\.[^.]+$/i, '')
     .replace(/-placeholder$/i, '');
   const safeBaseName = sanitizeMp4PathPart(frameName) || 'scene';
   const safeExtension = normalizeAudioExtension(extension);
   return `audio-mp4/${safeBaseName}/speech-${String(speechIndex).padStart(3, '0')}.${safeExtension}`;
 }
 
-function mp4FrameFileForFrame(frameFile: string): string {
-  const frameName = fileName(frameFile)
-    .replace(/\.[^.]+$/i, '')
-    .replace(/-placeholder$/i, '');
+function mp4FrameFileForFrame(frameFile: string, effects?: LocalMp4VisualEffects): string {
+  const effectAwareFile = buildLocalMp4VisualFrameFile(frameFile, effects, 'jpg');
+  const frameName = fileName(effectAwareFile).replace(/\.[^.]+$/i, '');
   return `frames-mp4/${sanitizeMp4PathPart(frameName) || 'scene'}.jpg`;
 }
 

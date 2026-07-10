@@ -223,6 +223,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
                   geometry={laserGeometry}
                   color={effects.laser.color}
                   duration={effects.laser.duration}
+                  static={effects.laser.static}
                 />
               )}
             </AnimatePresence>

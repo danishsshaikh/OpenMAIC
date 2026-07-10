@@ -2,6 +2,21 @@ import type { SceneType } from '@/lib/types/stage';
 
 export const LOCAL_MP4_EXPORT_VERSION = 1;
 
+export interface LocalMp4SpotlightEffect {
+  elementId: string;
+  dimOpacity?: number;
+}
+
+export interface LocalMp4LaserEffect {
+  elementId: string;
+  color?: string;
+}
+
+export interface LocalMp4VisualEffects {
+  spotlight?: LocalMp4SpotlightEffect;
+  laser?: LocalMp4LaserEffect;
+}
+
 export interface LocalMp4Segment {
   id: string;
   index: number;
@@ -18,6 +33,9 @@ export interface LocalMp4Segment {
 export interface LocalMp4Warning {
   sceneId?: string;
   sceneTitle?: string;
+  sceneIndex?: number;
+  actionIndex?: number;
+  actionType?: string;
   reason: string;
 }
 
