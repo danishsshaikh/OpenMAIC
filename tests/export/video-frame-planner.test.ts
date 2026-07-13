@@ -11,7 +11,6 @@ import {
   VIDEO_FRAME_EXPORT_SCHEMA,
   VIDEO_FRAME_EXPORT_TYPE,
   VIDEO_FRAME_EXPORT_VERSION,
-  VIDEO_FRAME_TARGET_RENDERER,
 } from '@/lib/export/video-frame-types';
 import type { CollectedMedia } from '@/lib/export/classroom-zip-utils';
 
@@ -103,11 +102,6 @@ describe('video frame export planner', () => {
         name: VIDEO_FRAME_COMPILER_NAME,
         version: VIDEO_FRAME_EXPORT_VERSION,
       },
-      renderTarget: {
-        renderer: VIDEO_FRAME_TARGET_RENDERER,
-        execution: 'not-included',
-        outputFormats: [],
-      },
       stageTitle: 'Manifest Course',
       exportedAt: '2026-07-04T00:00:00.000Z',
       frames: [
@@ -180,17 +174,17 @@ describe('video frame export planner', () => {
       {
         family: 'quiz',
         reason:
-          'Quiz scenes are preserved as scene JSON and standalone HTML sidecars; video rendering is deferred to the Hyperframes renderer follow-up.',
+          'Quiz scenes are preserved as scene JSON and standalone HTML sidecars for a future VideoTimeline renderer.',
       },
       {
         family: 'interactive',
         reason:
-          'Interactive/widget scenes require runtime playback; this artifact preserves scene JSON and reusable HTML sidecars when available.',
+          'Interactive/widget scenes require runtime playback; this collector preserves scene JSON and reusable HTML sidecars when available.',
       },
       {
         family: 'pbl',
         reason:
-          'PBL scenes require OpenMAIC task runtime; this artifact preserves scene JSON for future renderer support.',
+          'PBL scenes require OpenMAIC task runtime; this collector preserves scene JSON for future renderer support.',
       },
     ]);
   });

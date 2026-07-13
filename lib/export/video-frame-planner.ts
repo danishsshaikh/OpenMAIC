@@ -5,7 +5,6 @@ import {
   VIDEO_FRAME_EXPORT_SCHEMA,
   VIDEO_FRAME_EXPORT_TYPE,
   VIDEO_FRAME_EXPORT_VERSION,
-  VIDEO_FRAME_TARGET_RENDERER,
   type VideoFrameAudioEntry,
   type VideoFrameEntry,
   type VideoFrameExportPlan,
@@ -94,11 +93,6 @@ export function buildVideoFrameExportPlan({
         name: VIDEO_FRAME_COMPILER_NAME,
         version: VIDEO_FRAME_EXPORT_VERSION,
       },
-      renderTarget: {
-        renderer: VIDEO_FRAME_TARGET_RENDERER,
-        execution: 'not-included',
-        outputFormats: [],
-      },
       exportedAt,
       frames,
       media: [],
@@ -118,13 +112,13 @@ function planSceneUnsupportedEntry(scene: Scene): VideoFrameUnsupportedEntry | n
 function getScenePlaceholderReason(scene: Scene): string {
   switch (scene.type) {
     case 'quiz':
-      return 'Quiz scenes are preserved as scene JSON and standalone HTML sidecars; video rendering is deferred to the Hyperframes renderer follow-up.';
+      return 'Quiz scenes are preserved as scene JSON and standalone HTML sidecars for a future VideoTimeline renderer.';
     case 'interactive':
-      return 'Interactive/widget scenes require runtime playback; this artifact preserves scene JSON and reusable HTML sidecars when available.';
+      return 'Interactive/widget scenes require runtime playback; this collector preserves scene JSON and reusable HTML sidecars when available.';
     case 'pbl':
-      return 'PBL scenes require OpenMAIC task runtime; this artifact preserves scene JSON for future renderer support.';
+      return 'PBL scenes require OpenMAIC task runtime; this collector preserves scene JSON for future renderer support.';
     default:
-      return 'This scene type is preserved as sidecar data but is not rendered by this compiler slice.';
+      return 'This scene type is preserved as sidecar data but is not rendered by this internal collector.';
   }
 }
 

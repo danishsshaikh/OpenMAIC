@@ -49,21 +49,6 @@
     "exportFailed": "Export failed",
     "classroomZip": "Export Classroom ZIP",
     "classroomZipDesc": "Course structure + media files",
-    "videoFrames": {
-      "title": "Export video artifact",
-      "desc": "Frames + manifest + sidecars ZIP",
-      "exporting": "Exporting video artifact...",
-      "exportSuccess": "Video artifact exported",
-      "exportFailed": "Video artifact export failed",
-      "noScenes": "No classroom scenes available to export.",
-      "placeholderBrand": "OpenMAIC Video Artifact",
-      "placeholderScene": "Scene {{index}}",
-      "placeholderHeading": "{{sceneType}} scene placeholder",
-      "placeholderMessage": "This scene requires OpenMAIC interactive playback.",
-      "placeholderHtmlMessage": "Open the HTML sidecar for interactive playback.",
-      "placeholderHtmlHint": "See {{file}} in this export.",
-      "placeholderHint": "Open in OpenMAIC for the full interactive experience."
-    },
     "inlinePartial": "{{count}} external asset(s) couldn't be bundled; the course may not display correctly offline."
   },
   "import": {

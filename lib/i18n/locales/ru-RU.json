@@ -49,21 +49,6 @@
     "exportFailed": "Ошибка экспорта",
     "classroomZip": "Экспорт ZIP класса",
     "classroomZipDesc": "Структура курса + медиафайлы",
-    "videoFrames": {
-      "title": "Экспорт видео-артефакта",
-      "desc": "ZIP с кадрами, манифестом и sidecar-файлами",
-      "exporting": "Экспорт видео-артефакта...",
-      "exportSuccess": "Видео-артефакт экспортирован",
-      "exportFailed": "Не удалось экспортировать видео-артефакт",
-      "noScenes": "Нет сцен класса для экспорта.",
-      "placeholderBrand": "Видео-артефакт OpenMAIC",
-      "placeholderScene": "Сцена {{index}}",
-      "placeholderHeading": "Заполнитель сцены {{sceneType}}",
-      "placeholderMessage": "Эта сцена требует интерактивного воспроизведения в OpenMAIC.",
-      "placeholderHtmlMessage": "Откройте HTML-файл sidecar для интерактивного воспроизведения.",
-      "placeholderHtmlHint": "См. {{file}} в этом экспорте.",
-      "placeholderHint": "Откройте в OpenMAIC для полного интерактивного опыта."
-    },
     "inlinePartial": "Не удалось упаковать {{count}} внешн. ресурс(ов); курс может отображаться некорректно офлайн."
   },
   "import": {

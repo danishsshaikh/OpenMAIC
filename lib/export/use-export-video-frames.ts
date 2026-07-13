@@ -5,7 +5,6 @@ import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { slideToPng } from '@openmaic/renderer/snapshot';
 import type { Slide } from '@openmaic/dsl';
-import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import type { Scene } from '@/lib/types/stage';
@@ -27,6 +26,29 @@ const FRAME_HEIGHT = 720;
 
 type ExportT = (key: string, options?: Record<string, unknown>) => string;
 
+const INTERNAL_VIDEO_COLLECTOR_TEXT = {
+  noScenes: 'No classroom scenes available for the internal collector.',
+  exporting: 'Exporting internal video collector artifact...',
+  exportSuccess: 'Internal video collector artifact exported',
+  exportFailed: 'Internal video collector artifact export failed',
+  placeholderBrand: 'OpenMAIC Collector Artifact',
+  placeholderScene: 'Scene {{index}}',
+  placeholderHeading: '{{sceneType}} scene placeholder',
+  placeholderMessage: 'This scene requires OpenMAIC interactive playback.',
+  placeholderHtmlMessage: 'Open the HTML sidecar for interactive playback.',
+  placeholderHtmlHint: 'See {{file}} in this collector artifact.',
+  placeholderHint: 'Open in OpenMAIC for the full interactive experience.',
+};
+
+function internalCollectorText(key: string, options?: Record<string, unknown>): string {
+  const value =
+    INTERNAL_VIDEO_COLLECTOR_TEXT[key as keyof typeof INTERNAL_VIDEO_COLLECTOR_TEXT] ?? key;
+  return Object.entries(options ?? {}).reduce(
+    (text, [name, replacement]) => text.replaceAll(`{{${name}}}`, String(replacement)),
+    value,
+  );
+}
+
 type SnapshotMediaElement = {
   type: string;
   src?: string;
@@ -37,20 +59,19 @@ type SnapshotMediaElement = {
 export function useExportVideoFrames() {
   const [exporting, setExporting] = useState(false);
   const exportingRef = useRef(false);
-  const { t } = useI18n();
 
   const exportVideoFrames = useCallback(async () => {
     if (exportingRef.current) return;
 
     const { stage, scenes } = useStageStore.getState();
     if (!stage || scenes.length === 0) {
-      toast.error(t('export.videoFrames.noScenes'));
+      toast.error(internalCollectorText('noScenes'));
       return;
     }
 
     exportingRef.current = true;
     setExporting(true);
-    const toastId = toast.loading(t('export.videoFrames.exporting'));
+    const toastId = toast.loading(internalCollectorText('exporting'));
 
     try {
       const JSZip = (await import('jszip')).default;
@@ -77,7 +98,7 @@ export function useExportVideoFrames() {
         const blob =
           scene && frame.renderMode === 'slide-snapshot' && scene.content.type === 'slide'
             ? await renderSlideFrame(scene, mediaRecords)
-            : await renderPlaceholderFrame(frame, t);
+            : await renderPlaceholderFrame(frame, internalCollectorText);
         zip.file(frame.file, blob);
         if (scene) zip.file(frame.sceneFile, JSON.stringify(scene, null, 2));
         if (
@@ -128,21 +149,24 @@ export function useExportVideoFrames() {
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-artifact.zip`);
-      toast.success(t('export.videoFrames.exportSuccess'), { id: toastId });
+      saveAs(zipBlob, `${sanitizeVideoFrameFilenamePart(stageTitle)}-video-collector-artifact.zip`);
+      toast.success(internalCollectorText('exportSuccess'), { id: toastId });
       if (failedHtmlAssetUrls.size > 0) {
-        toast.warning(t('export.inlinePartial', { count: failedHtmlAssetUrls.size }), {
-          description: formatHosts([...failedHtmlAssetUrls]),
-        });
+        toast.warning(
+          `${failedHtmlAssetUrls.size} external asset(s) couldn't be bundled; the course may not display correctly offline.`,
+          {
+            description: formatHosts([...failedHtmlAssetUrls]),
+          },
+        );
       }
     } catch (error) {
       log.error('Video frame export failed:', error);
-      toast.error(t('export.videoFrames.exportFailed'), { id: toastId });
+      toast.error(internalCollectorText('exportFailed'), { id: toastId });
     } finally {
       exportingRef.current = false;
       setExporting(false);
     }
-  }, [t]);
+  }, []);
 
   return { exporting, exportVideoFrames };
 }
@@ -275,13 +299,13 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
 
   ctx.fillStyle = '#64748b';
   ctx.font = '600 24px Inter, system-ui, sans-serif';
-  ctx.fillText(t('export.videoFrames.placeholderBrand'), 116, 140);
+  ctx.fillText(t('placeholderBrand'), 116, 140);
 
   ctx.fillStyle = '#0f172a';
   ctx.font = '700 44px Inter, system-ui, sans-serif';
   drawWrappedText(
     ctx,
-    t('export.videoFrames.placeholderHeading', { sceneType: frame.sceneType }),
+    t('placeholderHeading', { sceneType: frame.sceneType }),
     116,
     228,
     FRAME_WIDTH - 232,
@@ -297,9 +321,7 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
   ctx.font = '400 24px Inter, system-ui, sans-serif';
   drawWrappedText(
     ctx,
-    frame.html.supported && frame.html.file
-      ? t('export.videoFrames.placeholderHtmlMessage')
-      : t('export.videoFrames.placeholderMessage'),
+    frame.html.supported && frame.html.file ? t('placeholderHtmlMessage') : t('placeholderMessage'),
     116,
     430,
     FRAME_WIDTH - 232,
@@ -309,8 +331,8 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
   drawWrappedText(
     ctx,
     frame.html.supported && frame.html.file
-      ? t('export.videoFrames.placeholderHtmlHint', { file: frame.html.file })
-      : t('export.videoFrames.placeholderHint'),
+      ? t('placeholderHtmlHint', { file: frame.html.file })
+      : t('placeholderHint'),
     116,
     500,
     FRAME_WIDTH - 232,
@@ -320,7 +342,7 @@ async function renderPlaceholderFrame(frame: VideoFrameEntry, t: ExportT): Promi
 
   ctx.fillStyle = '#94a3b8';
   ctx.font = '600 20px Inter, system-ui, sans-serif';
-  ctx.fillText(t('export.videoFrames.placeholderScene', { index: frame.index }), 116, 620);
+  ctx.fillText(t('placeholderScene', { index: frame.index }), 116, 620);
 
   return canvasToBlob(canvas);
 }
