@@ -3,13 +3,7 @@
 import { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
-
-interface SpotlightRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+import { getStaticSpotlightFocusRect, type SpotlightRect } from './spotlightGeometry';
 
 export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
@@ -64,6 +58,7 @@ export function SpotlightOverlay({
 
   const active = !!spotlightElementId && !!rect;
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
+  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
 
   return (
     <div
@@ -77,48 +72,24 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && rect && options?.static ? (
+        {active && staticFocusRect && options?.static ? (
           <div style={{ position: 'absolute', inset: 0 }}>
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              style={{ position: 'absolute', inset: 0 }}
-            >
-              <defs>
-                <mask id={`mask-${spotlightElementId}`}>
-                  <rect x="0" y="0" width="100" height="100" fill="white" />
-                  <rect
-                    fill="black"
-                    x={rect.x - 0.4}
-                    y={rect.y - 0.6}
-                    width={rect.w + 0.8}
-                    height={rect.h + 1.2}
-                    rx={1}
-                  />
-                </mask>
-              </defs>
-
-              <rect
-                width="100"
-                height="100"
-                fill={`rgba(0,0,0,${dimOpacity})`}
-                mask={`url(#mask-${spotlightElementId})`}
-              />
-
-              <rect
-                x={rect.x - 0.4}
-                y={rect.y - 0.6}
-                width={rect.w + 0.8}
-                height={rect.h + 1.2}
-                rx={1}
-                fill="none"
-                stroke="rgba(255,255,255,0.7)"
-                strokeWidth="1.2"
-                style={{ vectorEffect: 'non-scaling-stroke' } as React.CSSProperties}
-              />
-            </svg>
+            {/* html2canvas-pro does not reliably preserve SVG masks; use an
+               oversized shadow around the transparent focus rect for static
+               MP4/snapshot frames so the target remains visible. */}
+            <div
+              data-openmaic-static-spotlight="true"
+              style={{
+                position: 'absolute',
+                left: `${staticFocusRect.x}%`,
+                top: `${staticFocusRect.y}%`,
+                width: `${staticFocusRect.w}%`,
+                height: `${staticFocusRect.h}%`,
+                borderRadius: `${staticFocusRect.rx}%`,
+                border: '1.2px solid rgba(255,255,255,0.7)',
+                boxShadow: `0 0 0 9999px rgba(0,0,0,${dimOpacity})`,
+              }}
+            />
           </div>
         ) : active && rect ? (
           <motion.div
