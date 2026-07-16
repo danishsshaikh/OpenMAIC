@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getStaticSpotlightFocusRect } from '../../packages/@openmaic/renderer/src/effects/spotlightGeometry';
+import {
+  getStaticSpotlightDimRects,
+  getStaticSpotlightFocusRect,
+} from '../../packages/@openmaic/renderer/src/effects/spotlightGeometry';
 
 describe('static spotlight geometry', () => {
   it('expands the focus rect using the same final padding as classroom spotlight', () => {
@@ -37,5 +40,30 @@ describe('static spotlight geometry', () => {
     expect(rect!.w).toBeCloseTo(1.6);
     expect(rect!.h).toBeCloseTo(1.8);
     expect(rect!.rx).toBeCloseTo(0.8);
+  });
+
+  it('builds ordinary dim rectangles around the focus rect for static snapshots', () => {
+    const focus = getStaticSpotlightFocusRect({ x: 25, y: 20, w: 30, h: 25 });
+    const dimRects = getStaticSpotlightDimRects(focus);
+
+    expect(dimRects.map((rect) => rect.key)).toEqual(['top', 'bottom', 'left', 'right']);
+    expect(dimRects[0]).toMatchObject({ x: 0, y: 0, w: 100 });
+    expect(dimRects[0].h).toBeCloseTo(19.4);
+    expect(dimRects[1]).toMatchObject({ x: 0, w: 100 });
+    expect(dimRects[1].y).toBeCloseTo(45.6);
+    expect(dimRects[1].h).toBeCloseTo(54.4);
+    expect(dimRects[2]).toMatchObject({ x: 0 });
+    expect(dimRects[2].y).toBeCloseTo(19.4);
+    expect(dimRects[2].w).toBeCloseTo(24.6);
+    expect(dimRects[2].h).toBeCloseTo(26.2);
+    expect(dimRects[3].x).toBeCloseTo(55.4);
+    expect(dimRects[3].y).toBeCloseTo(19.4);
+    expect(dimRects[3].w).toBeCloseTo(44.6);
+    expect(dimRects[3].h).toBeCloseTo(26.2);
+  });
+
+  it('does not create dim rectangles for invalid focus geometry', () => {
+    expect(getStaticSpotlightDimRects(null)).toEqual([]);
+    expect(getStaticSpotlightDimRects({ x: 10, y: 10, w: 0, h: 12, rx: 0 })).toEqual([]);
   });
 });

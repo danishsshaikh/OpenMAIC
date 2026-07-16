@@ -3,7 +3,11 @@
 import { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
-import { getStaticSpotlightFocusRect, type SpotlightRect } from './spotlightGeometry';
+import {
+  getStaticSpotlightDimRects,
+  getStaticSpotlightFocusRect,
+  type SpotlightRect,
+} from './spotlightGeometry';
 
 export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
@@ -59,6 +63,7 @@ export function SpotlightOverlay({
   const active = !!spotlightElementId && !!rect;
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
   const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
+  const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
 
   return (
     <div
@@ -72,13 +77,27 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && staticFocusRect && options?.static ? (
-          <div style={{ position: 'absolute', inset: 0 }}>
-            {/* html2canvas-pro does not reliably preserve SVG masks; use an
-               oversized shadow around the transparent focus rect for static
-               MP4/snapshot frames so the target remains visible. */}
+        {active && staticFocusRect && staticDimRects.length > 0 && options?.static ? (
+          <div data-openmaic-static-spotlight="true" style={{ position: 'absolute', inset: 0 }}>
+            {/* html2canvas-pro does not reliably preserve SVG masks or oversized
+               shadows. Static export uses ordinary dim rectangles so the
+               original target content remains uncovered in the rasterized PNG. */}
+            {staticDimRects.map((dimRect) => (
+              <div
+                key={dimRect.key}
+                data-openmaic-static-spotlight-dim={dimRect.key}
+                style={{
+                  position: 'absolute',
+                  left: `${dimRect.x}%`,
+                  top: `${dimRect.y}%`,
+                  width: `${dimRect.w}%`,
+                  height: `${dimRect.h}%`,
+                  backgroundColor: `rgba(0,0,0,${dimOpacity})`,
+                }}
+              />
+            ))}
             <div
-              data-openmaic-static-spotlight="true"
+              data-openmaic-static-spotlight-focus="true"
               style={{
                 position: 'absolute',
                 left: `${staticFocusRect.x}%`,
@@ -87,7 +106,6 @@ export function SpotlightOverlay({
                 height: `${staticFocusRect.h}%`,
                 borderRadius: `${staticFocusRect.rx}%`,
                 border: '1.2px solid rgba(255,255,255,0.7)',
-                boxShadow: `0 0 0 9999px rgba(0,0,0,${dimOpacity})`,
               }}
             />
           </div>

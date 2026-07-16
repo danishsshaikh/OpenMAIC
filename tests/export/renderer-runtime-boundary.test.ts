@@ -41,10 +41,16 @@ describe('renderer runtime build boundary', () => {
       .filter(({ source }) => source.includes('data-openmaic-static-spotlight'));
 
     expect(spotlightChunks.length).toBeGreaterThan(0);
-    expect(spotlightChunks.some(({ source }) => source.includes('9999px'))).toBe(true);
+    expect(
+      spotlightChunks.some(({ source }) => source.includes('data-openmaic-static-spotlight-dim')),
+    ).toBe(true);
+    expect(
+      spotlightChunks.some(({ source }) => source.includes('getStaticSpotlightDimRects')),
+    ).toBe(true);
     expect(
       spotlightChunks.some(({ source }) => source.includes('getStaticSpotlightFocusRect')),
     ).toBe(true);
+    expect(spotlightChunks.some(({ source }) => source.includes('9999px'))).toBe(false);
   });
 });
 

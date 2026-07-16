@@ -5,6 +5,8 @@ import type { PPTShapeElement, Slide } from '@openmaic/dsl';
 import { slideToPng } from '@openmaic/renderer/snapshot';
 
 type PixelSample = {
+  x: number;
+  y: number;
   r: number;
   g: number;
   b: number;
@@ -12,9 +14,20 @@ type PixelSample = {
   luminance: number;
 };
 
-type SpotlightSnapshotResult = {
-  target: PixelSample;
-  outside: PixelSample;
+type SnapshotFrameResult = {
+  dataUrl: string;
+  dataUrlLength: number;
+  width: number;
+  height: number;
+  targetSamples: PixelSample[];
+  outsideSamples: PixelSample[];
+  targetLuminance: number;
+  outsideLuminance: number;
+};
+
+export type SpotlightSnapshotResult = {
+  base: SnapshotFrameResult;
+  spotlight: SnapshotFrameResult;
   dataUrlLength: number;
 };
 
@@ -69,39 +82,20 @@ export function SpotlightSnapshotEvalClient() {
 
   useEffect(() => {
     window.__renderSpotlightSnapshot = async () => {
-      const dataUrl = (await slideToPng(slide, {
-        width: WIDTH,
-        pixelRatio: 1,
-        format: 'dataUrl',
-        backgroundColor: '#ffffff',
-        effects: {
-          spotlight: {
-            elementId: targetShape.id,
-            dimOpacity: 0.7,
-            static: true,
-          },
+      const base = await renderSnapshotFrame();
+      const spotlight = await renderSnapshotFrame({
+        spotlight: {
+          elementId: targetShape.id,
+          dimOpacity: 0.7,
+          static: true,
         },
-      })) as string;
-      setPreview(dataUrl);
-
-      const image = new Image();
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('failed to decode spotlight snapshot'));
-        image.src = dataUrl;
       });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('2d canvas context unavailable');
-      context.drawImage(image, 0, 0);
+      setPreview(spotlight.dataUrl);
 
       return {
-        target: samplePixel(context, 200, 100),
-        outside: samplePixel(context, 30, 30),
-        dataUrlLength: dataUrl.length,
+        base,
+        spotlight,
+        dataUrlLength: spotlight.dataUrlLength,
       };
     };
     window.__spotlightSnapshotReady = true;
@@ -120,9 +114,65 @@ export function SpotlightSnapshotEvalClient() {
   );
 }
 
+async function renderSnapshotFrame(
+  effects?: NonNullable<Parameters<typeof slideToPng>[1]>['effects'],
+) {
+  const dataUrl = (await slideToPng(slide, {
+    width: WIDTH,
+    pixelRatio: 1,
+    format: 'dataUrl',
+    backgroundColor: '#ffffff',
+    effects,
+  })) as string;
+
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('failed to decode spotlight snapshot'));
+    image.src = dataUrl;
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2d canvas context unavailable');
+  context.drawImage(image, 0, 0);
+
+  const targetSamples = [
+    samplePixel(context, 164, 84),
+    samplePixel(context, 236, 84),
+    samplePixel(context, 164, 118),
+    samplePixel(context, 236, 118),
+  ];
+  const outsideSamples = [
+    samplePixel(context, 30, 30),
+    samplePixel(context, 370, 30),
+    samplePixel(context, 30, 200),
+    samplePixel(context, 370, 200),
+  ];
+
+  return {
+    dataUrl,
+    dataUrlLength: dataUrl.length,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    targetSamples,
+    outsideSamples,
+    targetLuminance: averageLuminance(targetSamples),
+    outsideLuminance: averageLuminance(outsideSamples),
+  };
+}
+
+function averageLuminance(samples: PixelSample[]): number {
+  return samples.reduce((total, sample) => total + sample.luminance, 0) / samples.length;
+}
+
 function samplePixel(context: CanvasRenderingContext2D, x: number, y: number): PixelSample {
   const [r, g, b, a] = context.getImageData(x, y, 1, 1).data;
   return {
+    x,
+    y,
     r,
     g,
     b,
