@@ -109,6 +109,20 @@ export function SpotlightSnapshotEvalClient() {
   return (
     <main style={{ padding: 24 }}>
       <h1>Spotlight snapshot eval</h1>
+      <div
+        aria-hidden="true"
+        id="slide-element-target-card"
+        data-element-id="target-card"
+        style={{
+          position: 'absolute',
+          left: 275,
+          top: 145,
+          width: 164,
+          height: 99,
+          background: '#000000',
+          border: '1px solid #999999',
+        }}
+      />
       {preview ? <img alt="Spotlight snapshot result" src={preview} /> : null}
     </main>
   );

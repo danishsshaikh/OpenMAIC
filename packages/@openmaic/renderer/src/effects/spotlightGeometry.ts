@@ -13,9 +13,54 @@ export interface SpotlightDimRect extends SpotlightRect {
   key: 'top' | 'bottom' | 'left' | 'right';
 }
 
+export interface SpotlightViewportRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
 const STATIC_SPOTLIGHT_PADDING_X = 0.4;
 const STATIC_SPOTLIGHT_PADDING_Y = 0.6;
 const STATIC_SPOTLIGHT_RADIUS = 1;
+
+export function getRelativeSpotlightRect(
+  targetRect: SpotlightViewportRect,
+  containerRect: SpotlightViewportRect,
+): SpotlightRect | null {
+  if (!isFiniteViewportRect(targetRect) || !isFiniteViewportRect(containerRect)) {
+    return null;
+  }
+  if (containerRect.width <= 0 || containerRect.height <= 0) return null;
+  if (targetRect.width <= 0 || targetRect.height <= 0) return null;
+
+  const localLeft = targetRect.left - containerRect.left;
+  const localTop = targetRect.top - containerRect.top;
+  const localRight = targetRect.right - containerRect.left;
+  const localBottom = targetRect.bottom - containerRect.top;
+  const localWidth = localRight - localLeft;
+  const localHeight = localBottom - localTop;
+
+  if (
+    !isFiniteNumber(localLeft) ||
+    !isFiniteNumber(localTop) ||
+    !isFiniteNumber(localWidth) ||
+    !isFiniteNumber(localHeight) ||
+    localWidth <= 0 ||
+    localHeight <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    x: (localLeft / containerRect.width) * 100,
+    y: (localTop / containerRect.height) * 100,
+    w: (localWidth / containerRect.width) * 100,
+    h: (localHeight / containerRect.height) * 100,
+  };
+}
 
 export function getStaticSpotlightFocusRect(rect: SpotlightRect): SpotlightFocusRect | null {
   if (
@@ -77,4 +122,15 @@ function clampPercent(value: number): number {
 
 function isFiniteNumber(value: number): boolean {
   return Number.isFinite(value);
+}
+
+function isFiniteViewportRect(rect: SpotlightViewportRect): boolean {
+  return (
+    isFiniteNumber(rect.left) &&
+    isFiniteNumber(rect.top) &&
+    isFiniteNumber(rect.right) &&
+    isFiniteNumber(rect.bottom) &&
+    isFiniteNumber(rect.width) &&
+    isFiniteNumber(rect.height)
+  );
 }
