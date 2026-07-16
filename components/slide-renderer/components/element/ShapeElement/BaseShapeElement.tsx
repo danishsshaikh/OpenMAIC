@@ -7,6 +7,8 @@ import { useElementFlip } from '../hooks/useElementFlip';
 import { useElementFill } from '../hooks/useElementFill';
 import { GradientDefs } from './GradientDefs';
 import { PatternDefs } from './PatternDefs';
+import { formatInlineMarkdownBold } from '../TextElement/inlineMarkdown';
+import { getTextFitStyle, useTextAutoFit } from '../TextElement/textAutoFit';
 
 export interface BaseShapeElementProps {
   elementInfo: PPTShapeElement;
@@ -27,6 +29,12 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
     defaultFontName: 'Microsoft YaHei',
     defaultColor: '#333333',
   };
+  const textContent = formatInlineMarkdownBold(
+    typeof text.content === 'string' ? text.content : '',
+  );
+  const { containerRef, textRef, textFitScale } = useTextAutoFit(
+    `${textContent}:${elementInfo.width}:${elementInfo.height}:${text.lineHeight ?? ''}:${text.defaultFontName ?? ''}`,
+  );
 
   return (
     <div
@@ -90,25 +98,34 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
           </svg>
 
           <div
+            ref={containerRef}
             className={`shape-text flex flex-col px-2.5 py-2.5 leading-relaxed break-words absolute inset-0 ${
-              text.align === 'top'
+              textFitScale < 0.995
                 ? 'justify-start'
-                : text.align === 'bottom'
-                  ? 'justify-end'
-                  : 'justify-center'
+                : text.align === 'top'
+                  ? 'justify-start'
+                  : text.align === 'bottom'
+                    ? 'justify-end'
+                    : 'justify-center'
             }`}
             style={{
               lineHeight: text.lineHeight,
               letterSpacing: `${text.wordSpace || 0}px`,
+              boxSizing: 'border-box',
+              overflow: 'hidden',
             }}
           >
             <div
+              ref={textRef}
               className="ProseMirror-static [&_p]:mb-[var(--paragraphSpace)]"
               style={{
                 // @ts-expect-error CSS custom properties
                 '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
+                ...getTextFitStyle(textFitScale),
               }}
-              dangerouslySetInnerHTML={{ __html: text.content }}
+              dangerouslySetInnerHTML={{ __html: textContent }}
             />
           </div>
         </div>

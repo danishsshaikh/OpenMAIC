@@ -200,6 +200,35 @@ body[data-maic-editor='true'] .editable-element-text li,
   display: list-item !important;
 }
 
+/* Generated slide playback/export text is bounded by authored element boxes.
+   Keep list spacing compact inside those boxes so card bullets wrap instead
+   of wasting vertical room or losing markers after Tailwind's preflight. */
+.base-element-text .ProseMirror-static ul,
+.base-element-shape .ProseMirror-static ul,
+.base-element-text .ProseMirror-static ol,
+.base-element-shape .ProseMirror-static ol {
+  margin-top: 0;
+  margin-bottom: var(--paragraphSpace, 0);
+  padding-inline-start: 1.15em;
+}
+.base-element-text .ProseMirror-static ul,
+.base-element-shape .ProseMirror-static ul {
+  list-style: disc outside;
+}
+.base-element-text .ProseMirror-static ol,
+.base-element-shape .ProseMirror-static ol {
+  list-style: decimal outside;
+}
+.base-element-text .ProseMirror-static li,
+.base-element-shape .ProseMirror-static li {
+  display: list-item;
+  margin: 0 0 0.16em;
+}
+.base-element-text .ProseMirror-static li:last-child,
+.base-element-shape .ProseMirror-static li:last-child {
+  margin-bottom: 0;
+}
+
 /* Compact react-colorful for the slide editor's color popover. Defaults are
    a 200×200 square with a thick separator — we squeeze it tight + round it
    so the popover feels intentional, not stock. */

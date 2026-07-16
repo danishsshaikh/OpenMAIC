@@ -68,6 +68,9 @@ function CtrlDivider() {
   return <div className="w-px h-3 bg-gray-200/80 dark:bg-gray-700/60 mx-0.5 shrink-0" />;
 }
 
+// TODO(local): Seek bar temporarily hidden while action-level navigation is stabilized.
+const ENABLE_LOCAL_SEEKBAR_UI = false;
+
 function formatPlaybackTime(timeMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(timeMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -152,7 +155,7 @@ export function CanvasToolbar({
   // Effective volume for display
   const effectiveVolume = ttsMuted ? 0 : ttsVolume;
   const presentationLabel = isPresenting ? t('stage.exitFullscreen') : t('stage.fullscreen');
-  const hasPlaybackProgress = !!playbackProgress;
+  const hasPlaybackProgress = ENABLE_LOCAL_SEEKBAR_UI && !!playbackProgress;
   const seekable =
     !!playbackProgress?.seekable && playbackProgress.durationMs > 0 && !!onSeek && !isLiveSession;
   const seekValue = Math.min(

@@ -126,7 +126,9 @@
       "empty": "講義の再生後にノートがここに表示されます",
       "emptyHint": "再生ボタンを押して講義を開始してください",
       "pageLabel": "ページ {{n}}",
-      "currentPage": "現在"
+      "currentPage": "現在",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "Q&A",

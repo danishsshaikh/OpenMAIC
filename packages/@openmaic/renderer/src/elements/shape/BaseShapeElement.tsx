@@ -7,6 +7,8 @@ import { useElementFlip } from '../shared/useElementFlip';
 import { useElementFill } from '../shared/useElementFill';
 import { GradientDefs } from './GradientDefs';
 import { PatternDefs } from './PatternDefs';
+import { formatInlineMarkdownBold } from '../../utils/inlineMarkdown';
+import { getTextFitStyle, useTextAutoFit } from '../../utils/textAutoFit';
 
 export interface BaseShapeElementProps {
   elementInfo: PPTShapeElement;
@@ -101,9 +103,21 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
     defaultFontName: 'Microsoft YaHei',
     defaultColor: '#333333',
   };
+  const textContent = formatInlineMarkdownBold(
+    typeof text.content === 'string' ? text.content : '',
+  );
+  const { containerRef, textRef, textFitScale } = useTextAutoFit(
+    `${textContent}:${elementInfo.width}:${elementInfo.height}:${text.lineHeight ?? ''}:${text.defaultFontName ?? ''}`,
+  );
 
   const justifyContent =
-    text.align === 'top' ? 'flex-start' : text.align === 'bottom' ? 'flex-end' : 'center';
+    textFitScale < 0.995
+      ? 'flex-start'
+      : text.align === 'top'
+        ? 'flex-start'
+        : text.align === 'bottom'
+          ? 'flex-end'
+          : 'center';
 
   return (
     <div
@@ -204,6 +218,7 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
           })()}
 
           <div
+            ref={containerRef}
             className="shape-text"
             style={{
               position: 'absolute',
@@ -211,6 +226,9 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
               display: 'flex',
               flexDirection: 'column',
               justifyContent,
+              boxSizing: 'border-box',
+              padding: '10px',
+              overflow: 'hidden',
               overflowWrap: 'break-word',
               lineHeight: text.lineHeight,
               letterSpacing: `${text.wordSpace || 0}px`,
@@ -221,12 +239,16 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
             }}
           >
             <div
+              ref={textRef}
               className="ProseMirror-static slide-renderer-prose"
               style={{
                 // @ts-expect-error CSS custom properties
                 '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
+                ...getTextFitStyle(textFitScale),
               }}
-              dangerouslySetInnerHTML={{ __html: text.content }}
+              dangerouslySetInnerHTML={{ __html: textContent }}
             />
           </div>
         </div>
