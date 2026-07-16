@@ -20,6 +20,7 @@ import { SpotlightOverlay } from './effects/SpotlightOverlay';
 import { LaserOverlay } from './effects/LaserOverlay';
 import { useOptionalSlideContext } from './context';
 import { SLIDE_RENDERER_STYLES } from './styles';
+import { computeSlideFitTransform, transformPercentageGeometry } from './utils/slideFit';
 
 export interface SlideCanvasProps {
   /**
@@ -84,19 +85,36 @@ export function SlideCanvas(props: SlideCanvasProps) {
     viewportRatio: slide.viewportRatio,
   });
   const canvasScale = scale ?? fitScale;
+  const slideFitTransform = computeSlideFitTransform(
+    elements,
+    viewportStyles.width,
+    viewportStyles.height,
+  );
 
   const resolvedBackground = background ?? slide.background;
   const { backgroundStyle } = useSlideBackgroundStyle(resolvedBackground);
 
   // Plain derivations: when this package is consumed in a React Compiler build
   // these are auto-memoized; otherwise the cost (O(elements) lookups) is trivial.
-  const laserGeometry: PercentageGeometry | null = effects?.laser
+  const rawLaserGeometry: PercentageGeometry | null = effects?.laser
     ? findElementGeometry(elements, effects.laser.elementId, slide.viewportSize)
     : null;
+  const laserGeometry = transformPercentageGeometry(
+    rawLaserGeometry,
+    slideFitTransform,
+    viewportStyles.width,
+    viewportStyles.height,
+  );
 
-  const zoomGeometry: PercentageGeometry | null = effects?.zoom
+  const rawZoomGeometry: PercentageGeometry | null = effects?.zoom
     ? findElementGeometry(elements, effects.zoom.elementId, slide.viewportSize)
     : null;
+  const zoomGeometry = transformPercentageGeometry(
+    rawZoomGeometry,
+    slideFitTransform,
+    viewportStyles.width,
+    viewportStyles.height,
+  );
 
   const highlightElement = effects?.highlight
     ? (elements.find((el) => el.id === effects.highlight!.elementId) ?? null)
@@ -161,21 +179,30 @@ export function SlideCanvas(props: SlideCanvasProps) {
             transform: `scale(${canvasScale})`,
           }}
         >
-          {elements.map((element, index) => (
-            <SlideElement
-              key={element.id}
-              elementInfo={element}
-              elementIndex={index + 1}
-              theme={slide.theme}
-              renderImage={renderImage}
-              renderVideo={renderVideo}
-              onElementClick={onElementClick}
-            />
-          ))}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              transformOrigin: 'top left',
+              transform: slideFitTransform.cssTransform,
+            }}
+          >
+            {elements.map((element, index) => (
+              <SlideElement
+                key={element.id}
+                elementInfo={element}
+                elementIndex={index + 1}
+                theme={slide.theme}
+                renderImage={renderImage}
+                renderVideo={renderVideo}
+                onElementClick={onElementClick}
+              />
+            ))}
 
-          {highlightElement && (
-            <HighlightOverlay element={highlightElement} options={effects?.highlight} />
-          )}
+            {highlightElement && (
+              <HighlightOverlay element={highlightElement} options={effects?.highlight} />
+            )}
+          </div>
         </div>
 
         <SpotlightOverlay options={effects?.spotlight} />
@@ -196,6 +223,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
                   geometry={laserGeometry}
                   color={effects.laser.color}
                   duration={effects.laser.duration}
+                  static={effects.laser.static}
                 />
               )}
             </AnimatePresence>

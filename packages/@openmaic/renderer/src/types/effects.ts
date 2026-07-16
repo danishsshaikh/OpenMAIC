@@ -2,10 +2,15 @@ export interface LaserEffectOptions {
   elementId: string;
   color?: string;
   duration?: number;
+  /** Render the pointer at its final target without fly-in/pulse animation. */
+  static?: boolean;
 }
 
 export interface SpotlightEffectOptions {
   elementId: string;
+  dimOpacity?: number;
+  /** Render the final spotlight mask without transition animation. */
+  static?: boolean;
 }
 
 export interface HighlightEffectOptions {

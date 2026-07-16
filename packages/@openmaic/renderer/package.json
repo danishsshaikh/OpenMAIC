@@ -41,7 +41,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "genfonts": "node scripts/generate-fonts-css.mjs",
-    "build": "node scripts/generate-fonts-css.mjs && rm -rf dist && rollup -c && tsc --emitDeclarationOnly --declarationDir dist",
+    "build": "node scripts/generate-fonts-css.mjs && rm -rf dist && node scripts/build-rollup.mjs && tsc --emitDeclarationOnly --declarationDir dist",
+    "build:runtime": "node scripts/generate-fonts-css.mjs && node scripts/build-rollup.mjs && tsc --emitDeclarationOnly --declarationDir dist",
     "dev": "rollup -c -w",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run build"

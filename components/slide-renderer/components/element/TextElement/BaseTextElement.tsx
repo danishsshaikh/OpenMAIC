@@ -3,6 +3,8 @@
 import type { PPTTextElement } from '@openmaic/dsl';
 import { useElementShadow } from '../hooks/useElementShadow';
 import { ElementOutline } from '../ElementOutline';
+import { formatInlineMarkdownBold } from './inlineMarkdown';
+import { getTextFitStyle, useTextAutoFit } from './textAutoFit';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
@@ -15,6 +17,12 @@ export interface BaseTextElementProps {
  */
 export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
+  const content = formatInlineMarkdownBold(
+    typeof elementInfo.content === 'string' ? elementInfo.content : '',
+  );
+  const { containerRef, textRef, textFitScale } = useTextAutoFit(
+    `${content}:${elementInfo.width}:${elementInfo.height}:${elementInfo.lineHeight ?? ''}:${elementInfo.defaultFontName ?? ''}`,
+  );
 
   return (
     <div
@@ -24,6 +32,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         left: `${elementInfo.left}px`,
         width: `${elementInfo.width}px`,
         height: `${elementInfo.height}px`,
+        overflow: 'hidden',
       }}
     >
       <div
@@ -31,10 +40,17 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         style={{ transform: `rotate(${elementInfo.rotate}deg)` }}
       >
         <div
+          ref={containerRef}
           className="element-content relative p-[10px] leading-[1.5] break-words"
           style={{
-            width: elementInfo.vertical ? 'auto' : `${elementInfo.width}px`,
-            height: elementInfo.vertical ? `${elementInfo.height}px` : 'auto',
+            width: elementInfo.vertical ? 'auto' : '100%',
+            height: '100%',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
             backgroundColor: elementInfo.fill,
             opacity: elementInfo.opacity,
             textShadow: shadowStyle,
@@ -53,8 +69,17 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             outline={elementInfo.outline}
           />
           <div
+            ref={textRef}
             className={`text ProseMirror-static relative ${target === 'thumbnail' ? 'pointer-events-none' : ''}`}
-            dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              ...getTextFitStyle(textFitScale),
+            }}
+            dangerouslySetInnerHTML={{ __html: content }}
           />
         </div>
       </div>

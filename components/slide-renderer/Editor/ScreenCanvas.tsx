@@ -14,6 +14,7 @@ import type { PercentageGeometry } from '@/lib/types/action';
 import { useViewportSize } from './Canvas/hooks/useViewportSize';
 import { useRef, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
+import { computeSlideFitTransform, transformPercentageGeometry } from '../utils/slideFit';
 
 export function ScreenCanvas() {
   const canvasScale = useCanvasStore.use.canvasScale();
@@ -35,9 +36,13 @@ export function ScreenCanvas() {
   const laserElementId = useCanvasStore.use.laserElementId();
   const laserOptions = useCanvasStore.use.laserOptions();
   const zoomTarget = useCanvasStore.use.zoomTarget();
+  const slideFitTransform = useMemo(
+    () => computeSlideFitTransform(elements, viewportStyles.width, viewportStyles.height),
+    [elements, viewportStyles.width, viewportStyles.height],
+  );
 
   // Compute laser pointer geometry
-  const laserGeometry = useMemo<PercentageGeometry | null>(() => {
+  const rawLaserGeometry = useMemo<PercentageGeometry | null>(() => {
     if (!laserElementId) return null;
     const element = elements.find((el) => el.id === laserElementId);
     if (!element) return null;
@@ -46,9 +51,19 @@ export function ScreenCanvas() {
       laserElementId,
     );
   }, [laserElementId, elements]);
+  const laserGeometry = useMemo(
+    () =>
+      transformPercentageGeometry(
+        rawLaserGeometry,
+        slideFitTransform,
+        viewportStyles.width,
+        viewportStyles.height,
+      ),
+    [rawLaserGeometry, slideFitTransform, viewportStyles.width, viewportStyles.height],
+  );
 
   // Compute zoom target geometry
-  const zoomGeometry = useMemo<PercentageGeometry | null>(() => {
+  const rawZoomGeometry = useMemo<PercentageGeometry | null>(() => {
     if (!zoomTarget) return null;
     const element = elements.find((el) => el.id === zoomTarget.elementId);
     if (!element) return null;
@@ -57,6 +72,16 @@ export function ScreenCanvas() {
       zoomTarget.elementId,
     );
   }, [zoomTarget, elements]);
+  const zoomGeometry = useMemo(
+    () =>
+      transformPercentageGeometry(
+        rawZoomGeometry,
+        slideFitTransform,
+        viewportStyles.width,
+        viewportStyles.height,
+      ),
+    [rawZoomGeometry, slideFitTransform, viewportStyles.width, viewportStyles.height],
+  );
 
   return (
     <div className="relative h-full w-full overflow-hidden select-none" ref={canvasRef}>
@@ -90,12 +115,17 @@ export function ScreenCanvas() {
             transform: `scale(${canvasScale})`,
           }}
         >
-          {elements.map((element, index) => (
-            <ScreenElement key={element.id} elementInfo={element} elementIndex={index + 1} />
-          ))}
+          <div
+            className="absolute inset-0 origin-top-left"
+            style={{ transform: slideFitTransform.cssTransform }}
+          >
+            {elements.map((element, index) => (
+              <ScreenElement key={element.id} elementInfo={element} elementIndex={index + 1} />
+            ))}
 
-          {/* Highlight overlay - stacked above elements */}
-          <HighlightOverlay />
+            {/* Highlight overlay - stacked above elements */}
+            <HighlightOverlay />
+          </div>
         </div>
 
         {/* Spotlight overlay - covers the entire slide, positioned via DOM measurement */}

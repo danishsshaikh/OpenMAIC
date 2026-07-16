@@ -126,7 +126,9 @@
       "empty": "강의 재생 후 여기에 노트가 표시됩니다",
       "emptyHint": "재생 버튼을 눌러 강의를 시작하세요",
       "pageLabel": "{{n}}페이지",
-      "currentPage": "현재"
+      "currentPage": "현재",
+      "jumpToLine": "Jump to this line",
+      "jumpUnavailable": "Jump unavailable for this line"
     },
     "badge": {
       "qa": "Q&A",

@@ -37,6 +37,7 @@ import type {
 import type { AudioPlayer } from '@/lib/utils/audio-player';
 import { ActionEngine } from '@/lib/action/engine';
 import { resolvePlaybackCursor } from './engine-cursor';
+import { canJumpWithinReconstructablePrefix } from './action-navigation';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
@@ -262,6 +263,54 @@ export class PlaybackEngine {
     this.invalidatePlaybackWork();
     this.setMode('playing');
     this.processNext();
+  }
+
+  canJumpToAction(actionIndex: number): boolean {
+    const actions = this.getSceneActions();
+    return (
+      this.mode !== 'live' &&
+      canJumpWithinReconstructablePrefix(
+        actions,
+        this.activeActionIndex ?? this.actionIndex,
+        actionIndex,
+      )
+    );
+  }
+
+  async jumpToAction(actionIndex: number, options: { autoplay?: boolean } = {}): Promise<boolean> {
+    if (!this.canJumpToAction(actionIndex)) return false;
+
+    const autoplay = options.autoplay ?? this.mode === 'playing';
+    const generation = this.cancelActivePlayback();
+    this.sceneIndex = 0;
+    this.actionIndex = 0;
+    this.savedSceneIndex = null;
+    this.savedActionIndex = null;
+    this.currentTopicState = null;
+    this.currentTrigger = null;
+    this.pendingSpeechSeekOffsetMs = 0;
+    this.seekProgressOverrideMs = null;
+    this.actionEngine.resetPlaybackVisualState();
+
+    const replayed = await this.replaySeekStateBefore(actionIndex, generation);
+    if (!replayed || !this.isCurrentGeneration(generation)) return false;
+
+    this.actionEngine.clearEffects();
+    this.sceneIndex = 0;
+    this.actionIndex = actionIndex;
+    this.activeActionIndex = null;
+    this.seekProgressOverrideMs = this.getActionStartMs(actionIndex);
+    this.callbacks.onProgress?.(this.getSnapshot());
+
+    if (autoplay) {
+      this.seekProgressOverrideMs = null;
+      this.setMode('playing');
+      this.processNext();
+    } else {
+      this.setMode('paused');
+    }
+
+    return true;
   }
 
   /** playing → paused | live → paused (abort SSE, truncate, topic pending) */

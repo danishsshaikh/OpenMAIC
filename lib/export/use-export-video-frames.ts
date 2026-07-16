@@ -18,6 +18,7 @@ import { inlineHtmlAssets, createAssetFetcher } from './inline-assets';
 import { createProxiedFetch } from './proxied-fetch';
 import { generateStandaloneQuizHtml } from './quiz-html';
 import { withVideoFrameSidecarMetadata } from './video-frame-manifest';
+import type { LocalMp4VisualEffects } from './mp4/types';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportVideoFrames');
@@ -26,6 +27,19 @@ export const VIDEO_FRAME_WIDTH = 1280;
 export const VIDEO_FRAME_HEIGHT = 720;
 
 type ExportT = (key: string, options?: Record<string, unknown>) => string;
+
+type SnapshotEffects = {
+  spotlight?: {
+    elementId: string;
+    dimOpacity?: number;
+    static?: boolean;
+  };
+  laser?: {
+    elementId: string;
+    color?: string;
+    static?: boolean;
+  };
+};
 
 type SnapshotMediaElement = {
   type: string;
@@ -163,15 +177,17 @@ export async function renderVideoFrame(
   scene: Scene | undefined,
   mediaRecords: MediaFileRecord[],
   t: ExportT,
+  effects?: LocalMp4VisualEffects,
 ): Promise<Blob> {
   return scene && frame.renderMode === 'slide-snapshot' && scene.content.type === 'slide'
-    ? renderSlideFrame(scene, mediaRecords)
+    ? renderSlideFrame(scene, mediaRecords, effects)
     : renderPlaceholderFrame(frame, t);
 }
 
 export async function renderSlideFrame(
   scene: Scene,
   mediaRecords: MediaFileRecord[],
+  effects?: LocalMp4VisualEffects,
 ): Promise<Blob> {
   if (scene.content.type !== 'slide') {
     throw new Error(`Scene ${scene.id} is not a slide scene`);
@@ -179,17 +195,39 @@ export async function renderSlideFrame(
 
   const { slide, revoke } = resolveGeneratedMediaForSnapshot(scene.content.canvas, mediaRecords);
   try {
-    const output = await slideToPng(slide, {
+    const snapshotOptions = {
       width: VIDEO_FRAME_WIDTH,
       pixelRatio: 1,
       backgroundColor: '#ffffff',
-      format: 'blob',
-    });
+      format: 'blob' as const,
+      effects: toSlideEffects(effects),
+    };
+    const output = await slideToPng(slide, snapshotOptions);
     if (output instanceof Blob) return output;
     return await fetch(output).then((res) => res.blob());
   } finally {
     revoke();
   }
+}
+
+function toSlideEffects(effects?: LocalMp4VisualEffects): SnapshotEffects | undefined {
+  if (!effects?.spotlight && !effects?.laser) return undefined;
+  return {
+    spotlight: effects.spotlight
+      ? {
+          elementId: effects.spotlight.elementId,
+          dimOpacity: effects.spotlight.dimOpacity,
+          static: true,
+        }
+      : undefined,
+    laser: effects.laser
+      ? {
+          elementId: effects.laser.elementId,
+          color: effects.laser.color,
+          static: true,
+        }
+      : undefined,
+  };
 }
 
 function resolveGeneratedMediaForSnapshot(

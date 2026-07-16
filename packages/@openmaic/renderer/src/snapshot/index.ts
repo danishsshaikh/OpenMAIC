@@ -27,6 +27,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import html2canvas from 'html2canvas-pro';
 import { SlideCanvas } from '../SlideCanvas';
 import type { Slide } from '@openmaic/dsl';
+import type { SlideEffects } from '../types/effects';
 
 export interface SlideToPngOptions {
   /**
@@ -64,6 +65,11 @@ export interface SlideToPngOptions {
    * was captured. Do not use in production.
    */
   debugVisibleMs?: number;
+  /**
+   * Optional play-time visual effects to bake into the static snapshot.
+   * Uses the same contract as `<SlideCanvas effects={...}>`.
+   */
+  effects?: SlideEffects;
 }
 
 const DEFAULT_VIEWPORT_RATIO = 0.5625;
@@ -119,7 +125,7 @@ export async function slideToPng(
     // fire before the first render lands and the snapshot captures an empty
     // container.
     flushSync(() => {
-      root!.render(createElement(SlideCanvas, { slide, chrome: false }));
+      root!.render(createElement(SlideCanvas, { slide, chrome: false, effects: options.effects }));
     });
 
     // Give the SlideCanvas's ResizeObserver-driven `useViewportSize` a few
@@ -196,7 +202,6 @@ export async function slideToPng(
     );
 
     if (process.env.NODE_ENV !== 'production') {
-      // eslint-disable-next-line no-console
       console.debug('[slideToPng] container ready', {
         innerHTMLLength: container.innerHTML.length,
         imgCount: container.querySelectorAll('img').length,

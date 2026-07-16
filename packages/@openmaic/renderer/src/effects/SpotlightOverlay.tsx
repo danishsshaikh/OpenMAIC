@@ -3,13 +3,12 @@
 import { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
-
-interface SpotlightRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+import {
+  getRelativeSpotlightRect,
+  getStaticSpotlightDimRects,
+  getStaticSpotlightFocusRect,
+  type SpotlightRect,
+} from './spotlightGeometry';
 
 export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
@@ -32,8 +31,14 @@ export function SpotlightOverlay({
       return;
     }
 
-    const domElement = document.getElementById(`${elementIdPrefix}${spotlightElementId}`);
+    const targetDomId = `${elementIdPrefix}${spotlightElementId}`;
+    const lookupRoot = containerRef.current.parentElement;
+    const domElement = findElementInRoot(lookupRoot, targetDomId, spotlightElementId);
     if (!domElement) {
+      warnStaticSpotlightDiagnostic(options, 'target-missing', {
+        elementId: spotlightElementId,
+        targetDomId,
+      });
       setRect(null);
       return;
     }
@@ -43,19 +48,46 @@ export function SpotlightOverlay({
 
     const containerRect = containerRef.current.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
+    const normalizedRect = getRelativeSpotlightRect(targetRect, containerRect);
 
     if (containerRect.width === 0 || containerRect.height === 0) {
+      warnStaticSpotlightDiagnostic(options, 'container-zero-size', {
+        elementId: spotlightElementId,
+        targetDomId,
+        containerRect: rectForLog(containerRect),
+        targetRect: rectForLog(targetRect),
+      });
       setRect(null);
       return;
     }
 
-    setRect({
-      x: ((targetRect.left - containerRect.left) / containerRect.width) * 100,
-      y: ((targetRect.top - containerRect.top) / containerRect.height) * 100,
-      w: (targetRect.width / containerRect.width) * 100,
-      h: (targetRect.height / containerRect.height) * 100,
-    });
-  }, [spotlightElementId, elementIdPrefix]);
+    if (targetRect.width === 0 || targetRect.height === 0) {
+      warnStaticSpotlightDiagnostic(options, 'target-zero-size', {
+        elementId: spotlightElementId,
+        targetDomId,
+        targetTagName: targetEl.tagName,
+        containerRect: rectForLog(containerRect),
+        targetRect: rectForLog(targetRect),
+      });
+      setRect(null);
+      return;
+    }
+
+    if (!normalizedRect) {
+      warnStaticSpotlightDiagnostic(options, 'invalid-relative-geometry', {
+        elementId: spotlightElementId,
+        targetDomId,
+        targetTagName: targetEl.tagName,
+        targetRect: rectForLog(targetRect),
+        containerRect: rectForLog(containerRect),
+        localRect: localRectForLog(targetRect, containerRect),
+      });
+      setRect(null);
+      return;
+    }
+
+    setRect(normalizedRect);
+  }, [spotlightElementId, elementIdPrefix, options]);
 
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires effect
@@ -63,6 +95,17 @@ export function SpotlightOverlay({
   }, [measure]);
 
   const active = !!spotlightElementId && !!rect;
+  const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
+  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
+  const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
+  if (options?.static && rect && (!staticFocusRect || staticDimRects.length === 0)) {
+    warnStaticSpotlightDiagnostic(options, 'invalid-focus-geometry', {
+      elementId: spotlightElementId,
+      rect,
+      focusRect: staticFocusRect,
+      staticRectCount: staticDimRects.length,
+    });
+  }
 
   return (
     <div
@@ -76,7 +119,39 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && rect && (
+        {active && staticFocusRect && staticDimRects.length > 0 && options?.static ? (
+          <div data-openmaic-static-spotlight="true" style={{ position: 'absolute', inset: 0 }}>
+            {/* html2canvas-pro does not reliably preserve SVG masks or oversized
+               shadows. Static export uses ordinary dim rectangles so the
+               original target content remains uncovered in the rasterized PNG. */}
+            {staticDimRects.map((dimRect) => (
+              <div
+                key={dimRect.key}
+                data-openmaic-static-spotlight-dim={dimRect.key}
+                style={{
+                  position: 'absolute',
+                  left: `${dimRect.x}%`,
+                  top: `${dimRect.y}%`,
+                  width: `${dimRect.w}%`,
+                  height: `${dimRect.h}%`,
+                  backgroundColor: `rgba(0,0,0,${dimOpacity})`,
+                }}
+              />
+            ))}
+            <div
+              data-openmaic-static-spotlight-focus="true"
+              style={{
+                position: 'absolute',
+                left: `${staticFocusRect.x}%`,
+                top: `${staticFocusRect.y}%`,
+                width: `${staticFocusRect.w}%`,
+                height: `${staticFocusRect.h}%`,
+                borderRadius: `${staticFocusRect.rx}%`,
+                border: '1.2px solid rgba(255,255,255,0.7)',
+              }}
+            />
+          </div>
+        ) : active && rect ? (
           <motion.div
             key={`spotlight-${spotlightElementId}`}
             initial={{ opacity: 0 }}
@@ -118,7 +193,7 @@ export function SpotlightOverlay({
               <rect
                 width="100"
                 height="100"
-                fill="rgba(0,0,0,0.7)"
+                fill={`rgba(0,0,0,${dimOpacity})`}
                 mask={`url(#mask-${spotlightElementId})`}
               />
 
@@ -147,8 +222,70 @@ export function SpotlightOverlay({
               />
             </svg>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );
+}
+
+function clampOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 0.7;
+  return Math.max(0, Math.min(1, value));
+}
+
+function findElementInRoot(
+  root: Element | null,
+  targetDomId: string,
+  elementId: string,
+): HTMLElement | null {
+  if (!root) return null;
+  for (const candidate of root.querySelectorAll<HTMLElement>('[id]')) {
+    if (candidate.id === targetDomId) return candidate;
+  }
+  for (const candidate of root.querySelectorAll<HTMLElement>('[data-element-id]')) {
+    if (candidate.dataset.elementId === elementId) return candidate;
+  }
+  return null;
+}
+
+function warnStaticSpotlightDiagnostic(
+  options: SpotlightEffectOptions | undefined,
+  reason: string,
+  details: Record<string, unknown>,
+) {
+  if (!options?.static) return;
+  console.warn('[OpenMAIC renderer] Static spotlight skipped:', {
+    reason,
+    ...details,
+  });
+}
+
+function rectForLog(rect: DOMRect): Record<string, number> {
+  return {
+    left: roundRectNumber(rect.left),
+    top: roundRectNumber(rect.top),
+    right: roundRectNumber(rect.right),
+    bottom: roundRectNumber(rect.bottom),
+    x: roundRectNumber(rect.x),
+    y: roundRectNumber(rect.y),
+    width: roundRectNumber(rect.width),
+    height: roundRectNumber(rect.height),
+  };
+}
+
+function localRectForLog(targetRect: DOMRect, containerRect: DOMRect): Record<string, number> {
+  const x = targetRect.left - containerRect.left;
+  const y = targetRect.top - containerRect.top;
+  const right = targetRect.right - containerRect.left;
+  const bottom = targetRect.bottom - containerRect.top;
+  return {
+    x: roundRectNumber(x),
+    y: roundRectNumber(y),
+    width: roundRectNumber(right - x),
+    height: roundRectNumber(bottom - y),
+  };
+}
+
+function roundRectNumber(value: number): number {
+  return Math.round(value * 100) / 100;
 }
