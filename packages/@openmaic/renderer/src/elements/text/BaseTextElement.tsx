@@ -5,6 +5,7 @@ import type { PPTTextElement } from '@openmaic/dsl';
 import { useElementShadow } from '../shared/useElementShadow';
 import { ElementOutline } from '../shared/ElementOutline';
 import { formatInlineMarkdownBold } from '../../utils/inlineMarkdown';
+import { getTextFitStyle, useTextAutoFit } from '../../utils/textAutoFit';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
@@ -15,6 +16,9 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
   const content = formatInlineMarkdownBold(
     typeof elementInfo.content === 'string' ? elementInfo.content : '',
+  );
+  const { containerRef, textRef, textFitScale } = useTextAutoFit(
+    `${content}:${elementInfo.width}:${elementInfo.height}:${elementInfo.lineHeight ?? ''}:${elementInfo.defaultFontName ?? ''}`,
   );
 
   const vAlign = elementInfo.vAlign ?? 'top';
@@ -55,11 +59,15 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         }}
       >
         <div
+          ref={containerRef}
           className="element-content slide-renderer-prose"
           style={{
             position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: textFitScale < 0.995 ? 'flex-start' : justifyContent,
             width: elementInfo.vertical ? 'auto' : '100%',
-            height: elementInfo.vertical ? '100%' : 'auto',
+            height: '100%',
             maxWidth: '100%',
             maxHeight: '100%',
             boxSizing: 'border-box',
@@ -84,6 +92,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             outline={elementInfo.outline}
           />
           <div
+            ref={textRef}
             className="text ProseMirror-static"
             style={{
               position: 'relative',
@@ -93,6 +102,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
               overflow: 'hidden',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
+              ...getTextFitStyle(textFitScale),
             }}
             dangerouslySetInnerHTML={{ __html: content }}
           />

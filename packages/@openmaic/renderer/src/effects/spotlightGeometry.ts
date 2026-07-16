@@ -1,0 +1,136 @@
+export interface SpotlightRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SpotlightFocusRect extends SpotlightRect {
+  rx: number;
+}
+
+export interface SpotlightDimRect extends SpotlightRect {
+  key: 'top' | 'bottom' | 'left' | 'right';
+}
+
+export interface SpotlightViewportRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+const STATIC_SPOTLIGHT_PADDING_X = 0.4;
+const STATIC_SPOTLIGHT_PADDING_Y = 0.6;
+const STATIC_SPOTLIGHT_RADIUS = 1;
+
+export function getRelativeSpotlightRect(
+  targetRect: SpotlightViewportRect,
+  containerRect: SpotlightViewportRect,
+): SpotlightRect | null {
+  if (!isFiniteViewportRect(targetRect) || !isFiniteViewportRect(containerRect)) {
+    return null;
+  }
+  if (containerRect.width <= 0 || containerRect.height <= 0) return null;
+  if (targetRect.width <= 0 || targetRect.height <= 0) return null;
+
+  const localLeft = targetRect.left - containerRect.left;
+  const localTop = targetRect.top - containerRect.top;
+  const localRight = targetRect.right - containerRect.left;
+  const localBottom = targetRect.bottom - containerRect.top;
+  const localWidth = localRight - localLeft;
+  const localHeight = localBottom - localTop;
+
+  if (
+    !isFiniteNumber(localLeft) ||
+    !isFiniteNumber(localTop) ||
+    !isFiniteNumber(localWidth) ||
+    !isFiniteNumber(localHeight) ||
+    localWidth <= 0 ||
+    localHeight <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    x: (localLeft / containerRect.width) * 100,
+    y: (localTop / containerRect.height) * 100,
+    w: (localWidth / containerRect.width) * 100,
+    h: (localHeight / containerRect.height) * 100,
+  };
+}
+
+export function getStaticSpotlightFocusRect(rect: SpotlightRect): SpotlightFocusRect | null {
+  if (
+    !isFiniteNumber(rect.x) ||
+    !isFiniteNumber(rect.y) ||
+    !isFiniteNumber(rect.w) ||
+    !isFiniteNumber(rect.h) ||
+    rect.w <= 0 ||
+    rect.h <= 0
+  ) {
+    return null;
+  }
+
+  const x = clampPercent(rect.x - STATIC_SPOTLIGHT_PADDING_X);
+  const y = clampPercent(rect.y - STATIC_SPOTLIGHT_PADDING_Y);
+  const right = clampPercent(rect.x + rect.w + STATIC_SPOTLIGHT_PADDING_X);
+  const bottom = clampPercent(rect.y + rect.h + STATIC_SPOTLIGHT_PADDING_Y);
+  const w = Math.max(0, right - x);
+  const h = Math.max(0, bottom - y);
+
+  if (w <= 0 || h <= 0) return null;
+
+  return {
+    x,
+    y,
+    w,
+    h,
+    rx: Math.min(STATIC_SPOTLIGHT_RADIUS, w / 2, h / 2),
+  };
+}
+
+export function getStaticSpotlightDimRects(
+  focusRect: SpotlightFocusRect | null,
+): SpotlightDimRect[] {
+  if (!focusRect) return [];
+
+  const left = clampPercent(focusRect.x);
+  const top = clampPercent(focusRect.y);
+  const right = clampPercent(focusRect.x + focusRect.w);
+  const bottom = clampPercent(focusRect.y + focusRect.h);
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+
+  if (width <= 0 || height <= 0) return [];
+
+  const dimRects: SpotlightDimRect[] = [
+    { key: 'top', x: 0, y: 0, w: 100, h: top },
+    { key: 'bottom', x: 0, y: bottom, w: 100, h: Math.max(0, 100 - bottom) },
+    { key: 'left', x: 0, y: top, w: left, h: height },
+    { key: 'right', x: right, y: top, w: Math.max(0, 100 - right), h: height },
+  ];
+
+  return dimRects.filter((rect) => rect.w > 0 && rect.h > 0);
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function isFiniteNumber(value: number): boolean {
+  return Number.isFinite(value);
+}
+
+function isFiniteViewportRect(rect: SpotlightViewportRect): boolean {
+  return (
+    isFiniteNumber(rect.left) &&
+    isFiniteNumber(rect.top) &&
+    isFiniteNumber(rect.right) &&
+    isFiniteNumber(rect.bottom) &&
+    isFiniteNumber(rect.width) &&
+    isFiniteNumber(rect.height)
+  );
+}

@@ -111,6 +111,7 @@ export function SlideElement({
     <div
       className="slide-element"
       id={`${idPrefix}${elementInfo.id}`}
+      data-element-id={elementInfo.id}
       style={{
         position: 'absolute',
         inset: 0,

@@ -7,12 +7,14 @@ export interface LaserOverlayProps {
   geometry: PercentageGeometry;
   color?: string;
   duration?: number;
+  static?: boolean;
 }
 
 export function LaserOverlay({
   geometry,
   color = '#ff3b30',
   duration: _duration = 3000,
+  static: staticPointer = false,
 }: LaserOverlayProps) {
   const { centerX, centerY } = geometry;
 
@@ -20,6 +22,41 @@ export function LaserOverlay({
     x: centerX > 50 ? 105 : -5,
     y: centerY > 50 ? 105 : -5,
   };
+
+  if (staticPointer) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          zIndex: 101,
+          pointerEvents: 'none',
+          left: `${centerX}%`,
+          top: `${centerY}%`,
+        }}
+      >
+        <div style={{ position: 'relative', transform: 'translate(-50%, -50%)' }}>
+          <div
+            style={{
+              position: 'absolute',
+              inset: '-6px',
+              borderRadius: '9999px',
+              border: `2px solid ${color}`,
+              opacity: 0.45,
+            }}
+          />
+          <div
+            style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '9999px',
+              backgroundColor: color,
+              boxShadow: `0 0 8px 2px ${color}70, 0 0 0 2px rgba(255,255,255,0.8)`,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
