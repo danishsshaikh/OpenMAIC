@@ -195,13 +195,11 @@ export async function renderSlideFrame(
 
   const { slide, revoke } = resolveGeneratedMediaForSnapshot(scene.content.canvas, mediaRecords);
   try {
-    const snapshotOptions: Parameters<typeof slideToPng>[1] & {
-      effects?: SnapshotEffects;
-    } = {
+    const snapshotOptions = {
       width: VIDEO_FRAME_WIDTH,
       pixelRatio: 1,
       backgroundColor: '#ffffff',
-      format: 'blob',
+      format: 'blob' as const,
       effects: toSlideEffects(effects),
     };
     const output = await slideToPng(slide, snapshotOptions);
