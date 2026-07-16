@@ -124,6 +124,21 @@ export function useExportVideoMp4() {
         uniqueEffectFrames: segmentVisualPlan.stats.uniqueEffectFrames,
         uniqueFrames: segmentVisualPlan.visualFrames.length,
       });
+      for (const [segmentIndex, segment] of segmentVisualPlan.segments.entries()) {
+        if (!segment.effects?.spotlight) continue;
+        log.info('Local MP4 spotlight segment planned:', {
+          jobId,
+          sceneId: segment.scene.id,
+          sceneIndex: segment.frame.index,
+          segmentIndex: segmentIndex + 1,
+          actionIndex: segment.actionIndex,
+          actionId: typeof segment.action.id === 'string' ? segment.action.id : undefined,
+          elementId: segment.effects.spotlight.elementId,
+          dimOpacity: segment.effects.spotlight.dimOpacity,
+          frameFile: segment.frameFile,
+          frameKey: segment.frameKey,
+        });
+      }
       for (const warning of segmentVisualPlan.warnings) {
         if (warning.actionType === 'spotlight' || warning.actionType === 'laser') {
           log.warn('Local MP4 teaching effect omitted:', {
@@ -148,7 +163,13 @@ export function useExportVideoMp4() {
         log.info('Local MP4 visual frame render started:', {
           jobId,
           sceneIndex: visualFrame.frame.index,
+          sceneId: visualFrame.scene.id,
+          frameFile: visualFrame.file,
+          effectCount:
+            (visualFrame.effects?.spotlight ? 1 : 0) + (visualFrame.effects?.laser ? 1 : 0),
           hasSpotlight: !!visualFrame.effects?.spotlight,
+          spotlightElementId: visualFrame.effects?.spotlight?.elementId,
+          spotlightDimOpacity: visualFrame.effects?.spotlight?.dimOpacity,
           hasLaser: !!visualFrame.effects?.laser,
         });
         const blob = await renderVideoFrame(
@@ -162,8 +183,15 @@ export function useExportVideoMp4() {
         log.info('Local MP4 visual frame render completed:', {
           jobId,
           sceneIndex: visualFrame.frame.index,
+          sceneId: visualFrame.scene.id,
+          frameFile: visualFrame.file,
+          effectCount:
+            (visualFrame.effects?.spotlight ? 1 : 0) + (visualFrame.effects?.laser ? 1 : 0),
           hasSpotlight: !!visualFrame.effects?.spotlight,
+          spotlightElementId: visualFrame.effects?.spotlight?.elementId,
           hasLaser: !!visualFrame.effects?.laser,
+          blobBytes: blob.size,
+          blobType: blob.type,
         });
       }
 

@@ -48,11 +48,9 @@ describe('local MP4 export planner', () => {
 
     expect(plan.missingAudio).toEqual([]);
     expect(plan.manifest.segments.map((segment) => segment.actionId)).toEqual(['a1', 'a2', 'b']);
-    expect(plan.manifest.segments.map((segment) => segment.frameFile)).toEqual([
-      'frames/001-first.png',
-      'frames/001-first.png',
-      'frames/002-second.png',
-    ]);
+    expect(plan.manifest.segments[0].frameFile).toBe('frames/001-first.png');
+    expect(plan.manifest.segments[1].frameFile).toMatch(/^frames\/001-first-fx-[a-z0-9]+\.png$/);
+    expect(plan.manifest.segments[2].frameFile).toBe('frames/002-second.png');
     expect(plan.manifest.segments[0]).not.toHaveProperty('text');
   });
 
@@ -83,6 +81,66 @@ describe('local MP4 export planner', () => {
       undefined,
     ]);
     expect(plan.stats.assignedEffects).toBe(1);
+  });
+
+  it('keeps slide spotlight effects for snapshot DOM resolution even when model lookup cannot prove the target', () => {
+    const scenes = [
+      scene({
+        id: 's1',
+        title: 'Intro',
+        order: 1,
+        actions: [
+          { id: 'spotlight-1', type: 'spotlight', elementId: 'runtime-card' },
+          { id: 'speech-1', type: 'speech', text: 'Runtime target' },
+        ],
+      }),
+    ];
+
+    const plan = buildLocalMp4SpeechSegmentVisualPlan({
+      scenes,
+      frames: [frame({ scene: scenes[0], index: 1, file: 'frames/001-intro.png' })],
+    });
+
+    expect(plan.segments[0].effects).toEqual({
+      spotlight: { elementId: 'runtime-card', dimOpacity: undefined },
+    });
+    expect(plan.segments[0].frameFile).toMatch(/^frames\/001-intro-fx-[a-z0-9]+\.png$/);
+    expect(plan.visualFrames).toHaveLength(1);
+    expect(plan.visualFrames[0]).toMatchObject({
+      file: plan.segments[0].frameFile,
+      effects: { spotlight: { elementId: 'runtime-card', dimOpacity: undefined } },
+    });
+    expect(plan.warnings).toEqual([]);
+    expect(plan.stats.assignedEffects).toBe(1);
+  });
+
+  it('omits spotlight effects for non-slide scenes', () => {
+    const scenes = [
+      scene({
+        id: 's1',
+        title: 'Quiz',
+        order: 1,
+        type: 'quiz',
+        actions: [
+          { id: 'spotlight-1', type: 'spotlight', elementId: 'card-1' },
+          { id: 'speech-1', type: 'speech', text: 'Quiz narration' },
+        ],
+      }),
+    ];
+
+    const plan = buildLocalMp4SpeechSegmentVisualPlan({
+      scenes,
+      frames: [frame({ scene: scenes[0], index: 1, file: 'frames/001-quiz-placeholder.png' })],
+    });
+
+    expect(plan.segments[0].effects).toBeUndefined();
+    expect(plan.warnings).toEqual([
+      expect.objectContaining({
+        actionIndex: 0,
+        actionType: 'spotlight',
+        reason: 'teaching effect omitted: target missing',
+      }),
+    ]);
   });
 
   it('assigns laser to the following speech segment as a static target marker', () => {
@@ -230,14 +288,14 @@ describe('local MP4 export planner', () => {
     expect(plan.stats.omittedEffects).toBe(1);
   });
 
-  it('omits missing effect targets without failing the segment plan', () => {
+  it('omits missing laser targets without failing the segment plan', () => {
     const scenes = [
       scene({
         id: 's1',
         title: 'Intro',
         order: 1,
         actions: [
-          { id: 'spotlight-1', type: 'spotlight', elementId: 'missing-card' },
+          { id: 'laser-1', type: 'laser', elementId: 'missing-card' },
           { id: 'speech-1', type: 'speech', text: 'Fallback to base frame' },
         ],
       }),
@@ -252,7 +310,7 @@ describe('local MP4 export planner', () => {
     expect(plan.warnings).toEqual([
       expect.objectContaining({
         actionIndex: 0,
-        actionType: 'spotlight',
+        actionType: 'laser',
         reason: 'teaching effect omitted: target missing',
       }),
     ]);

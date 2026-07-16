@@ -30,8 +30,15 @@ export function SpotlightOverlay({
       return;
     }
 
-    const domElement = document.getElementById(`${elementIdPrefix}${spotlightElementId}`);
+    const targetDomId = `${elementIdPrefix}${spotlightElementId}`;
+    const domElement =
+      document.getElementById(targetDomId) ??
+      findElementByDataId(containerRef.current.parentElement, spotlightElementId);
     if (!domElement) {
+      warnStaticSpotlightDiagnostic(options, 'target-missing', {
+        elementId: spotlightElementId,
+        targetDomId,
+      });
       setRect(null);
       return;
     }
@@ -43,6 +50,24 @@ export function SpotlightOverlay({
     const targetRect = targetEl.getBoundingClientRect();
 
     if (containerRect.width === 0 || containerRect.height === 0) {
+      warnStaticSpotlightDiagnostic(options, 'container-zero-size', {
+        elementId: spotlightElementId,
+        targetDomId,
+        containerRect: rectForLog(containerRect),
+        targetRect: rectForLog(targetRect),
+      });
+      setRect(null);
+      return;
+    }
+
+    if (targetRect.width === 0 || targetRect.height === 0) {
+      warnStaticSpotlightDiagnostic(options, 'target-zero-size', {
+        elementId: spotlightElementId,
+        targetDomId,
+        targetTagName: targetEl.tagName,
+        containerRect: rectForLog(containerRect),
+        targetRect: rectForLog(targetRect),
+      });
       setRect(null);
       return;
     }
@@ -53,7 +78,7 @@ export function SpotlightOverlay({
       w: (targetRect.width / containerRect.width) * 100,
       h: (targetRect.height / containerRect.height) * 100,
     });
-  }, [spotlightElementId, elementIdPrefix]);
+  }, [spotlightElementId, elementIdPrefix, options]);
 
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires effect
@@ -64,6 +89,14 @@ export function SpotlightOverlay({
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
   const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
   const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
+  if (options?.static && rect && (!staticFocusRect || staticDimRects.length === 0)) {
+    warnStaticSpotlightDiagnostic(options, 'invalid-focus-geometry', {
+      elementId: spotlightElementId,
+      rect,
+      focusRect: staticFocusRect,
+      staticRectCount: staticDimRects.length,
+    });
+  }
 
   return (
     <div
@@ -189,4 +222,37 @@ export function SpotlightOverlay({
 function clampOpacity(value: number): number {
   if (!Number.isFinite(value)) return 0.7;
   return Math.max(0, Math.min(1, value));
+}
+
+function findElementByDataId(root: Element | null, elementId: string): HTMLElement | null {
+  if (!root) return null;
+  for (const candidate of root.querySelectorAll<HTMLElement>('[data-element-id]')) {
+    if (candidate.dataset.elementId === elementId) return candidate;
+  }
+  return null;
+}
+
+function warnStaticSpotlightDiagnostic(
+  options: SpotlightEffectOptions | undefined,
+  reason: string,
+  details: Record<string, unknown>,
+) {
+  if (!options?.static) return;
+  console.warn('[OpenMAIC renderer] Static spotlight skipped:', {
+    reason,
+    ...details,
+  });
+}
+
+function rectForLog(rect: DOMRect): Record<string, number> {
+  return {
+    x: roundRectNumber(rect.x),
+    y: roundRectNumber(rect.y),
+    width: roundRectNumber(rect.width),
+    height: roundRectNumber(rect.height),
+  };
+}
+
+function roundRectNumber(value: number): number {
+  return Math.round(value * 100) / 100;
 }

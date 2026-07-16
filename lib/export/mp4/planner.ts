@@ -206,7 +206,7 @@ export function buildLocalMp4SpeechSegmentVisualPlan({
       if (action.type === 'spotlight') {
         stats.spotlightActions++;
         const effect = normalizeSpotlightEffect(action);
-        if (isEffectTargetRenderable(scene, effect.elementId)) {
+        if (isSpotlightTargetRenderable(scene, effect.elementId)) {
           pending.spotlight = { effect, actionIndex };
         } else {
           stats.omittedEffects++;
@@ -328,6 +328,15 @@ function pendingEffectsToVisualEffects(pending: PendingEffects): LocalMp4VisualE
 function isEffectTargetRenderable(scene: Scene, elementId: string): boolean {
   if (!elementId || scene.content.type !== 'slide') return false;
   return scene.content.canvas.elements.some((element) => element.id === elementId);
+}
+
+function isSpotlightTargetRenderable(scene: Scene, elementId: string): boolean {
+  if (!elementId || scene.content.type !== 'slide') return false;
+  // Spotlight uses DOM geometry at snapshot time, matching classroom playback.
+  // Do not drop valid live targets here just because the static scene model
+  // cannot prove the target; the renderer will safely fall back to a base frame
+  // when the DOM target is genuinely missing or has invalid geometry.
+  return true;
 }
 
 function effectWarning(
