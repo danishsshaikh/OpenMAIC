@@ -200,7 +200,8 @@
     "stopListening": "Parar gravação"
   },
   "edit": {
-    "proMode": "Pro",
+    "proMode": "Editar",
+    "editMode": "Modo de edição",
     "undo": "Desfazer",
     "redo": "Refazer",
     "delete": "Excluir",
@@ -387,6 +388,16 @@
       "title": "Roteiro de narração",
       "regenAllTts": "Regenerar toda a narração",
       "voiceAll": "Narrar tudo",
+      "narrationStale": "Narração desatualizada",
+      "audioStale": "Áudio desatualizado",
+      "syncing": "Sincronizando",
+      "syncFailed": "Falha ao sincronizar",
+      "syncNarrationAudio": "Sincronizar narração e áudio deste slide",
+      "regenSlideAudio": "Regenerar áudio deste slide",
+      "syncNow": "Sincronizar agora",
+      "regenAudio": "Regenerar áudio",
+      "syncAllStale": "Sincronizar toda narração e áudio desatualizados",
+      "syncAll": "Sincronizar tudo",
       "counts": "{{speech}} narração · {{cue}} ações",
       "panLeft": "Mover para a esquerda",
       "panRight": "Mover para a direita",
@@ -491,7 +502,7 @@
     "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "Editar curso",
     "doneEditing": "Concluir edição",
-    "proModeDisabledHint": "A edição não está disponível nesta página — abra um slide do curso para editar no modo Pro."
+    "proModeDisabledHint": "A edição não está disponível nesta página — abra um slide do curso para usar o modo de edição."
   },
   "classroomComplete": {
     "title": "Curso concluído",

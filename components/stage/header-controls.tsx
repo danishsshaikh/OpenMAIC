@@ -43,7 +43,7 @@ interface HeaderControlsProps {
   /**
    * `default` — the chunky h-9 pill used in the playback Stage Header.
    * `compact` — slightly tighter padding for embedding in CommandBar's
-   * right slot (Pro mode chrome already eats height, so the pill backs
+   * right slot (edit chrome already eats height, so the pill backs
    * off ring weight / blur to keep the CommandBar quiet).
    */
   readonly variant?: 'default' | 'compact';
@@ -53,9 +53,9 @@ const ENABLE_LOCAL_MP4_EXPORT = true;
 
 /**
  * Stage-level global controls: language picker, theme picker, settings
- * modal trigger, and the Pro Switch. Extracted out of `Header` so the
- * Pro mode CommandBar can absorb the same affordances and the playback
- * Header doesn't need to stay mounted just to host them — Pro mode
+ * modal trigger, and the edit switch. Extracted out of `Header` so the
+ * edit CommandBar can absorb the same affordances and the playback
+ * Header doesn't need to stay mounted just to host them — edit mode
  * therefore lands on a single top-chrome bar instead of stacking the
  * Stage Header above the EditShell CommandBar.
  *
@@ -195,7 +195,7 @@ export function HeaderControls({
         </button>
       </div>
 
-      {/* Pro Switch — toggle property: on/off both clickable, not a
+      {/* Edit switch — toggle property: on/off both clickable, not a
           one-way "Done" button. Disabled only when the current scene
           can't be entered (pending/generating/etc.). Fades in with its
           host bar on the mode swap (no cross-bar layoutId morph: the
@@ -239,16 +239,16 @@ export function HeaderControls({
             checked={mode === 'edit'}
             onCheckedChange={onToggleEditMode}
             disabled={!canEdit && mode !== 'edit'}
-            aria-label={mode === 'edit' ? t('stage.doneEditing') : t('stage.editCourse')}
+            aria-label={t('edit.editMode')}
             className="data-[state=checked]:bg-violet-600 dark:data-[state=checked]:bg-violet-500"
           />
         </label>
       )}
 
-      {/* Export / Download — lives to the right of the Pro Switch.
+      {/* Export / Download — lives to the right of the edit switch.
           Not a settings function so it does not belong inside the
           settings pill; kept as a separate sibling sitting between the
-          Pro Switch and the right edge of the chrome. */}
+          edit switch and the right edge of the chrome. */}
       <div className="relative" ref={exportRef}>
         <button
           onClick={() => {
