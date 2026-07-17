@@ -15,6 +15,7 @@ import type { Action } from '@/lib/types/action';
 import type { WidgetType, WidgetConfig } from '@/lib/types/widgets';
 import type { PBLProjectConfig } from '@/lib/pbl/types';
 import type { PBLProjectV2 } from '@/lib/pbl/v2/types';
+import type { NarrationSyncMetadata } from '@/lib/audio/narration-sync';
 
 export type {
   SceneType,
@@ -113,6 +114,12 @@ export type AppScene = DslScene<Action, SceneContent> & {
    * scene-derived outline.
    */
   outlineId?: string;
+  /**
+   * Fingerprints tying slide/source semantics, narration text, and TTS inputs
+   * together. Used by edit mode to surface "sync narration/audio" work without
+   * discarding the last successful audio.
+   */
+  sync?: NarrationSyncMetadata;
 };
 export type Scene = AppScene;
 

@@ -18,6 +18,7 @@ import { migrateScene } from '@/lib/edit/slide-schema';
 import { preparePBLScenesForDocumentPersistence } from '@/lib/pbl/v2/runtime/document-persistence';
 import { hydratePBLScenesFromRuntime } from '@/lib/pbl/v2/runtime/hydration';
 import type { ChatStorageSnapshot } from '@/lib/utils/chat-storage';
+import { applyNarrationSyncForSceneUpdate } from '@/lib/audio/narration-sync';
 
 const log = createLogger('StageStore');
 
@@ -254,7 +255,10 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       const content = mergeSceneContentForUpdate(scene.content, updates.content) ?? scene.content;
       // Rebind `type` to the merged content's kind (a type-only patch can no
       // longer desync the discriminant from the content).
-      return makeScene({ ...scene, ...updates }, content);
+      const next = makeScene({ ...scene, ...updates }, content);
+      return applyNarrationSyncForSceneUpdate(scene, next, {
+        language: get().stage?.languageDirective,
+      });
     });
     set({ scenes });
     debouncedSave();

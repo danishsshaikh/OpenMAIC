@@ -44,6 +44,7 @@ import { useStageStore } from '@/lib/store/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
+import { fetchSceneActions } from '@/lib/hooks/use-scene-generator';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import {
   Select,
@@ -53,7 +54,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Action, DiscussionAction } from '@/lib/types/action';
-import type { SceneType } from '@/lib/types/stage';
+import type { Scene, SceneType } from '@/lib/types/stage';
 import { ELEMENT_BOUND, cueLabel, cueMeta, elementLabel } from './cue-meta';
 import { applyCuePreview, clearCuePreview, cuePreviewFor } from './cue-preview';
 import {
@@ -69,18 +70,24 @@ import {
   setDiscussionAgentById,
   setDiscussionPromptById,
   setDiscussionTopicById,
-  setSpeechTextClearAudioById,
+  setSpeechTextById,
 } from './actions-edit';
 import { ActionPicker } from './ActionPicker';
 import type { PickerType } from './picker-options';
 import {
   audioExists,
   audioObjectUrl,
-  discardSpeechAudio,
   regenerateSpeechAudio,
   resolveSpeechAudioId,
   speechAudioId,
 } from '@/lib/audio/regenerate-speech-tts';
+import {
+  getAudioSourceFingerprint,
+  getNarrationSyncState,
+  staleAudioMetadata,
+  syncedNarrationMetadata,
+} from '@/lib/audio/narration-sync';
+import type { SceneOutline } from '@/lib/types/generation';
 
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
@@ -181,6 +188,28 @@ function setBlankDragImage(e: React.DragEvent) {
   } catch {
     /* not supported — fall back to the default ghost */
   }
+}
+
+function outlineForScene(scene: Scene, outlines: readonly SceneOutline[]): SceneOutline {
+  const matched =
+    (scene.outlineId ? outlines.find((outline) => outline.id === scene.outlineId) : undefined) ??
+    outlines.find((outline) => outline.order === scene.order);
+  if (matched) return matched;
+  return {
+    id: scene.outlineId ?? scene.id,
+    type: scene.type,
+    title: scene.title,
+    description: scene.title,
+    keyPoints: [scene.title],
+    order: scene.order,
+  };
+}
+
+function speechTextsForScene(scene: Scene): string[] {
+  return scene.actions
+    .filter((action) => action.type === 'speech')
+    .map((action) => ((action as { text?: string }).text ?? '').trim())
+    .filter(Boolean);
 }
 
 /** Shared delete button — prominent, top-right of a card. */
@@ -945,6 +974,20 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   const ttsActive = useSettingsStore(
     (s) => s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts',
   );
+  const ttsFingerprintSettings = useSettingsStore((s) => {
+    const providerConfig = s.ttsProvidersConfig?.[s.ttsProviderId];
+    return {
+      language,
+      ttsEnabled: s.ttsEnabled,
+      ttsProviderId: s.ttsProviderId,
+      ttsVoice: s.ttsVoice,
+      ttsSpeed: s.ttsSpeed,
+      ttsModelId: providerConfig?.modelId,
+    };
+  });
+  const stage = useStageStore((s) => s.stage);
+  const allOutlines = useStageStore((s) => s.outlines);
+  const allScenes = useStageStore((s) => s.scenes);
 
   // Agents a discussion can be initiated by — sourced from the user's currently
   // SELECTED agents, the exact set the playback engine gates on: it skips (and
@@ -955,6 +998,14 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   // which is correct since an unset `agentId` is never skipped.
   const agentsRecord = useAgentRegistry((s) => s.agents);
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
+  const selectedAgentsForGeneration = useMemo(
+    () =>
+      selectedAgentIds
+        .map((id) => agentsRecord[id])
+        .filter(Boolean)
+        .map((a) => ({ id: a.id, name: a.name, role: a.role, persona: a.persona })),
+    [selectedAgentIds, agentsRecord],
+  );
   const discussionAgents = useMemo(
     () =>
       selectedAgentIds
@@ -974,8 +1025,27 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   // line's status row shows 生成中 for the duration of the batch.
   const [regeneratingIds, setRegeneratingIds] = useState<ReadonlySet<string>>(NO_IDS);
   const [ttsRefresh, setTtsRefresh] = useState(0); // bump → speech clips re-check audio status
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const reduce = useReducedMotion();
   const dragRef = useRef<DragPayload | null>(null);
+
+  const syncState = useMemo(
+    () => (scene ? getNarrationSyncState(scene, ttsFingerprintSettings) : null),
+    [scene, ttsFingerprintSettings],
+  );
+
+  useEffect(() => {
+    if (!scene || !ttsActive || !syncState) return;
+    if (syncState.status === 'unknown-legacy' || syncState.status === 'syncing') return;
+    if (!syncState.hasSpeechAudio) return;
+    const stamped = scene.sync?.audioSourceFingerprint;
+    if (stamped && stamped !== getAudioSourceFingerprint(scene, ttsFingerprintSettings)) {
+      useStageStore.getState().updateScene(scene.id, {
+        sync: staleAudioMetadata(scene, ttsFingerprintSettings),
+      });
+    }
+  }, [scene, syncState, ttsActive, ttsFingerprintSettings]);
 
   // Apply an edit to the LATEST actions from the store (not the render-time
   // snapshot), so a concurrent agent/TTS update isn't reverted by a later UI
@@ -987,6 +1057,14 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     },
     [sceneId],
   );
+
+  const markCurrentSceneSynced = useCallback(() => {
+    const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+    if (!latest) return;
+    useStageStore.getState().updateScene(sceneId, {
+      sync: syncedNarrationMetadata(latest, ttsFingerprintSettings),
+    });
+  }, [sceneId, ttsFingerprintSettings]);
 
   // Regenerate TTS for every speech line in the scene, then stamp audioIds.
   // Reads the latest actions from the store at each step so a concurrent edit
@@ -1029,6 +1107,7 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           }
           return next;
         });
+        markCurrentSceneSynced();
       }
     } finally {
       setRegenAll(false);
@@ -1038,7 +1117,145 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       // batchPending flag) instead of getting stuck in 生成中.
       setTtsRefresh((n) => n + 1);
     }
-  }, [regenAll, sceneId, language, commit]);
+  }, [regenAll, sceneId, language, commit, markCurrentSceneSynced]);
+
+  const syncCurrentScene = useCallback(async () => {
+    const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+    if (!latest || !stage || syncing) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      useStageStore.getState().updateScene(sceneId, {
+        sync: { ...syncedNarrationMetadata(latest, ttsFingerprintSettings), status: 'syncing' },
+      });
+
+      const state = getNarrationSyncState(latest, ttsFingerprintSettings);
+      if (state.status === 'narration-stale') {
+        const outline = outlineForScene(latest, allOutlines);
+        const result = await fetchSceneActions({
+          outline,
+          allOutlines: allOutlines.length ? allOutlines : [outline],
+          content: latest.content,
+          stageId: stage.id,
+          agents: selectedAgentsForGeneration,
+          previousSpeeches: speechTextsForScene(latest),
+          languageDirective: stage.languageDirective,
+        });
+        if (!result.success || !result.scene) {
+          throw new Error(result.error || 'Narration sync failed');
+        }
+        useStageStore.getState().updateScene(sceneId, { actions: result.scene.actions });
+      }
+
+      await regenerateAllAudio();
+      markCurrentSceneSynced();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+      setSyncError(message);
+      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (current) {
+        useStageStore.getState().updateScene(sceneId, {
+          sync: {
+            ...syncedNarrationMetadata(current, ttsFingerprintSettings),
+            status: 'error',
+            error: message,
+          },
+        });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [
+    allOutlines,
+    markCurrentSceneSynced,
+    regenerateAllAudio,
+    sceneId,
+    selectedAgentsForGeneration,
+    stage,
+    syncing,
+    t,
+    ttsFingerprintSettings,
+  ]);
+
+  const syncAllStaleScenes = useCallback(async () => {
+    if (!stage || syncing) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const staleScenes = useStageStore.getState().scenes.filter((s) => {
+        const state = getNarrationSyncState(s, ttsFingerprintSettings);
+        return state.status === 'narration-stale' || state.status === 'audio-stale';
+      });
+
+      for (const staleScene of staleScenes) {
+        let current = useStageStore.getState().scenes.find((s) => s.id === staleScene.id);
+        if (!current) continue;
+        const state = getNarrationSyncState(current, ttsFingerprintSettings);
+        if (state.status === 'narration-stale') {
+          const outline = outlineForScene(current, allOutlines);
+          const result = await fetchSceneActions({
+            outline,
+            allOutlines: allOutlines.length ? allOutlines : [outline],
+            content: current.content,
+            stageId: stage.id,
+            agents: selectedAgentsForGeneration,
+            previousSpeeches: speechTextsForScene(current),
+            languageDirective: stage.languageDirective,
+          });
+          if (!result.success || !result.scene) {
+            throw new Error(result.error || t('edit.timeline.syncFailed'));
+          }
+          useStageStore.getState().updateScene(current.id, { actions: result.scene.actions });
+          current = useStageStore.getState().scenes.find((s) => s.id === current?.id);
+          if (!current) continue;
+        }
+
+        const speeches = current.actions.filter(
+          (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
+        );
+        const okIds = new Set<string>();
+        for (const a of speeches) {
+          if (!a.id) continue;
+          const id = await regenerateSpeechAudio(
+            current.order,
+            { id: a.id, text: (a as { text?: string }).text ?? '' },
+            language,
+          );
+          if (id) okIds.add(a.id);
+        }
+        if (okIds.size) {
+          useStageStore.getState().updateScene(current.id, {
+            actions: current.actions.reduce(
+              (next, action) =>
+                action.type === 'speech' && action.id && okIds.has(action.id)
+                  ? setAudioIdById(next, action.id, speechAudioId(current.order, action.id))
+                  : next,
+              current.actions,
+            ),
+          });
+        }
+        const synced = useStageStore.getState().scenes.find((s) => s.id === current?.id);
+        if (synced) {
+          useStageStore.getState().updateScene(synced.id, {
+            sync: syncedNarrationMetadata(synced, ttsFingerprintSettings),
+          });
+        }
+      }
+      setTtsRefresh((n) => n + 1);
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : t('edit.timeline.syncFailed'));
+    } finally {
+      setSyncing(false);
+    }
+  }, [
+    allOutlines,
+    language,
+    selectedAgentsForGeneration,
+    stage,
+    syncing,
+    t,
+    ttsFingerprintSettings,
+  ]);
 
   // Height drag-resize (top edge).
   const sectionRef = useRef<HTMLElement>(null);
@@ -1174,6 +1391,74 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
             {t('edit.timeline.addAction')}
             <ChevronDown className="size-3 opacity-70" />
           </button>
+        )}
+
+        {!lineMode && ttsActive && (
+          <>
+            {syncState &&
+              (syncState.status === 'narration-stale' ||
+                syncState.status === 'audio-stale' ||
+                syncState.status === 'syncing' ||
+                syncState.status === 'error') && (
+                <span
+                  className={cn(
+                    'ml-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                    syncState.status === 'error'
+                      ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300'
+                      : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300',
+                  )}
+                  title={syncError ?? scene?.sync?.error}
+                >
+                  {syncState.status === 'narration-stale'
+                    ? t('edit.timeline.narrationStale')
+                    : syncState.status === 'audio-stale'
+                      ? t('edit.timeline.audioStale')
+                      : syncState.status === 'syncing'
+                        ? t('edit.timeline.syncing')
+                        : t('edit.timeline.syncFailed')}
+                </span>
+              )}
+            {syncState &&
+              (syncState.status === 'narration-stale' || syncState.status === 'audio-stale') && (
+                <button
+                  type="button"
+                  onClick={syncCurrentScene}
+                  disabled={syncing}
+                  title={
+                    syncState.status === 'narration-stale'
+                      ? t('edit.timeline.syncNarrationAudio')
+                      : t('edit.timeline.regenSlideAudio')
+                  }
+                  aria-label={
+                    syncState.status === 'narration-stale'
+                      ? t('edit.timeline.syncNarrationAudio')
+                      : t('edit.timeline.regenSlideAudio')
+                  }
+                  className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+                >
+                  <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
+                  {syncState.status === 'narration-stale'
+                    ? t('edit.timeline.syncNow')
+                    : t('edit.timeline.regenAudio')}
+                </button>
+              )}
+            {allScenes.some((s) => {
+              const state = getNarrationSyncState(s, ttsFingerprintSettings);
+              return state.status === 'narration-stale' || state.status === 'audio-stale';
+            }) && (
+              <button
+                type="button"
+                onClick={syncAllStaleScenes}
+                disabled={syncing}
+                title={t('edit.timeline.syncAllStale')}
+                aria-label={t('edit.timeline.syncAllStale')}
+                className="ml-1 inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
+                {t('edit.timeline.syncAll')}
+              </button>
+            )}
+          </>
         )}
 
         {!lineMode && ttsActive && (
@@ -1314,19 +1599,8 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
                               autoFocus={key === focusId}
                               onFocused={() => setFocusId(null)}
                               onCommit={(text) => {
-                                // Editing the text invalidates any cached audio
-                                // (the blob is keyed by order+id, not text), so
-                                // drop the stamped fields and delete the blob —
-                                // the line then reads as un-voiced until regen.
-                                const prevAudioId = (action as { audioId?: string }).audioId;
-                                commit((cur) => setSpeechTextClearAudioById(cur, key, text));
-                                // Re-check status only AFTER the blob is gone, so
-                                // the status row can't race the async delete and
-                                // briefly still read "voiced".
-                                void discardSpeechAudio(sceneOrder, {
-                                  id: key,
-                                  audioId: prevAudioId,
-                                }).finally(() => setTtsRefresh((n) => n + 1));
+                                commit((cur) => setSpeechTextById(cur, key, text));
+                                setTtsRefresh((n) => n + 1);
                               }}
                               onGenerated={() =>
                                 commit((cur) =>
