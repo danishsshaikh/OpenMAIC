@@ -22,6 +22,7 @@ export function SpotlightOverlay({
 }: SpotlightOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState<SpotlightRect | null>(null);
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
 
   const spotlightElementId = options?.elementId;
 
@@ -49,6 +50,7 @@ export function SpotlightOverlay({
     const containerRect = containerRef.current.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
     const normalizedRect = getRelativeSpotlightRect(targetRect, containerRect);
+    setViewport({ width: containerRect.width, height: containerRect.height });
 
     if (containerRect.width === 0 || containerRect.height === 0) {
       warnStaticSpotlightDiagnostic(options, 'container-zero-size', {
@@ -96,7 +98,7 @@ export function SpotlightOverlay({
 
   const active = !!spotlightElementId && !!rect;
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
-  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
+  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect, viewport ?? undefined) : null;
   const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
   if (options?.static && rect && (!staticFocusRect || staticDimRects.length === 0)) {
     warnStaticSpotlightDiagnostic(options, 'invalid-focus-geometry', {
@@ -120,7 +122,14 @@ export function SpotlightOverlay({
     >
       <AnimatePresence mode="wait">
         {active && staticFocusRect && staticDimRects.length > 0 && options?.static ? (
-          <div data-openmaic-static-spotlight="true" style={{ position: 'absolute', inset: 0 }}>
+          <div
+            data-openmaic-static-spotlight="true"
+            data-openmaic-static-spotlight-target={spotlightElementId}
+            data-openmaic-static-spotlight-focus={
+              staticFocusRect ? JSON.stringify(roundFocusRectForData(staticFocusRect)) : undefined
+            }
+            style={{ position: 'absolute', inset: 0 }}
+          >
             {/* html2canvas-pro does not reliably preserve SVG masks or oversized
                shadows. Static export uses ordinary dim rectangles so the
                original target content remains uncovered in the rasterized PNG. */}
@@ -288,4 +297,13 @@ function localRectForLog(targetRect: DOMRect, containerRect: DOMRect): Record<st
 
 function roundRectNumber(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function roundFocusRectForData(rect: SpotlightRect): SpotlightRect {
+  return {
+    x: roundRectNumber(rect.x),
+    y: roundRectNumber(rect.y),
+    w: roundRectNumber(rect.w),
+    h: roundRectNumber(rect.h),
+  };
 }

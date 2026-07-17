@@ -22,6 +22,11 @@ export interface SpotlightViewportRect {
   height: number;
 }
 
+export interface SpotlightViewportSize {
+  width: number;
+  height: number;
+}
+
 const STATIC_SPOTLIGHT_PADDING_X = 0.4;
 const STATIC_SPOTLIGHT_PADDING_Y = 0.6;
 const STATIC_SPOTLIGHT_RADIUS = 1;
@@ -62,7 +67,10 @@ export function getRelativeSpotlightRect(
   };
 }
 
-export function getStaticSpotlightFocusRect(rect: SpotlightRect): SpotlightFocusRect | null {
+export function getStaticSpotlightFocusRect(
+  rect: SpotlightRect,
+  viewport?: SpotlightViewportSize,
+): SpotlightFocusRect | null {
   if (
     !isFiniteNumber(rect.x) ||
     !isFiniteNumber(rect.y) ||
@@ -74,10 +82,21 @@ export function getStaticSpotlightFocusRect(rect: SpotlightRect): SpotlightFocus
     return null;
   }
 
-  const x = clampPercent(rect.x - STATIC_SPOTLIGHT_PADDING_X);
-  const y = clampPercent(rect.y - STATIC_SPOTLIGHT_PADDING_Y);
-  const right = clampPercent(rect.x + rect.w + STATIC_SPOTLIGHT_PADDING_X);
-  const bottom = clampPercent(rect.y + rect.h + STATIC_SPOTLIGHT_PADDING_Y);
+  let x = clampPercent(rect.x - STATIC_SPOTLIGHT_PADDING_X);
+  let y = clampPercent(rect.y - STATIC_SPOTLIGHT_PADDING_Y);
+  let right = clampPercent(rect.x + rect.w + STATIC_SPOTLIGHT_PADDING_X);
+  let bottom = clampPercent(rect.y + rect.h + STATIC_SPOTLIGHT_PADDING_Y);
+
+  if (viewport && viewport.width > 0 && viewport.height > 0) {
+    const leftPx = Math.floor((x / 100) * viewport.width);
+    const topPx = Math.floor((y / 100) * viewport.height);
+    const rightPx = Math.ceil((right / 100) * viewport.width);
+    const bottomPx = Math.ceil((bottom / 100) * viewport.height);
+    x = clampPercent((leftPx / viewport.width) * 100);
+    y = clampPercent((topPx / viewport.height) * 100);
+    right = clampPercent((rightPx / viewport.width) * 100);
+    bottom = clampPercent((bottomPx / viewport.height) * 100);
+  }
   const w = Math.max(0, right - x);
   const h = Math.max(0, bottom - y);
 

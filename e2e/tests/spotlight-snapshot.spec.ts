@@ -36,8 +36,15 @@ test.describe('renderer snapshot effects', () => {
     for (const sample of [...result.spotlight.targetSamples, ...result.spotlight.outsideSamples]) {
       expect(sample.a).toBe(255);
     }
+    for (const sample of result.spotlight.focusEdgeSamples) {
+      expect(sample.a).toBe(255);
+      expect(sample.luminance).toBeGreaterThan(220);
+    }
 
     expect(result.spotlight.targetLuminance).toBeGreaterThan(result.base.targetLuminance - 12);
+    expect(result.spotlight.focusEdgeLuminance).toBeGreaterThan(
+      result.base.targetLuminance - 12,
+    );
     expect(result.spotlight.outsideLuminance).toBeLessThan(result.base.outsideLuminance - 80);
     expect(result.spotlight.targetLuminance).toBeGreaterThan(
       result.spotlight.outsideLuminance + 100,

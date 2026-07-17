@@ -21,8 +21,10 @@ type SnapshotFrameResult = {
   height: number;
   targetSamples: PixelSample[];
   outsideSamples: PixelSample[];
+  focusEdgeSamples: PixelSample[];
   targetLuminance: number;
   outsideLuminance: number;
+  focusEdgeLuminance: number;
 };
 
 export type SpotlightSnapshotResult = {
@@ -165,6 +167,12 @@ async function renderSnapshotFrame(
     samplePixel(context, 30, 200),
     samplePixel(context, 370, 200),
   ];
+  const focusEdgeSamples = [
+    samplePixel(context, 150, 70),
+    samplePixel(context, 249, 70),
+    samplePixel(context, 150, 129),
+    samplePixel(context, 249, 129),
+  ];
 
   return {
     dataUrl,
@@ -173,8 +181,10 @@ async function renderSnapshotFrame(
     height: image.naturalHeight,
     targetSamples,
     outsideSamples,
+    focusEdgeSamples,
     targetLuminance: averageLuminance(targetSamples),
     outsideLuminance: averageLuminance(outsideSamples),
+    focusEdgeLuminance: averageLuminance(focusEdgeSamples),
   };
 }
 
