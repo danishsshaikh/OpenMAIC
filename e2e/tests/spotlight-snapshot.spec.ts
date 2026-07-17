@@ -42,9 +42,7 @@ test.describe('renderer snapshot effects', () => {
     }
 
     expect(result.spotlight.targetLuminance).toBeGreaterThan(result.base.targetLuminance - 12);
-    expect(result.spotlight.focusEdgeLuminance).toBeGreaterThan(
-      result.base.targetLuminance - 12,
-    );
+    expect(result.spotlight.focusEdgeLuminance).toBeGreaterThan(result.base.targetLuminance - 12);
     expect(result.spotlight.outsideLuminance).toBeLessThan(result.base.outsideLuminance - 80);
     expect(result.spotlight.targetLuminance).toBeGreaterThan(
       result.spotlight.outsideLuminance + 100,

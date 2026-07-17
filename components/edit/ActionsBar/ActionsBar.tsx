@@ -206,7 +206,7 @@ function outlineForScene(scene: Scene, outlines: readonly SceneOutline[]): Scene
 }
 
 function speechTextsForScene(scene: Scene): string[] {
-  return scene.actions
+  return (scene.actions ?? [])
     .filter((action) => action.type === 'speech')
     .map((action) => ((action as { text?: string }).text ?? '').trim())
     .filter(Boolean);
@@ -1210,7 +1210,8 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           if (!current) continue;
         }
 
-        const speeches = current.actions.filter(
+        const currentActions = current.actions ?? [];
+        const speeches = currentActions.filter(
           (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
         );
         const okIds = new Set<string>();
@@ -1225,12 +1226,12 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         }
         if (okIds.size) {
           useStageStore.getState().updateScene(current.id, {
-            actions: current.actions.reduce(
+            actions: currentActions.reduce(
               (next, action) =>
                 action.type === 'speech' && action.id && okIds.has(action.id)
                   ? setAudioIdById(next, action.id, speechAudioId(current.order, action.id))
                   : next,
-              current.actions,
+              currentActions,
             ),
           });
         }

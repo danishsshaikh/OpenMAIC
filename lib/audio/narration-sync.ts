@@ -1,5 +1,6 @@
 import type { Action, SpeechAction } from '@/lib/types/action';
 import type { Scene, SceneContent } from '@/lib/types/stage';
+import type { PPTElement } from '@openmaic/dsl';
 
 export type NarrationSyncStatus =
   | 'synced'
@@ -127,7 +128,10 @@ export function getNarrationSyncState(
     };
   }
 
-  if (metadata.audioSourceFingerprint && metadata.audioSourceFingerprint !== audioSourceFingerprint) {
+  if (
+    metadata.audioSourceFingerprint &&
+    metadata.audioSourceFingerprint !== audioSourceFingerprint
+  ) {
     return {
       status: 'audio-stale',
       narrationSourceFingerprint,
@@ -262,36 +266,37 @@ function semanticContent(content: SceneContent): unknown {
   }
 }
 
-function semanticSlideElement(element: Record<string, unknown>): unknown {
+function semanticSlideElement(element: PPTElement): unknown {
+  const record = element as unknown as Record<string, unknown>;
   const type = element.type;
   const id = element.id;
   switch (type) {
     case 'text':
-      return { id, type, text: normalizeNarrationText(element.content) };
+      return { id, type, text: normalizeNarrationText(record.content) };
     case 'shape':
       return {
         id,
         type,
-        text: normalizeNarrationText((element.text as { content?: unknown } | undefined)?.content),
+        text: normalizeNarrationText((record.text as { content?: unknown } | undefined)?.content),
       };
     case 'table':
       return {
         id,
         type,
-        cells: (element.data as Array<Array<{ text?: unknown }>> | undefined)?.map((row) =>
+        cells: (record.data as Array<Array<{ text?: unknown }>> | undefined)?.map((row) =>
           row.map((cell) => normalizeNarrationText(cell.text)),
         ),
       };
     case 'chart':
-      return { id, type, data: element.data };
+      return { id, type, data: record.data };
     case 'latex':
-      return { id, type, latex: normalizeNarrationText(element.latex) };
+      return { id, type, latex: normalizeNarrationText(record.latex) };
     case 'code':
       return {
         id,
         type,
-        language: element.language,
-        lines: (element.lines as Array<{ content?: unknown }> | undefined)?.map((line) =>
+        language: record.language,
+        lines: (record.lines as Array<{ content?: unknown }> | undefined)?.map((line) =>
           normalizeNarrationText(line.content),
         ),
       };
@@ -300,6 +305,6 @@ function semanticSlideElement(element: Record<string, unknown>): unknown {
     case 'audio':
       return { id, type };
     default:
-      return { id, type, text: normalizeNarrationText(stableStringify(element)) };
+      return { id, type, text: normalizeNarrationText(stableStringify(record)) };
   }
 }

@@ -21,6 +21,8 @@ describe('static spotlight geometry', () => {
     const segment: EffectSegment = {
       type: 'spotlight',
       actionId: 'spot-1',
+      actionIndex: 0,
+      descriptorId: 'spotlight.v1',
       elementId: 'card-1',
       startMs: 0,
       durationMs: 1200,

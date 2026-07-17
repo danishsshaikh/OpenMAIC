@@ -16,7 +16,7 @@ describe('narration/audio sync fingerprints', () => {
     const out = applyNarrationSyncForSceneUpdate(previous, next);
 
     expect(out.sync?.status).toBe('narration-stale');
-    expect(out.actions[0]).toMatchObject({ audioId: 'tts_a' });
+    expect(out.actions?.[0]).toMatchObject({ audioId: 'tts_a' });
   });
 
   it('does not mark narration stale for layout-only slide changes', () => {
@@ -41,7 +41,7 @@ describe('narration/audio sync fingerprints', () => {
     const out = applyNarrationSyncForSceneUpdate(previous, next);
 
     expect(out.sync?.status).toBe('audio-stale');
-    expect(out.actions[0]).toMatchObject({ audioId: 'tts_a' });
+    expect(out.actions?.[0]).toMatchObject({ audioId: 'tts_a' });
   });
 
   it('marks audio stale when language or voice fingerprint changes', () => {
@@ -51,9 +51,9 @@ describe('narration/audio sync fingerprints', () => {
       sync: syncedNarrationMetadata(scene, { language: 'English', ttsVoice: 'alice' }),
     } as Scene;
 
-    expect(
-      getNarrationSyncState(synced, { language: 'Spanish', ttsVoice: 'alice' }).status,
-    ).toBe('audio-stale');
+    expect(getNarrationSyncState(synced, { language: 'Spanish', ttsVoice: 'alice' }).status).toBe(
+      'audio-stale',
+    );
     expect(getNarrationSyncState(synced, { language: 'English', ttsVoice: 'bob' }).status).toBe(
       'audio-stale',
     );
