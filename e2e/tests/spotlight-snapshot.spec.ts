@@ -19,6 +19,8 @@ test.describe('renderer snapshot effects', () => {
     expect(result.base.height).toBe(225);
     expect(result.spotlight.width).toBe(400);
     expect(result.spotlight.height).toBe(225);
+    expect(result.spotlightAtOrigin.width).toBe(400);
+    expect(result.spotlightFarOffset.width).toBe(400);
 
     await testInfo.attach('base-slide.png', {
       body: dataUrlToBuffer(result.base.dataUrl),
@@ -29,11 +31,21 @@ test.describe('renderer snapshot effects', () => {
       contentType: 'image/png',
     });
 
-    for (const sample of [...result.base.targetSamples, ...result.base.outsideSamples]) {
+    for (const sample of [
+      ...result.base.targetSamples,
+      ...result.base.lowerTargetSamples,
+      ...result.base.dimmedCardSamples,
+      ...result.base.outsideSamples,
+    ]) {
       expect(sample.a).toBe(255);
       expect(sample.luminance).toBeGreaterThan(220);
     }
-    for (const sample of [...result.spotlight.targetSamples, ...result.spotlight.outsideSamples]) {
+    for (const sample of [
+      ...result.spotlight.targetSamples,
+      ...result.spotlight.lowerTargetSamples,
+      ...result.spotlight.dimmedCardSamples,
+      ...result.spotlight.outsideSamples,
+    ]) {
       expect(sample.a).toBe(255);
     }
     for (const sample of result.spotlight.focusEdgeSamples) {
@@ -42,8 +54,19 @@ test.describe('renderer snapshot effects', () => {
     }
 
     expect(result.spotlight.targetLuminance).toBeGreaterThan(result.base.targetLuminance - 12);
+    expect(result.spotlight.lowerTargetLuminance).toBeGreaterThan(
+      result.base.lowerTargetLuminance - 12,
+    );
     expect(result.spotlight.focusEdgeLuminance).toBeGreaterThan(result.base.targetLuminance - 12);
+    expect(result.spotlight.dimmedCardLuminance).toBeLessThan(result.base.dimmedCardLuminance - 80);
     expect(result.spotlight.outsideLuminance).toBeLessThan(result.base.outsideLuminance - 80);
+    const outsideRegions = Object.values(result.spotlight.outsideRegionLuminance);
+    expect(Math.max(...outsideRegions) - Math.min(...outsideRegions)).toBeLessThan(10);
+    expect(result.spotlight.seamStats.horizontalMaxDelta).toBeLessThan(16);
+    expect(result.spotlight.seamStats.verticalMaxDelta).toBeLessThan(16);
+    expect(result.mountEquivalenceMaxDelta).toBeLessThan(2);
+    expect(result.afterSpotlightBase.dataUrl).toBe(result.base.dataUrl);
+    expect(result.spotlight.dataUrl).not.toBe(result.base.dataUrl);
     expect(result.spotlight.targetLuminance).toBeGreaterThan(
       result.spotlight.outsideLuminance + 100,
     );

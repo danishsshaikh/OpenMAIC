@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Scene } from '@/lib/types/stage';
+import { makeScene, type Scene, type SceneContent } from '@/lib/types/stage';
+import type { WidgetConfig } from '@/lib/types/widgets';
+import type { PBLProjectConfig } from '@/lib/pbl/types';
 
 const FLAG_KEYS = [
   'NEXT_PUBLIC_MAIC_EDITOR_ENABLED',
@@ -34,17 +36,63 @@ function resetFlagEnv() {
   }
 }
 
-function scene(overrides: Partial<Scene>): Scene {
+const emptySlideContent = {
+  type: 'slide',
+  canvas: {
+    id: 'slide-canvas',
+    viewportSize: 1000,
+    viewportRatio: 0.5625,
+    theme: {
+      backgroundColor: '#ffffff',
+      themeColors: ['#5b9bd5'],
+      fontColor: '#111111',
+      fontName: 'Arial',
+    },
+    elements: [],
+  },
+} satisfies Extract<Scene['content'], { type: 'slide' }>;
+
+const flowWidgetConfig = {
+  type: 'diagram',
+  diagramType: 'flowchart',
+  description: 'Simple flowchart',
+  nodes: [],
+  edges: [],
+} satisfies WidgetConfig;
+
+const projectConfig = {
+  projectInfo: { title: 'Project', description: 'Project workspace' },
+  agents: [],
+  issueboard: { agent_ids: [], issues: [], current_issue_id: null },
+  chat: { messages: [] },
+} satisfies PBLProjectConfig;
+
+function scene(
+  content: SceneContent,
+  overrides: Partial<Omit<Scene, 'type' | 'content'>> = {},
+): Scene {
+  return makeScene(
+    {
+      id: 'scene',
+      stageId: 'stage',
+      title: 'Scene',
+      order: 0,
+      actions: [],
+      ...overrides,
+    },
+    content,
+  );
+}
+
+function sceneCore(overrides: Partial<Omit<Scene, 'type' | 'content'>>) {
   return {
     id: 'scene',
     stageId: 'stage',
     title: 'Scene',
     order: 0,
-    type: 'slide',
-    content: { type: 'slide', elements: [] },
     actions: [],
     ...overrides,
-  } as Scene;
+  };
 }
 
 afterEach(() => {
@@ -142,28 +190,28 @@ describe('classroom feature flags', () => {
   });
 
   it('filters disabled interactive, workspace, and flow scenes from playback navigation', async () => {
-    const slide = scene({ id: 'slide-1', type: 'slide', content: { type: 'slide', elements: [] } });
-    const quiz = scene({ id: 'quiz-1', type: 'quiz', content: { type: 'quiz', questions: [] } });
-    const interactive = scene({
-      id: 'interactive-1',
-      type: 'interactive',
-      content: { type: 'interactive', html: '<button />', widgetType: 'custom' },
-    });
-    const workspace = scene({
-      id: 'pbl-1',
-      type: 'pbl',
-      content: { type: 'pbl', projectConfig: { title: 'Project', tasks: [] } },
-    });
-    const flow = scene({
-      id: 'flow-1',
-      type: 'interactive',
-      content: {
+    const slide = scene(emptySlideContent, sceneCore({ id: 'slide-1' }));
+    const quiz = scene({ type: 'quiz', questions: [] }, sceneCore({ id: 'quiz-1' }));
+    const interactive = scene(
+      {
         type: 'interactive',
+        url: 'about:blank',
+        html: '<button />',
+        widgetType: 'simulation',
+      },
+      sceneCore({ id: 'interactive-1' }),
+    );
+    const workspace = scene({ type: 'pbl', projectConfig }, sceneCore({ id: 'pbl-1' }));
+    const flow = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
         html: '<div />',
         widgetType: 'diagram',
-        widgetConfig: { type: 'diagram', diagramType: 'flowchart', nodes: [], edges: [] },
+        widgetConfig: flowWidgetConfig,
       },
-    });
+      sceneCore({ id: 'flow-1' }),
+    );
 
     let flags = await loadFlags();
     expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
