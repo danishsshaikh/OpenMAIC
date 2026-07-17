@@ -5,9 +5,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
 import {
   getRelativeSpotlightRect,
-  getStaticSpotlightDimRects,
   getStaticSpotlightFocusRect,
+  getStaticSpotlightPixelRect,
   type SpotlightRect,
+  type SpotlightFocusRect,
+  type SpotlightViewportSize,
 } from './spotlightGeometry';
 
 export interface SpotlightOverlayProps {
@@ -45,7 +47,7 @@ export function SpotlightOverlay({
     }
 
     const contentEl = domElement.querySelector('.element-content');
-    const targetEl = contentEl ?? domElement;
+    const targetEl = options?.static ? domElement : (contentEl ?? domElement);
 
     const containerRect = containerRef.current.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
@@ -99,13 +101,11 @@ export function SpotlightOverlay({
   const active = !!spotlightElementId && !!rect;
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
   const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect, viewport ?? undefined) : null;
-  const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
-  if (options?.static && rect && (!staticFocusRect || staticDimRects.length === 0)) {
+  if (options?.static && rect && !staticFocusRect) {
     warnStaticSpotlightDiagnostic(options, 'invalid-focus-geometry', {
       elementId: spotlightElementId,
       rect,
       focusRect: staticFocusRect,
-      staticRectCount: staticDimRects.length,
     });
   }
 
@@ -121,7 +121,7 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && staticFocusRect && staticDimRects.length > 0 && options?.static ? (
+        {active && staticFocusRect && viewport && options?.static ? (
           <div
             data-openmaic-static-spotlight="true"
             data-openmaic-static-spotlight-target={spotlightElementId}
@@ -130,23 +130,11 @@ export function SpotlightOverlay({
             }
             style={{ position: 'absolute', inset: 0 }}
           >
-            {/* html2canvas-pro does not reliably preserve SVG masks or oversized
-               shadows. Static export uses ordinary dim rectangles so the
-               original target content remains uncovered in the rasterized PNG. */}
-            {staticDimRects.map((dimRect) => (
-              <div
-                key={dimRect.key}
-                data-openmaic-static-spotlight-dim={dimRect.key}
-                style={{
-                  position: 'absolute',
-                  left: `${dimRect.x}%`,
-                  top: `${dimRect.y}%`,
-                  width: `${dimRect.w}%`,
-                  height: `${dimRect.h}%`,
-                  backgroundColor: `rgba(0,0,0,${dimOpacity})`,
-                }}
-              />
-            ))}
+            <StaticSpotlightCanvas
+              focusRect={staticFocusRect}
+              viewport={viewport}
+              dimOpacity={dimOpacity}
+            />
             <div
               data-openmaic-static-spotlight-focus="true"
               style={{
@@ -234,6 +222,45 @@ export function SpotlightOverlay({
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+function StaticSpotlightCanvas({
+  focusRect,
+  viewport,
+  dimOpacity,
+}: {
+  focusRect: SpotlightFocusRect;
+  viewport: SpotlightViewportSize;
+  dimOpacity: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const width = Math.max(1, Math.round(viewport.width));
+  const height = Math.max(1, Math.round(viewport.height));
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pixelRect = getStaticSpotlightPixelRect(focusRect, { width, height });
+    ctx.clearRect(0, 0, width, height);
+    if (!pixelRect) return;
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.rect(pixelRect.left, pixelRect.top, pixelRect.width, pixelRect.height);
+    ctx.fillStyle = `rgba(0,0,0,${dimOpacity})`;
+    ctx.fill('evenodd');
+  }, [dimOpacity, focusRect, height, width]);
+
+  return (
+    <canvas
+      data-openmaic-static-spotlight-layer="canvas"
+      ref={canvasRef}
+      width={width}
+      height={height}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+    />
   );
 }
 

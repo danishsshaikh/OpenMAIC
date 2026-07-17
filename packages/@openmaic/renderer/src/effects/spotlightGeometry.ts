@@ -27,6 +27,15 @@ export interface SpotlightViewportSize {
   height: number;
 }
 
+export interface SpotlightPixelRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
 const STATIC_SPOTLIGHT_PADDING_X = 0.4;
 const STATIC_SPOTLIGHT_PADDING_Y = 0.6;
 const STATIC_SPOTLIGHT_RADIUS = 1;
@@ -133,6 +142,81 @@ export function getStaticSpotlightDimRects(
   ];
 
   return dimRects.filter((rect) => rect.w > 0 && rect.h > 0);
+}
+
+export function getStaticSpotlightPixelRect(
+  focusRect: Pick<SpotlightRect, 'x' | 'y' | 'w' | 'h'> | null,
+  viewport: SpotlightViewportSize,
+): SpotlightPixelRect | null {
+  if (
+    !focusRect ||
+    !isFiniteNumber(viewport.width) ||
+    !isFiniteNumber(viewport.height) ||
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    !isFiniteNumber(focusRect.x) ||
+    !isFiniteNumber(focusRect.y) ||
+    !isFiniteNumber(focusRect.w) ||
+    !isFiniteNumber(focusRect.h) ||
+    focusRect.w <= 0 ||
+    focusRect.h <= 0
+  ) {
+    return null;
+  }
+
+  const left = Math.max(0, Math.floor((focusRect.x / 100) * viewport.width));
+  const top = Math.max(0, Math.floor((focusRect.y / 100) * viewport.height));
+  const right = Math.min(
+    viewport.width,
+    Math.ceil(((focusRect.x + focusRect.w) / 100) * viewport.width),
+  );
+  const bottom = Math.min(
+    viewport.height,
+    Math.ceil(((focusRect.y + focusRect.h) / 100) * viewport.height),
+  );
+
+  if (left >= right || top >= bottom) return null;
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+export function applyStaticSpotlightDimToRgba(
+  base: Uint8ClampedArray,
+  viewport: SpotlightViewportSize,
+  focusRect: SpotlightPixelRect | null,
+  dimOpacity: number,
+): Uint8ClampedArray {
+  const width = Math.max(0, Math.floor(viewport.width));
+  const height = Math.max(0, Math.floor(viewport.height));
+  const out = new Uint8ClampedArray(base);
+  if (!focusRect || width <= 0 || height <= 0) return out;
+
+  const alpha = Math.max(0, Math.min(1, dimOpacity));
+  const factor = 1 - alpha;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (
+        x >= focusRect.left &&
+        x < focusRect.right &&
+        y >= focusRect.top &&
+        y < focusRect.bottom
+      ) {
+        continue;
+      }
+      const index = (y * width + x) * 4;
+      out[index] = Math.round(out[index] * factor);
+      out[index + 1] = Math.round(out[index + 1] * factor);
+      out[index + 2] = Math.round(out[index + 2] * factor);
+    }
+  }
+  return out;
 }
 
 function clampPercent(value: number): number {
