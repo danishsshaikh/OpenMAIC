@@ -1,125 +1,193 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  isMaicEditorEnabled,
-  isVocationalTaskEngineEnabled,
-  resolveVocationalActive,
-  shouldShowVocationalTestUi,
-} from '@/lib/config/feature-flags';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Scene } from '@/lib/types/stage';
 
-const FLAG = 'NEXT_PUBLIC_MAIC_EDITOR_ENABLED';
+const FLAG_KEYS = [
+  'NEXT_PUBLIC_MAIC_EDITOR_ENABLED',
+  'OPENMAIC_ENABLE_VOCATIONAL',
+  'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
+  'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
+  'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
+  'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
+  'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
+  'NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES',
+  'NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES',
+  'NEXT_PUBLIC_FEATURE_FLOW_SCENES',
+] as const;
 
-describe('isMaicEditorEnabled', () => {
-  let original: string | undefined;
+const originalEnv = new Map<string, string | undefined>(
+  FLAG_KEYS.map((key) => [key, process.env[key]]),
+);
 
-  beforeEach(() => {
-    original = process.env[FLAG];
-  });
+async function loadFlags() {
+  vi.resetModules();
+  return import('@/lib/config/feature-flags');
+}
 
-  afterEach(() => {
+function resetFlagEnv() {
+  for (const key of FLAG_KEYS) {
+    const original = originalEnv.get(key);
     if (original === undefined) {
-      delete process.env[FLAG];
+      delete process.env[key];
     } else {
-      process.env[FLAG] = original;
+      process.env[key] = original;
     }
-  });
+  }
+}
 
-  it('returns false when the env var is unset', () => {
-    delete process.env[FLAG];
-    expect(isMaicEditorEnabled()).toBe(false);
-  });
+function scene(overrides: Partial<Scene>): Scene {
+  return {
+    id: 'scene',
+    stageId: 'stage',
+    title: 'Scene',
+    order: 0,
+    type: 'slide',
+    content: { type: 'slide', elements: [] },
+    actions: [],
+    ...overrides,
+  } as Scene;
+}
 
-  it("returns true for 'true'", () => {
-    process.env[FLAG] = 'true';
-    expect(isMaicEditorEnabled()).toBe(true);
-  });
+afterEach(() => {
+  resetFlagEnv();
+  vi.resetModules();
+});
 
-  it("returns true for '1'", () => {
-    process.env[FLAG] = '1';
-    expect(isMaicEditorEnabled()).toBe(true);
-  });
+describe('readFeatureFlagBoolean', () => {
+  it('accepts explicit truthy values only', async () => {
+    const { readFeatureFlagBoolean } = await loadFlags();
 
-  it("returns false for 'false'", () => {
-    process.env[FLAG] = 'false';
-    expect(isMaicEditorEnabled()).toBe(false);
-  });
-
-  it('returns false for an unrecognized string', () => {
-    process.env[FLAG] = 'yes';
-    expect(isMaicEditorEnabled()).toBe(false);
+    expect(readFeatureFlagBoolean('true')).toBe(true);
+    expect(readFeatureFlagBoolean('TRUE')).toBe(true);
+    expect(readFeatureFlagBoolean(' 1 ')).toBe(true);
+    expect(readFeatureFlagBoolean('yes')).toBe(true);
+    expect(readFeatureFlagBoolean('on')).toBe(true);
+    expect(readFeatureFlagBoolean(undefined)).toBe(false);
+    expect(readFeatureFlagBoolean('')).toBe(false);
+    expect(readFeatureFlagBoolean('false')).toBe(false);
+    expect(readFeatureFlagBoolean('enabled')).toBe(false);
   });
 });
 
-describe('isVocationalTaskEngineEnabled', () => {
-  const flag = 'OPENMAIC_ENABLE_VOCATIONAL';
-  let original: string | undefined;
+describe('legacy feature flags', () => {
+  it('keeps MAIC editor default off and supports true-like values', async () => {
+    delete process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED;
+    let flags = await loadFlags();
+    expect(flags.isMaicEditorEnabled()).toBe(false);
 
-  beforeEach(() => {
-    original = process.env[flag];
+    process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED = 'on';
+    flags = await loadFlags();
+    expect(flags.isMaicEditorEnabled()).toBe(true);
   });
 
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env[flag];
-    } else {
-      process.env[flag] = original;
-    }
+  it('requires request intent and the server vocational flag', async () => {
+    process.env.OPENMAIC_ENABLE_VOCATIONAL = 'true';
+    let flags = await loadFlags();
+    expect(flags.isVocationalTaskEngineEnabled()).toBe(true);
+    expect(flags.resolveVocationalActive({ taskEngineMode: true })).toBe(true);
+    expect(flags.resolveVocationalActive({ taskEngineMode: false })).toBe(false);
+    expect(flags.resolveVocationalActive(undefined)).toBe(false);
+
+    process.env.OPENMAIC_ENABLE_VOCATIONAL = 'false';
+    flags = await loadFlags();
+    expect(flags.resolveVocationalActive({ taskEngineMode: true })).toBe(false);
   });
 
-  it('defaults off when unset', () => {
-    delete process.env[flag];
-    expect(isVocationalTaskEngineEnabled()).toBe(false);
-  });
+  it('keeps vocational test UI and video export default off', async () => {
+    delete process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI;
+    delete process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT;
+    let flags = await loadFlags();
+    expect(flags.shouldShowVocationalTestUi()).toBe(false);
+    expect(flags.isVideoExportEnabled()).toBe(false);
 
-  it("returns true for 'true' and '1'", () => {
-    process.env[flag] = 'true';
-    expect(isVocationalTaskEngineEnabled()).toBe(true);
-
-    process.env[flag] = '1';
-    expect(isVocationalTaskEngineEnabled()).toBe(true);
-  });
-
-  it("returns false for 'false'", () => {
-    process.env[flag] = 'false';
-    expect(isVocationalTaskEngineEnabled()).toBe(false);
-  });
-
-  it('resolves active mode from both request intent and server flag', () => {
-    process.env[flag] = 'true';
-    expect(resolveVocationalActive({ taskEngineMode: true })).toBe(true);
-    expect(resolveVocationalActive({ taskEngineMode: false })).toBe(false);
-    expect(resolveVocationalActive(undefined)).toBe(false);
-
-    process.env[flag] = 'false';
-    expect(resolveVocationalActive({ taskEngineMode: true })).toBe(false);
+    process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI = 'yes';
+    process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT = '1';
+    flags = await loadFlags();
+    expect(flags.shouldShowVocationalTestUi()).toBe(true);
+    expect(flags.isVideoExportEnabled()).toBe(true);
   });
 });
 
-describe('shouldShowVocationalTestUi', () => {
-  const flag = 'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI';
-  let original: string | undefined;
+describe('classroom feature flags', () => {
+  it('defaults every new classroom feature off', async () => {
+    const flags = await loadFlags();
 
-  beforeEach(() => {
-    original = process.env[flag];
+    expect(flags.FEATURE_FLAGS).toEqual({
+      companionSelector: false,
+      classroomChat: false,
+      interactiveScenes: false,
+      discussionScenes: false,
+      workspaceScenes: false,
+      flowScenes: false,
+    });
   });
 
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env[flag];
-    } else {
-      process.env[flag] = original;
-    }
+  it('enables subordinate scene flags only when the interactive master is on', async () => {
+    process.env.NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES = 'true';
+    process.env.NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES = 'true';
+    process.env.NEXT_PUBLIC_FEATURE_FLOW_SCENES = 'true';
+    let flags = await loadFlags();
+
+    expect(flags.isInteractiveScenesEnabled()).toBe(false);
+    expect(flags.isDiscussionScenesEnabled()).toBe(false);
+    expect(flags.isWorkspaceScenesEnabled()).toBe(false);
+    expect(flags.isFlowScenesEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';
+    flags = await loadFlags();
+
+    expect(flags.isInteractiveScenesEnabled()).toBe(true);
+    expect(flags.isDiscussionScenesEnabled()).toBe(true);
+    expect(flags.isWorkspaceScenesEnabled()).toBe(true);
+    expect(flags.isFlowScenesEnabled()).toBe(true);
   });
 
-  it('defaults off when unset', () => {
-    delete process.env[flag];
-    expect(shouldShowVocationalTestUi()).toBe(false);
-  });
+  it('filters disabled interactive, workspace, and flow scenes from playback navigation', async () => {
+    const slide = scene({ id: 'slide-1', type: 'slide', content: { type: 'slide', elements: [] } });
+    const quiz = scene({ id: 'quiz-1', type: 'quiz', content: { type: 'quiz', questions: [] } });
+    const interactive = scene({
+      id: 'interactive-1',
+      type: 'interactive',
+      content: { type: 'interactive', html: '<button />', widgetType: 'custom' },
+    });
+    const workspace = scene({
+      id: 'pbl-1',
+      type: 'pbl',
+      content: { type: 'pbl', projectConfig: { title: 'Project', tasks: [] } },
+    });
+    const flow = scene({
+      id: 'flow-1',
+      type: 'interactive',
+      content: {
+        type: 'interactive',
+        html: '<div />',
+        widgetType: 'diagram',
+        widgetConfig: { type: 'diagram', diagramType: 'flowchart', nodes: [], edges: [] },
+      },
+    });
 
-  it("returns true for 'true' and '1'", () => {
-    process.env[flag] = 'true';
-    expect(shouldShowVocationalTestUi()).toBe(true);
+    let flags = await loadFlags();
+    expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
+      slide,
+      quiz,
+    ]);
 
-    process.env[flag] = '1';
-    expect(shouldShowVocationalTestUi()).toBe(true);
+    process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';
+    flags = await loadFlags();
+    expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
+      slide,
+      quiz,
+      interactive,
+    ]);
+
+    process.env.NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES = 'true';
+    process.env.NEXT_PUBLIC_FEATURE_FLOW_SCENES = 'true';
+    flags = await loadFlags();
+    expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
+      slide,
+      quiz,
+      interactive,
+      workspace,
+      flow,
+    ]);
   });
 });

@@ -38,7 +38,9 @@
     "ttsPreview": "Pré-visualizar",
     "ttsPreviewing": "Reproduzindo...",
     "interactiveModeHint": "Ative o modo interativo para conteúdos mais práticos",
-    "interactiveModeLabel": "Modo Interativo"
+    "interactiveModeLabel": "Modo Interativo",
+    "courseMaterialsSelected": "{{n}} materiais selecionados",
+    "courseMaterialMergeOrder": "Os materiais serão mesclados na ordem mostrada abaixo."
   },
   "export": {
     "pptx": "Exportar PPTX",
@@ -84,7 +86,19 @@
         "downloading": "Baixando MP4..."
       }
     },
-    "inlinePartial": "{{count}} recurso(s) externo(s) não puderam ser empacotados; o curso pode não ser exibido corretamente offline."
+    "inlinePartial": "{{count}} recurso(s) externo(s) não puderam ser empacotados; o curso pode não ser exibido corretamente offline.",
+    "video": "Exportar Vídeo",
+    "videoDesc": "Projeto Hyperframes autossuficiente (renderizável em MP4)",
+    "videoNoScenes": "Nenhuma cena disponível para exportar.",
+    "videoCompiling": "Compilando a linha do tempo do vídeo...",
+    "videoRendering": "Renderizando slides e coletando recursos...",
+    "videoPackaging": "Empacotando o projeto de vídeo...",
+    "videoSuccess": "Projeto de vídeo exportado",
+    "videoFailed": "Falha na exportação do vídeo",
+    "videoWarnings": "{{assets}} recurso(s) ausente(s) e {{diagnostics}} problema(s) no relatório de exportação.",
+    "noSlides": "Não há slides para exportar",
+    "noSlidesSkipped": "Este curso não tem slides — PPTX ignorado",
+    "nothingToExport": "Nada para exportar"
   },
   "import": {
     "classroom": "Importar Sala de Aula",
@@ -230,7 +244,9 @@
       "imageDrop": "Arraste uma imagem ou clique para escolher um arquivo",
       "imageOr": "ou cole a URL de uma imagem",
       "imageUrlPlaceholder": "https://…",
-      "imageInsert": "Inserir"
+      "imageInsert": "Inserir",
+      "dragToolbar": "Mover ferramentas de inserção",
+      "dragToolbarKeyboard": "Mover ferramentas: pressione Enter ou Espaço e use as setas"
     },
     "nav": {
       "addSlide": "Adicionar slide",
@@ -283,7 +299,7 @@
       "commentPromptLabel": "Orientação de correção",
       "commentPromptPlaceholder": "Como esta resposta aberta deve ser avaliada?",
       "empty": "Nenhuma pergunta ainda",
-      "emptyHint": "Use “Adicionar pergunta” acima para criar a primeira.",
+      "emptyHint": "Use “Adicionar pergunta” para criar a primeira.",
       "type": {
         "single": "Escolha única",
         "multiple": "Múltipla escolha",
@@ -346,6 +362,10 @@
         "fixHtml": {
           "examples": "\"O botão de iniciar não faz nada\", \"Os painéis se sobrepõem no celular\"",
           "label": "Corrigir um bug na página"
+        },
+        "elements": {
+          "label": "Ajustar elementos",
+          "examples": "“Deixe o título azul e suba”, “Diminua esta figura”"
         }
       },
       "newConversation": "New conversation",
@@ -446,6 +466,14 @@
       "fixing": "Corrigindo",
       "notFixed": "Não corrigido",
       "title": "Corrigir página interativa"
+    },
+    "editElements": {
+      "title": "Editar elementos",
+      "editing": "Editando",
+      "applied": "Aplicado",
+      "notApplied": "Não aplicado",
+      "applyFailed": "O editor não conseguiu aplicar a edição do elemento. Nada foi alterado.",
+      "applyPartiallyFailed": "O editor não conseguiu aplicar uma ou mais edições de elementos. Outras edições podem ter sido aplicadas."
     }
   },
   "stage": {
@@ -545,7 +573,10 @@
     "voiceInputDisabled": "Entrada por voz desativada",
     "textInput": "Entrada por texto",
     "stopRecording": "Parar gravação",
-    "startRecording": "Iniciar gravação"
+    "startRecording": "Iniciar gravação",
+    "previousLine": "Previous line",
+    "nextLine": "Next line",
+    "lineProgress": "Line {{current}} / {{total}}"
   },
   "pbl": {
     "legacyFormat": "Esta cena PBL usa um formato antigo. Gere o curso novamente.",
@@ -854,17 +885,19 @@
   },
   "upload": {
     "pdfSizeLimit": "Suporta arquivos PDF de até 50 MB",
-    "courseMaterialSizeLimit": "Suporta PDF, DOCX, PPTX, TXT e Markdown de até 50 MB",
+    "courseMaterialSizeLimit": "Documentos, apresentações, planilhas, imagens e texto — até 50 MB (formatos aceitos dependem do extrator selecionado)",
     "generateFailed": "Falha ao gerar a sala, tente novamente",
     "requirementPlaceholder": "Conte-me o que você quer aprender, por exemplo:\n\"Me ensine Python do zero em 30 minutos\"\n\"Explique a Transformada de Fourier no quadro\"\n\"Como jogar o jogo de tabuleiro Avalon\"",
     "requirementRequired": "Por favor, descreva os objetivos do curso",
     "fileTooLarge": "Arquivo muito grande. Selecione um arquivo com menos de 50 MB",
-    "unsupportedCourseMaterial": "Tipo de material não suportado. Envie PDF, DOCX, PPTX, TXT ou Markdown."
+    "unsupportedCourseMaterial": "O extrator atual não suporta este formato. Troque o extrator ou escolha outro arquivo.",
+    "courseMaterialCountLimit": "Você pode enviar até 5 arquivos de material do curso",
+    "courseMaterialTotalSizeLimit": "O tamanho total dos materiais deve ser menor que 150 MB"
   },
   "generation": {
     "pdfLoadFailed": "Falha ao carregar o PDF, tente novamente",
     "pdfParseFailed": "Falha ao analisar o PDF",
-    "analyzingCourseMaterial": "Analisando arquivo {{type}}",
+    "analyzingCourseMaterial": "Analisando documentos",
     "analyzingCourseMaterialDesc": "Extraindo estrutura e conteúdo do documento...",
     "courseMaterialLoadFailed": "Falha ao carregar o material do curso, tente novamente",
     "courseMaterialParseFailed": "Falha ao analisar o material do curso",
@@ -970,7 +1003,12 @@
     "webSearchingDesc": "Pesquisando informações atualizadas na web",
     "webSearchFailed": "Falha na pesquisa na web",
     "outlinesReadyCount": "{{ready}} / {{total}} seções prontas",
-    "jumpToBlankTitle": "Ir para uma seção que ainda precisa de título"
+    "jumpToBlankTitle": "Ir para uma seção que ainda precisa de título",
+    "sceneGenerateAuthFailed": "A geração da cena falhou porque o provedor do modelo rejeitou as credenciais. Verifique a configuração do modelo.",
+    "sceneGenerateRateLimited": "A geração da cena atingiu o limite de requisições. Aguarde um momento e tente novamente.",
+    "sceneGenerateProviderUnavailable": "O provedor do modelo está temporariamente indisponível. Tente novamente mais tarde.",
+    "sceneGenerateInvalidResponse": "O modelo não retornou conteúdo de cena válido. Tente outro modelo ou ajuste os requisitos do curso.",
+    "analyzingMediaMaterial": "Analisando áudio/vídeo"
   },
   "settings": {
     "title": "Configurações",
@@ -1069,12 +1107,15 @@
       "tavily": "Tavily",
       "bocha": "Bocha",
       "brave": "Brave Search",
-      "baidu": "Baidu"
+      "baidu": "Baidu",
+      "azure": "Azure OpenAI",
+      "searxng": "SearXNG"
     },
     "providerTypes": {
       "openai": "Protocolo OpenAI",
       "anthropic": "Protocolo Claude",
-      "google": "Protocolo Gemini"
+      "google": "Protocolo Gemini",
+      "azure": "Azure OpenAI"
     },
     "modelCount": "modelos",
     "modelSingular": "modelo",
@@ -1648,7 +1689,23 @@
       "capabilities": "Capabilities offered",
       "offeredNote": "Models offered by this plan. Pick the ones you want on the generation bar — availability depends on your plan tier, and unsupported models will error at generation time."
     },
-    "ttsBrowserNativeTimelineNotice": "O TTS nativo do navegador não suporta os recursos de áudio da linha do tempo do editor (pré-visualizar, regenerar e narração em lote). Mude para um provedor de TTS gerenciado para gerar e gerenciar o áudio de cada linha."
+    "ttsBrowserNativeTimelineNotice": "O TTS nativo do navegador não suporta os recursos de áudio da linha do tempo do editor (pré-visualizar, regenerar e narração em lote). Mude para um provedor de TTS gerenciado para gerar e gerenciar o áudio de cada linha.",
+    "azureDeploymentHint": "Informe o endpoint do Azure OpenAI acima e adicione cada nome de implantação do Azure como um modelo.",
+    "comfyuiWorkflows": "Fluxos de trabalho",
+    "comfyuiRefresh": "Atualizar",
+    "comfyuiNoWorkflowsFoundPrefix": "Nenhum arquivo JSON de fluxo de trabalho encontrado em",
+    "comfyuiAddWorkflowPrefix": "Adicione um arquivo",
+    "comfyuiAddWorkflowSuffix": "para começar.",
+    "comfyuiFolderHintPrefix": "Coloque os arquivos JSON de fluxo de trabalho na sua pasta",
+    "comfyuiFolderHintMiddle": "O nome do arquivo se torna o nome exibido — ex.",
+    "comfyuiLoadError": "Falha ao carregar fluxos de trabalho: {error}",
+    "documentParsingSettings": "Análise de Documentos",
+    "supportedFormats": "Formatos Suportados",
+    "mineruSelfHostFormatsNote": "A análise de PDF e imagens requer os extras mineru[pipeline] ou mineru[core] no seu servidor MinerU. Instalações leves do mineru-api podem processar apenas documentos do Office.",
+    "providerComfyUIImage": "ComfyUI Image",
+    "searxngServerOnlyNotice": "O SearXNG deve ser configurado no servidor. Defina a variável de ambiente SEARXNG_BASE_URL (ou a seção web-search em server-providers.yml). URLs de instância fornecidas pelo cliente não são aceitas.",
+    "alidocmindAccessKeyId": "AccessKey ID",
+    "alidocmindAccessKeySecret": "AccessKey Secret"
   },
   "profile": {
     "title": "Perfil",

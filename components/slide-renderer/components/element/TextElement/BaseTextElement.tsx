@@ -23,6 +23,9 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { containerRef, textRef, textFitScale } = useTextAutoFit(
     `${content}:${elementInfo.width}:${elementInfo.height}:${elementInfo.lineHeight ?? ''}:${elementInfo.defaultFontName ?? ''}`,
   );
+  const vAlign = elementInfo.vAlign ?? 'top';
+  const justifyContent =
+    vAlign === 'middle' ? 'center' : vAlign === 'bottom' ? 'flex-end' : 'flex-start';
 
   return (
     <div
@@ -37,12 +40,22 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
     >
       <div
         className="rotate-wrapper w-full h-full"
-        style={{ transform: `rotate(${elementInfo.rotate}deg)` }}
+        style={{
+          transform: `rotate(${elementInfo.rotate}deg)`,
+          backgroundColor: elementInfo.fill,
+          opacity: elementInfo.opacity,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent,
+        }}
       >
         <div
           ref={containerRef}
           className="element-content relative p-[10px] leading-[1.5] break-words"
           style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: textFitScale < 0.995 ? 'flex-start' : justifyContent,
             width: elementInfo.vertical ? 'auto' : '100%',
             height: '100%',
             maxWidth: '100%',
@@ -51,8 +64,6 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             overflow: 'hidden',
             overflowWrap: 'anywhere',
             wordBreak: 'break-word',
-            backgroundColor: elementInfo.fill,
-            opacity: elementInfo.opacity,
             textShadow: shadowStyle,
             lineHeight: elementInfo.lineHeight,
             letterSpacing: `${elementInfo.wordSpace || 0}px`,

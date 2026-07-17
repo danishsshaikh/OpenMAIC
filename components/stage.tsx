@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useStageStore } from '@/lib/store';
 import { isCurrentSceneEditable } from '@/lib/edit/stage-mode';
-import { isMaicEditorEnabled } from '@/lib/config/feature-flags';
+import { isInteractiveScenesEnabled, isMaicEditorEnabled } from '@/lib/config/feature-flags';
 import { EditChromeRoot } from '@/components/edit/EditChromeRoot';
 import {
   PlaybackChromeRoot,
@@ -161,7 +161,7 @@ export function Stage({
       {/* Keep-alive host for interactive scene iframes (#619). Lives here, above
           the mode-swap subtree, so its iframes survive Pro mode toggles and
           scene switches instead of reloading on every remount. */}
-      <InteractiveIframeHost />
+      {isInteractiveScenesEnabled() && <InteractiveIframeHost />}
     </div>
   );
 }

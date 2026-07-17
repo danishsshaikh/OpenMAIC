@@ -13,6 +13,7 @@ import { playBrowserTTSPreview } from '@/lib/audio/browser-tts-preview';
 import { useVoxCPMVoiceProfiles } from '@/lib/audio/voxcpm-voices';
 import { resolveAgentVoiceOptions } from '@/lib/audio/agent-voice';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
+import { isCompanionSelectorEnabled } from '@/lib/config/feature-flags';
 import {
   Sparkles,
   ChevronDown,
@@ -613,7 +614,8 @@ function TeacherVoicePill({
 
 export function AgentBar() {
   const { t } = useI18n();
-  const { listAgents } = useAgentRegistry();
+  const { getAgent, listAgents } = useAgentRegistry();
+  const companionSelectorEnabled = isCompanionSelectorEnabled();
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
   const setSelectedAgentIds = useSettingsStore((s) => s.setSelectedAgentIds);
   const agentMode = useSettingsStore((s) => s.agentMode);
@@ -636,7 +638,9 @@ export function AgentBar() {
     return () => speechSynthesis.removeEventListener('voiceschanged', loadVoices);
   }, []);
 
-  const allAgents = listAgents();
+  const allAgents = companionSelectorEnabled
+    ? listAgents()
+    : [getAgent('default-1')].filter((agent): agent is AgentConfig => Boolean(agent));
   const agents = allAgents.filter((a) => !a.isGenerated);
   const teacherAgent = agents.find((a) => a.role === 'teacher');
   const selectedAgents = agents.filter((a) => selectedAgentIds.includes(a.id));
@@ -818,6 +822,38 @@ export function AgentBar() {
       </div>
     );
   };
+
+  if (!companionSelectorEnabled) {
+    return (
+      <div className="relative w-80">
+        <div
+          className={cn(
+            'group flex items-center gap-2 rounded-full px-2.5 py-2 transition-all w-full',
+            'border border-border/50 text-muted-foreground/70',
+          )}
+        >
+          <span className="text-xs text-muted-foreground/60 hidden sm:block font-medium flex-1 text-left truncate">
+            {t('agentBar.readyToLearn')}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {teacherAgent && (
+              <div className="size-8 rounded-full overflow-hidden ring-2 ring-blue-400/40 dark:ring-blue-500/30 shrink-0">
+                <img
+                  src={teacherAgent.avatar}
+                  alt={getAgentName(teacherAgent)}
+                  className="size-full object-cover"
+                />
+              </div>
+            )}
+            <TeacherVoicePill
+              availableProviders={availableProviders}
+              disabled={!ttsEnabled || availableProviders.length === 0}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative w-96">

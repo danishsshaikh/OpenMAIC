@@ -36,16 +36,19 @@ import type {
 } from './types';
 import type { AudioPlayer } from '@/lib/utils/audio-player';
 import { ActionEngine } from '@/lib/action/engine';
-import { resolvePlaybackCursor } from './engine-cursor';
+import {
+  DISCUSSION_TRIGGER_DELAY_MS,
+  estimateSpeechDurationMs,
+  resolvePlaybackCursor,
+} from '@/lib/choreography';
 import { canJumpWithinReconstructablePrefix } from './action-navigation';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
+import { isDiscussionScenesEnabled } from '@/lib/config/feature-flags';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('PlaybackEngine');
-const DISCUSSION_PROMPT_DELAY_MS = 3000;
-const MIN_SPEECH_DURATION_MS = 2000;
 const INSTANT_ACTION_DURATION_MS = 0;
 const SEEK_UNSAFE_ACTION_TYPES = new Set<Action['type']>([
   'discussion',
@@ -656,16 +659,8 @@ export class PlaybackEngine {
   }
 
   private getSpeechDurationMs(action: SpeechAction): number {
-    const text = action.text;
-    const cjkCount = (
-      text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []
-    ).length;
-    const isCJK = text.length > 0 && cjkCount > text.length * CJK_LANG_THRESHOLD;
     const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
-    const rawMs = isCJK
-      ? Math.max(MIN_SPEECH_DURATION_MS, text.length * 150)
-      : Math.max(MIN_SPEECH_DURATION_MS, text.split(/\s+/).filter(Boolean).length * 240);
-    return rawMs / speed;
+    return estimateSpeechDurationMs(action.text, { speed });
   }
 
   private getSpeechDurationKey(action: SpeechAction, actionIndex?: number): string {
@@ -685,7 +680,7 @@ export class PlaybackEngine {
       }
       return this.knownSpeechDurationsMs.get(durationKey) ?? this.getSpeechDurationMs(speechAction);
     }
-    if (action.type === 'discussion') return DISCUSSION_PROMPT_DELAY_MS;
+    if (action.type === 'discussion') return DISCUSSION_TRIGGER_DELAY_MS;
     return INSTANT_ACTION_DURATION_MS;
   }
 
@@ -922,6 +917,11 @@ export class PlaybackEngine {
 
       case 'discussion': {
         const discussionAction = action as DiscussionAction;
+        if (!isDiscussionScenesEnabled()) {
+          this.consumedDiscussions.add(discussionAction.id);
+          if (this.isCurrentGeneration(generation)) this.processNext();
+          return;
+        }
         // Check if already consumed
         if (this.consumedDiscussions.has(discussionAction.id)) {
           if (this.isCurrentGeneration(generation)) this.processNext();
@@ -953,7 +953,7 @@ export class PlaybackEngine {
           this.currentTrigger = trigger;
           this.callbacks.onProactiveShow?.(trigger);
           // Engine pauses here — user calls confirmDiscussion() or skipDiscussion()
-        }, DISCUSSION_PROMPT_DELAY_MS);
+        }, DISCUSSION_TRIGGER_DELAY_MS);
         break;
       }
 

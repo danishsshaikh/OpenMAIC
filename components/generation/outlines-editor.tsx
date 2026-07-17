@@ -30,6 +30,7 @@ import type { SceneOutline } from '@/lib/types/generation';
 import type { WidgetType } from '@/lib/types/widgets';
 import { changeOutlineType } from '@/lib/generation/outline-type';
 import { countBlockingOutlines, validateOutline } from '@/lib/edit/content-validation';
+import { isInteractiveScenesEnabled, isWorkspaceScenesEnabled } from '@/lib/config/feature-flags';
 
 type SceneType = SceneOutline['type'];
 
@@ -47,7 +48,12 @@ interface OutlinesEditorProps {
   onCollapse?: () => void;
 }
 
-const SCENE_TYPES: SceneType[] = ['slide', 'quiz', 'interactive', 'pbl'];
+const SCENE_TYPES: SceneType[] = [
+  'slide',
+  'quiz',
+  ...(isInteractiveScenesEnabled() ? (['interactive'] as const) : []),
+  ...(isWorkspaceScenesEnabled() ? (['pbl'] as const) : []),
+];
 
 const TYPE_THEME: Record<
   SceneType,
