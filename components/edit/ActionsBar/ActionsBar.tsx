@@ -974,17 +974,22 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   const ttsActive = useSettingsStore(
     (s) => s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts',
   );
-  const ttsFingerprintSettings = useSettingsStore((s) => {
-    const providerConfig = s.ttsProvidersConfig?.[s.ttsProviderId];
-    return {
+  const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
+  const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
+  const ttsVoice = useSettingsStore((s) => s.ttsVoice);
+  const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
+  const ttsModelId = useSettingsStore((s) => s.ttsProvidersConfig?.[s.ttsProviderId]?.modelId);
+  const ttsFingerprintSettings = useMemo(
+    () => ({
       language,
-      ttsEnabled: s.ttsEnabled,
-      ttsProviderId: s.ttsProviderId,
-      ttsVoice: s.ttsVoice,
-      ttsSpeed: s.ttsSpeed,
-      ttsModelId: providerConfig?.modelId,
-    };
-  });
+      ttsEnabled,
+      ttsProviderId,
+      ttsVoice,
+      ttsSpeed,
+      ttsModelId,
+    }),
+    [language, ttsEnabled, ttsProviderId, ttsVoice, ttsSpeed, ttsModelId],
+  );
   const stage = useStageStore((s) => s.stage);
   const allOutlines = useStageStore((s) => s.outlines);
   const allScenes = useStageStore((s) => s.scenes);
