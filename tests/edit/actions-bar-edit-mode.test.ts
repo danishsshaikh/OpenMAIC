@@ -60,6 +60,7 @@ const initialStageState = useStageStore.getState();
 const initialSettingsState = useSettingsStore.getState();
 let mounted: { root: Root; container: HTMLDivElement } | null = null;
 let consoleError: ReturnType<typeof vi.spyOn>;
+let consoleInfo: ReturnType<typeof vi.spyOn>;
 
 describe('ActionsBar edit-mode narration sync regressions', () => {
   beforeEach(() => {
@@ -75,6 +76,7 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     mocks.resolveSpeechAudioId.mockClear();
     mocks.speechAudioId.mockClear();
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     setupStores(makeSyncedScene());
   });
 
@@ -86,6 +88,7 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     }
     expectNoExternalStoreLoopErrors();
     consoleError.mockRestore();
+    consoleInfo.mockRestore();
     useStageStore.setState(initialStageState, true);
     useSettingsStore.setState(initialSettingsState, true);
   });
@@ -587,6 +590,86 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
       secondRequestContent.narrationSource?.blocks?.map((block) => block.targetElementId),
     ).toEqual(['task-card', 'data-card']);
   });
+
+  it('emits visible bulk sync order checkpoints through the real Sync all stale click path', async () => {
+    const scene = makeMpiConceptsScene();
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          { id: 'new-spot-communicators', type: 'spotlight', elementId: 'communicators-card' },
+          speech('new-speech-communicators', 'Communicators narration.', ''),
+          { id: 'new-spot-processes', type: 'spotlight', elementId: 'processes-card' },
+          speech('new-speech-processes', 'Processes narration.', ''),
+          { id: 'new-spot-rank', type: 'spotlight', elementId: 'rank-card' },
+          speech('new-speech-rank', 'Rank narration.', ''),
+        ],
+      },
+    });
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 3);
+
+    const logs = narrationOrderLogs();
+    expect(logs.map((payload) => payload.checkpoint)).toEqual([
+      'bulk-queue',
+      'current-scene',
+      'visual-block-order',
+      'generation-input-order',
+      'generated-action-order',
+      'final-action-order',
+      'saved-action-order',
+      'tts-input-order',
+    ]);
+    expect(logs[0].sceneIds).toEqual(['scene-1']);
+
+    const currentScene = checkpoint(logs, 'current-scene');
+    expect(currentScene.sceneFound).toBe(true);
+    expect(textPreviewOrder(currentScene.elementArrayOrder)).toEqual([
+      'Processes',
+      'Communicators',
+      'Rank',
+    ]);
+
+    expect(textPreviewOrder(checkpoint(logs, 'visual-block-order').blocks)).toEqual([
+      'Communicators',
+      'Processes',
+      'Rank',
+    ]);
+    expect(textPreviewOrder(checkpoint(logs, 'generation-input-order').targets)).toEqual([
+      'Communicators',
+      'Processes',
+      'Rank',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'generated-action-order').actions)).toEqual([
+      'communicators-card',
+      'processes-card',
+      'rank-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'final-action-order').actions)).toEqual([
+      'communicators-card',
+      'processes-card',
+      'rank-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'saved-action-order').actions)).toEqual([
+      'communicators-card',
+      'processes-card',
+      'rank-card',
+    ]);
+    expect(checkpoint(logs, 'tts-input-order').speechPreviews).toEqual([
+      'Communicators narration.',
+      'Processes narration.',
+      'Rank narration.',
+    ]);
+  });
 });
 
 function mountActionsBar() {
@@ -764,6 +847,73 @@ function parallelismScene(options: {
   );
 }
 
+function makeMpiConceptsScene(): Scene {
+  const initial = mpiConceptsScene({ processesLeft: 100, communicatorsLeft: 400, rankLeft: 700 });
+  const edited = mpiConceptsScene({ processesLeft: 400, communicatorsLeft: 100, rankLeft: 700 });
+  return {
+    ...edited,
+    sync: syncedNarrationMetadata(initial, TTS_SETTINGS),
+  };
+}
+
+function mpiConceptsScene(layout: {
+  processesLeft: number;
+  communicatorsLeft: number;
+  rankLeft: number;
+}): Scene {
+  return makeScene(
+    {
+      id: 'scene-1',
+      stageId: 'stage-1',
+      title: 'Core MPI Concepts',
+      order: 1,
+      outlineId: 'outline-1',
+      actions: [
+        { id: 'spot-processes', type: 'spotlight', elementId: 'processes-card' } as Action,
+        speech('speech-processes', 'Processes old narration.', 'tts_processes'),
+        { id: 'spot-communicators', type: 'spotlight', elementId: 'communicators-card' } as Action,
+        speech('speech-communicators', 'Communicators old narration.', 'tts_communicators'),
+        { id: 'spot-rank', type: 'spotlight', elementId: 'rank-card' } as Action,
+        speech('speech-rank', 'Rank old narration.', 'tts_rank'),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: 'mpi-canvas',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#5b9bd5'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          mpiTextElement('processes-card', 'Processes', layout.processesLeft),
+          mpiTextElement('communicators-card', 'Communicators', layout.communicatorsLeft),
+          mpiTextElement('rank-card', 'Rank', layout.rankLeft),
+        ],
+      },
+    },
+  );
+}
+
+function mpiTextElement(id: string, text: string, left: number) {
+  return {
+    id,
+    type: 'text' as const,
+    left,
+    top: 150,
+    width: 220,
+    height: 96,
+    rotate: 0,
+    content: `<h2>${text}</h2>`,
+    defaultFontName: 'Arial',
+    defaultColor: '#111111',
+  };
+}
+
 function makeManualInitialScene(
   options: {
     id?: string;
@@ -931,6 +1081,28 @@ function expectNoExternalStoreLoopErrors() {
     messages.some((message: string) => message.includes('Maximum update depth exceeded')),
   ).toBe(false);
   expect(messages.some((message: string) => message.includes('infinite loop'))).toBe(false);
+}
+
+function narrationOrderLogs(): Array<Record<string, unknown>> {
+  return consoleInfo.mock.calls
+    .filter((call: unknown[]) => call[0] === '[NarrationSyncOrder]')
+    .map((call: unknown[]) => call[1] as Record<string, unknown>);
+}
+
+function checkpoint(logs: Array<Record<string, unknown>>, name: string) {
+  const found = logs.find((payload) => payload.checkpoint === name);
+  expect(found).toBeTruthy();
+  return found as Record<string, unknown>;
+}
+
+function textPreviewOrder(value: unknown) {
+  return (value as Array<{ textPreview?: string }>).map((item) => item.textPreview);
+}
+
+function targetActionOrder(value: unknown) {
+  return (value as Array<{ targetElementId?: string }>)
+    .filter((action) => action.targetElementId)
+    .map((action) => action.targetElementId);
 }
 
 function hasText(text: string): boolean {

@@ -104,6 +104,7 @@ import type {
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
 const log = createLogger('NarrationSync');
+const ORDER_LOG_PREFIX = '[NarrationSyncOrder]';
 type NarrationGenerationSlideContent = GeneratedSlideContent & {
   narrationSource?: {
     text: string;
@@ -370,6 +371,60 @@ function speechIdsForDiagnostics(actions: readonly Action[]) {
     .filter((action) => action.type === 'speech')
     .map((action) => action.id)
     .filter(Boolean) as string[];
+}
+
+function orderTextPreview(value: unknown): string {
+  return normalizeNarrationText(
+    typeof value === 'string' ? value.replace(/<[^>]+>/g, ' ') : '',
+  ).slice(0, 80);
+}
+
+function elementArrayOrderForDiagnostics(scene: Scene | undefined) {
+  if (!scene || scene.content.type !== 'slide') return [];
+  return (scene.content.canvas.elements ?? []).map((element) => {
+    const record = element as unknown as Record<string, unknown>;
+    return {
+      elementId: element.id,
+      type: element.type,
+      x: typeof record.left === 'number' ? record.left : undefined,
+      y: typeof record.top === 'number' ? record.top : undefined,
+      textPreview: orderTextPreview(record.content),
+    };
+  });
+}
+
+function visualBlockOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block) => ({
+    blockId: block.blockId,
+    targetElementId: block.targetElementId,
+    x: block.bounds.left,
+    y: block.bounds.top,
+    textPreview: block.text.slice(0, 80),
+  }));
+}
+
+function generationInputOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block) => ({
+    blockId: block.blockId,
+    targetElementId: block.targetElementId,
+    textPreview: block.text.slice(0, 80),
+  }));
+}
+
+function actionOrderForDiagnostics(actions: readonly Action[]) {
+  return actions.map((action) => ({
+    type: action.type,
+    actionId: action.id,
+    targetElementId: isElementTargetAction(action) ? action.elementId : undefined,
+    speechPreview:
+      action.type === 'speech' ? orderTextPreview((action as { text?: string }).text) : undefined,
+  }));
+}
+
+function logNarrationOrderCheckpoint(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(ORDER_LOG_PREFIX, payload);
 }
 
 function withStampedAudioIds(
@@ -1355,6 +1410,14 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       if (!speeches.length) return [...actionsForTts] as Action[];
 
       const ids = speeches.map((a) => a.id).filter(Boolean) as string[];
+      logNarrationOrderCheckpoint({
+        checkpoint: 'tts-input-order',
+        sceneId: targetScene.id,
+        speechActionIds: ids,
+        speechPreviews: speeches.map((action) =>
+          orderTextPreview((action as { text?: string }).text),
+        ),
+      });
       setRegeneratingIds(new Set(ids));
       const okIds = new Set<string>();
       try {
@@ -1435,10 +1498,21 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   const syncSceneById = useCallback(
     async (targetSceneId: string) => {
       const latest = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'current-scene',
+        sceneId: targetSceneId,
+        sceneFound: Boolean(latest),
+        elementArrayOrder: elementArrayOrderForDiagnostics(latest),
+      });
       if (!latest || !stage) return;
       const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
       if (beforeState.status !== 'narration-stale' && beforeState.status !== 'audio-stale') return;
       const source = buildNarrationSourceFromScene(latest);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'visual-block-order',
+        sceneId: targetSceneId,
+        blocks: visualBlockOrderForDiagnostics(source.visualBlocks),
+      });
       const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
 
       if (beforeState.status === 'audio-stale') {
@@ -1451,7 +1525,18 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           currentSource.fingerprint === source.fingerprint
             ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
             : current.sync;
+        logNarrationOrderCheckpoint({
+          checkpoint: 'final-action-order',
+          sceneId: targetSceneId,
+          actions: actionOrderForDiagnostics(actionsWithAudio),
+        });
         useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
+        const saved = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        logNarrationOrderCheckpoint({
+          checkpoint: 'saved-action-order',
+          sceneId: targetSceneId,
+          actions: actionOrderForDiagnostics(saved?.actions ?? []),
+        });
         syncDiagnostic({
           sceneId: targetSceneId,
           operation: 'audio-only',
@@ -1483,10 +1568,16 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       });
 
       const outline = outlineForScene(latest, allOutlines);
+      const generationContent = toGenerationContent(latest.content, source);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generation-input-order',
+        sceneId: targetSceneId,
+        targets: generationInputOrderForDiagnostics(source.visualBlocks),
+      });
       const result = await fetchSceneActions({
         outline,
         allOutlines: allOutlines.length ? allOutlines : [outline],
-        content: toGenerationContent(latest.content, source),
+        content: generationContent,
         stageId: stage.id,
         agents: selectedAgentsForGeneration,
         previousSpeeches: [],
@@ -1496,10 +1587,21 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         throw new Error(result.error || 'Narration sync failed');
       }
 
+      const rawGeneratedActions = result.scene.actions ?? [];
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generated-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(rawGeneratedActions),
+      });
       const generatedActions = preserveActionPairIdsByTarget(
         latest.actions ?? [],
-        result.scene.actions ?? [],
+        rawGeneratedActions,
       );
+      logNarrationOrderCheckpoint({
+        checkpoint: 'final-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(generatedActions),
+      });
       const generatedNarration = generatedActions
         .filter((action) => action.type === 'speech')
         .map((action) => ((action as { text?: string }).text ?? '').trim())
@@ -1553,6 +1655,12 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           ),
           updatedAt: Date.now(),
         },
+      });
+      const savedBeforeTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'saved-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(savedBeforeTts?.actions ?? []),
       });
 
       let actionsWithAudio: Action[];
@@ -1656,6 +1764,10 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           return state.status === 'narration-stale' || state.status === 'audio-stale';
         })
         .map((s) => s.id);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'bulk-queue',
+        sceneIds: staleSceneIds,
+      });
 
       for (const staleSceneId of staleSceneIds) {
         await syncSceneById(staleSceneId);
