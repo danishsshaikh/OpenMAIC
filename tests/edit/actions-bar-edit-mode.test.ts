@@ -13,6 +13,7 @@ import {
   getVisibleElementText,
   getAudioSourceFingerprint,
   getNarrationSyncState,
+  resolveNarrationSyncDecision,
   syncedNarrationMetadata,
   staleAudioMetadata,
 } from '@/lib/audio/narration-sync';
@@ -646,8 +647,12 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
       'current-scene',
       'elementArrayOrderFlat',
       'editedElementTextFlat',
+      'sync-decision',
+      'syncDecisionFlat',
       'visual-block-order',
       'visualBlockOrderFlat',
+    ]);
+    expect(logs.slice(8, 10).map((payload) => payload.checkpoint)).toEqual([
       'narrationSourceTextFlat',
       'generation-input-order',
     ]);
@@ -822,6 +827,209 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     );
     expect(buildNarrationSourceFromScene(updated).text).toContain('One to Many');
     expect(buildNarrationSourceFromScene(updated).text).not.toContain('Many to One');
+  });
+
+  it('sync all stale regenerates narration when source and audio are both stale', async () => {
+    const scene = makeRealCollectiveCommunicationScene();
+    const source = buildNarrationSourceFromScene(scene);
+    const decision = resolveNarrationSyncDecision(scene, TTS_SETTINGS, source);
+    expect(decision.narrationSourceChanged).toBe(true);
+    expect(decision.audioChanged).toBe(true);
+    expect(decision.resolvedStaleState).toBe('narration-stale');
+    expect(decision.operation).toBe('narration-and-audio');
+    expect(
+      source.text.split('\n').filter((line) => line === 'Collective Communication'),
+    ).toHaveLength(1);
+
+    const firstTts = deferredPromise<void>();
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          speech('new-intro', 'New intro narration.', ''),
+          { id: 'new-spot-bcast', type: 'spotlight', elementId: 'bcast-card' },
+          speech('new-speech-bcast', 'New Bcast narration.', ''),
+          { id: 'new-spot-reduce', type: 'spotlight', elementId: 'reduce-card' },
+          speech('new-speech-reduce', 'MPI_Reduce now explains One to Many communication.', ''),
+          { id: 'new-spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' },
+          speech('new-speech-allreduce', 'New Allreduce narration.', ''),
+          speech('new-outro', 'New outro narration.', ''),
+        ],
+      },
+    });
+    mocks.regenerateSpeechAudio.mockImplementation(
+      async (_sceneOrder: number, action: { id: string }) => {
+        if (action.id === 'new-intro') await firstTts.promise;
+        return action.id;
+      },
+    );
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 1);
+
+    const midSync = getScene('scene-1');
+    expect(midSync.sync?.status).toBe('audio-stale');
+    expect(midSync.sync?.narrationSourceFingerprint).toBe(source.fingerprint);
+    expect(speechTextsForTest(midSync)).toContain(
+      'MPI_Reduce now explains One to Many communication.',
+    );
+
+    await act(async () => {
+      firstTts.resolve();
+      await firstTts.promise;
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 5);
+
+    expect(mocks.fetchSceneActions).toHaveBeenCalledTimes(1);
+    const requestContent = mocks.fetchSceneActions.mock.calls[0][0].content as {
+      narrationSource?: {
+        text?: string;
+        fingerprint?: string;
+        blocks?: Array<{ targetElementId: string; text: string }>;
+      };
+      choreography?: Array<{ targetElementId: string; targetText: string }>;
+    };
+    expect(requestContent.narrationSource?.fingerprint).toBe(source.fingerprint);
+    expect(requestContent.narrationSource?.text).toContain('MPI_Reduce One to Many!!!!!');
+    expect(requestContent.narrationSource?.text).toContain('Root at ALL!');
+    expect(requestContent.narrationSource?.text).not.toContain('MPI_Reduce Many to One');
+    expect(requestContent.narrationSource?.text).not.toContain('previous Reduce Many-to-One');
+    expect(requestContent.narrationSource?.blocks?.map((block) => block.targetElementId)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(requestContent.choreography?.map((block) => block.targetElementId)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+
+    const logs = narrationOrderLogs();
+    expect(checkpoint(logs, 'sync-decision')).toMatchObject({
+      narrationSourceChanged: true,
+      audioChanged: true,
+      resolvedStaleState: 'narration-stale',
+      chosenOperation: 'narration-and-audio',
+      hasExistingNarration: true,
+      hasExistingAudio: true,
+    });
+    expect(checkpoint(logs, 'syncDecisionFlat').order).toEqual([
+      'narrationSourceChanged:true',
+      'audioChanged:true',
+      'state:narration-stale',
+      'operation:narration-and-audio',
+      'hasNarration:true',
+      'hasAudio:true',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'generationInputOrderFlat'))).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'generated-action-order').actions)).toEqual([
+      'bcast-card',
+      'reduce-card',
+      'allreduce-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'final-action-order').actions)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(checkpoint(logs, 'tts-input-order').speechPreviews).toEqual([
+      'New intro narration.',
+      'New Allreduce narration.',
+      'New Bcast narration.',
+      'MPI_Reduce now explains One to Many communication.',
+      'New outro narration.',
+    ]);
+
+    expect(
+      mocks.regenerateSpeechAudio.mock.calls.map((call) => (call[1] as { text?: string }).text),
+    ).toEqual([
+      'New intro narration.',
+      'New Allreduce narration.',
+      'New Bcast narration.',
+      'MPI_Reduce now explains One to Many communication.',
+      'New outro narration.',
+    ]);
+    expect(
+      mocks.regenerateSpeechAudio.mock.calls.map((call) => (call[1] as { text?: string }).text),
+    ).not.toContain('previous Reduce Many-to-One narration');
+
+    const updated = getScene('scene-1');
+    expect(targetActionOrder(updated.actions ?? [])).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(speechTextsForTest(updated).split('\n')).toEqual([
+      'New intro narration.',
+      'New Allreduce narration.',
+      'New Bcast narration.',
+      'MPI_Reduce now explains One to Many communication.',
+      'New outro narration.',
+    ]);
+    expect(updated.sync?.narrationSourceFingerprint).toBe(source.fingerprint);
+    expect(updated.sync?.audioSourceFingerprint).toBe(
+      getAudioSourceFingerprint(updated, TTS_SETTINGS),
+    );
+    expect(getNarrationSyncState(updated, TTS_SETTINGS).status).toBe('synced');
+  });
+
+  it('keeps a newer source stale when a scene changes during narration generation', async () => {
+    const scene = makeManualEditedStaleScene();
+    const generation = deferredPromise<unknown>();
+    mocks.fetchSceneActions.mockReturnValue(generation.promise);
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncNarrationAudio').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.fetchSceneActions.mock.calls.length === 1);
+
+    act(() => {
+      replaceScene(
+        makeManualEditedStaleScene({
+          points: ['Newest semantic edit'],
+          sync: getScene('scene-1').sync,
+        }),
+      );
+    });
+
+    await act(async () => {
+      generation.resolve({
+        success: true,
+        scene: { ...scene, actions: [speech('speech-1', NEW_NARRATION, '')] },
+      });
+      await generation.promise.catch(() => undefined);
+    });
+    await waitForCondition(() =>
+      Boolean(getScene('scene-1').sync?.error?.includes('Scene changed')),
+    );
+
+    const updated = getScene('scene-1');
+    expect(mocks.regenerateSpeechAudio).not.toHaveBeenCalled();
+    expect(buildNarrationSourceFromScene(updated).text).toContain('Newest semantic edit');
+    expect(updated.sync?.status).toBe('narration-stale');
+    expect(getNarrationSyncState(updated, TTS_SETTINGS).status).toBe('narration-stale');
+    expect(updated.sync?.narrationSourceFingerprint).not.toBe(
+      buildNarrationSourceFromScene(updated).fingerprint,
+    );
   });
 });
 
@@ -1084,6 +1292,102 @@ function makeCollectiveCommunicationScene(): Scene {
     ...edited,
     sync: syncedNarrationMetadata(initial, TTS_SETTINGS),
   };
+}
+
+function makeRealCollectiveCommunicationScene(): Scene {
+  const previousSettings = { ...TTS_SETTINGS, ttsVoice: 'echo' };
+  const initial = realCollectiveCommunicationScene({
+    bcastLeft: 100,
+    reduceLeft: 400,
+    allreduceLeft: 700,
+    reduceLines: ['Many to One', 'Root collects', 'Sum/Max/Min'],
+    allreduceLines: ['Many-to-All', 'Reduction to all'],
+  });
+  const edited = realCollectiveCommunicationScene({
+    bcastLeft: 400,
+    reduceLeft: 700,
+    allreduceLeft: 100,
+    reduceLines: ['One to Many!!!!!', 'Root at ALL!', 'Sum/Max/Min'],
+    allreduceLines: ['Many-to-All', 'Red. All to All'],
+  });
+  return {
+    ...edited,
+    sync: syncedNarrationMetadata(initial, previousSettings),
+  };
+}
+
+function realCollectiveCommunicationScene(layout: {
+  bcastLeft: number;
+  reduceLeft: number;
+  allreduceLeft: number;
+  reduceLines: string[];
+  allreduceLines: string[];
+}): Scene {
+  return makeScene(
+    {
+      id: 'scene-1',
+      stageId: 'stage-1',
+      title: 'Collective Communication',
+      order: 1,
+      outlineId: 'outline-1',
+      actions: [
+        speech('intro', 'Intro', 'tts_intro'),
+        { id: 'spot-bcast', type: 'spotlight', elementId: 'bcast-card' } as Action,
+        speech('speech-bcast', 'previous Bcast narration', 'tts_bcast'),
+        { id: 'spot-reduce', type: 'spotlight', elementId: 'reduce-card' } as Action,
+        speech('speech-reduce', 'previous Reduce Many-to-One narration', 'tts_reduce'),
+        { id: 'spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' } as Action,
+        speech('speech-allreduce', 'previous Allreduce narration', 'tts_allreduce'),
+        speech('outro', 'Outro', 'tts_outro'),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: 'collective-real-canvas',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#5b9bd5'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          {
+            id: 'collective-title',
+            type: 'text',
+            left: 80,
+            top: 40,
+            width: 760,
+            height: 80,
+            rotate: 0,
+            content: '<h1>Collective Communication</h1>',
+            defaultFontName: 'Arial',
+            defaultColor: '#111111',
+          },
+          collectiveTextElement(
+            'bcast-card',
+            'MPI_Bcast',
+            'One-to-All Source to All',
+            layout.bcastLeft,
+          ),
+          collectiveTextElement(
+            'reduce-card',
+            'MPI_Reduce',
+            layout.reduceLines.join(' '),
+            layout.reduceLeft,
+          ),
+          collectiveTextElement(
+            'allreduce-card',
+            'MPI_Allreduce',
+            layout.allreduceLines.join(' '),
+            layout.allreduceLeft,
+          ),
+        ],
+      },
+    },
+  );
 }
 
 function collectiveCommunicationScene(layout: {

@@ -10,6 +10,12 @@ export type NarrationSyncStatus =
   | 'error'
   | 'unknown-legacy';
 
+export type NarrationSyncOperation =
+  | 'narration-and-audio'
+  | 'audio-only'
+  | 'none'
+  | 'unknown-legacy';
+
 export interface NarrationAudioSettingsFingerprint {
   language?: string;
   ttsEnabled?: boolean;
@@ -32,6 +38,21 @@ export interface NarrationSyncState {
   narrationSourceFingerprint: string;
   audioSourceFingerprint: string;
   hasSpeechAudio: boolean;
+}
+
+export interface NarrationSyncDecision {
+  operation: NarrationSyncOperation;
+  resolvedStaleState: NarrationSyncStatus;
+  currentNarrationSourceFingerprint: string;
+  storedNarrationSourceFingerprint?: string;
+  narrationSourceChanged: boolean;
+  currentAudioFingerprint: string;
+  storedAudioFingerprint?: string;
+  audioChanged: boolean;
+  hasExistingNarration: boolean;
+  hasExistingAudio: boolean;
+  isLegacyWithoutNarrationFingerprint: boolean;
+  isLegacyWithoutAudioFingerprint: boolean;
 }
 
 export interface NarrationSource {
@@ -139,23 +160,33 @@ export function buildNarrationSourceFromScene(
 ): NarrationSource {
   const visualBlocks =
     scene.content.type === 'slide' ? buildVisualNarrationBlocksFromScene(scene) : [];
+  const title = normalizeNarrationText(scene.title);
+  const duplicateTitleIndex = title
+    ? visualBlocks.findIndex(
+        (block) => canonicalNarrationLine(block.text) === canonicalNarrationLine(title),
+      )
+    : -1;
+  const sourceVisualBlocks =
+    duplicateTitleIndex >= 0
+      ? visualBlocks.filter((_block, index) => index !== duplicateTitleIndex)
+      : visualBlocks;
   const contentLines =
     scene.content.type === 'slide'
-      ? visualBlocks.map((block) => block.text)
+      ? sourceVisualBlocks.map((block) => block.text)
       : visibleContentLines(scene.content);
-  const lines = [normalizeNarrationText(scene.title), ...contentLines].filter(Boolean);
+  const lines = [title, ...contentLines].filter(Boolean);
   const text = lines.join('\n');
   return {
     text,
     elementCount:
       scene.content.type === 'slide'
-        ? visualBlocks.reduce((count, block) => count + block.elementIds.length, 0)
+        ? sourceVisualBlocks.reduce((count, block) => count + block.elementIds.length, 0)
         : Math.max(0, lines.length - (normalizeNarrationText(scene.title) ? 1 : 0)),
     fingerprint:
       scene.content.type === 'slide'
         ? stableStringify({
-            title: normalizeNarrationText(scene.title),
-            blocks: visualBlocks.map((block) => ({
+            title,
+            blocks: sourceVisualBlocks.map((block) => ({
               blockId: block.blockId,
               textFingerprint: stableStringify(block.text),
               orderIndex: block.orderIndex,
@@ -165,6 +196,10 @@ export function buildNarrationSourceFromScene(
     preview: text.slice(0, 120),
     visualBlocks,
   };
+}
+
+function canonicalNarrationLine(value: string): string {
+  return normalizeNarrationText(value).toLowerCase();
 }
 
 export function buildVisualNarrationBlocksFromScene(
@@ -257,6 +292,61 @@ export function getNarrationSyncState(
   };
 }
 
+export function resolveNarrationSyncDecision(
+  scene: Pick<Scene, 'actions' | 'content' | 'title' | 'sync'>,
+  settings: NarrationAudioSettingsFingerprint = {},
+  source: NarrationSource = buildNarrationSourceFromScene(scene),
+): NarrationSyncDecision {
+  const currentNarrationSourceFingerprint = source.fingerprint;
+  const currentAudioFingerprint = getAudioSourceFingerprint(scene as Scene, settings);
+  const storedNarrationSourceFingerprint = scene.sync?.narrationSourceFingerprint;
+  const storedAudioFingerprint = scene.sync?.audioSourceFingerprint;
+  const narrationSourceChanged = Boolean(
+    storedNarrationSourceFingerprint &&
+    storedNarrationSourceFingerprint !== currentNarrationSourceFingerprint,
+  );
+  const audioChanged = Boolean(
+    storedAudioFingerprint && storedAudioFingerprint !== currentAudioFingerprint,
+  );
+  const state = getNarrationSyncState(scene, settings);
+  const hasExistingNarration = speechActions(scene.actions).some((action) =>
+    normalizeNarrationText(action.text),
+  );
+  const hasExistingAudio = state.hasSpeechAudio;
+  const isLegacyWithoutNarrationFingerprint =
+    hasExistingNarration && !storedNarrationSourceFingerprint;
+  const isLegacyWithoutAudioFingerprint = hasExistingAudio && !storedAudioFingerprint;
+
+  let operation: NarrationSyncOperation = 'none';
+  if (narrationSourceChanged || state.status === 'narration-stale') {
+    operation = 'narration-and-audio';
+  } else if (audioChanged || state.status === 'audio-stale') {
+    operation = 'audio-only';
+  } else if (state.status === 'unknown-legacy') {
+    operation = 'unknown-legacy';
+  }
+
+  return {
+    operation,
+    resolvedStaleState:
+      operation === 'narration-and-audio'
+        ? 'narration-stale'
+        : operation === 'audio-only'
+          ? 'audio-stale'
+          : state.status,
+    currentNarrationSourceFingerprint,
+    storedNarrationSourceFingerprint,
+    narrationSourceChanged,
+    currentAudioFingerprint,
+    storedAudioFingerprint,
+    audioChanged,
+    hasExistingNarration,
+    hasExistingAudio,
+    isLegacyWithoutNarrationFingerprint,
+    isLegacyWithoutAudioFingerprint,
+  };
+}
+
 export function syncedNarrationMetadata(
   scene: Pick<Scene, 'actions' | 'content' | 'title'>,
   settings: NarrationAudioSettingsFingerprint = {},
@@ -280,12 +370,17 @@ export function staleNarrationMetadata(
 }
 
 export function staleAudioMetadata(
-  scene: Pick<Scene, 'actions' | 'content' | 'title'>,
+  scene: Pick<Scene, 'actions' | 'content' | 'title' | 'sync'>,
   settings: NarrationAudioSettingsFingerprint = {},
+  options: { narrationSourceFingerprint?: string } = {},
 ): NarrationSyncMetadata {
   return {
     ...syncedNarrationMetadata(scene, settings),
     status: 'audio-stale',
+    narrationSourceFingerprint:
+      options.narrationSourceFingerprint ??
+      scene.sync?.narrationSourceFingerprint ??
+      getNarrationSourceFingerprint(scene as Scene),
   };
 }
 

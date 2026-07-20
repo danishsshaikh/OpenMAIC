@@ -8,6 +8,8 @@ import {
   buildVisualNarrationBlocksFromScene,
   getVisibleElementText,
   getNarrationSyncState,
+  getNarrationSourceFingerprint,
+  resolveNarrationSyncDecision,
   staleAudioMetadata,
   syncedNarrationMetadata,
 } from '@/lib/audio/narration-sync';
@@ -74,6 +76,108 @@ describe('narration/audio sync fingerprints', () => {
     const stale = { ...scene, sync: staleAudioMetadata(scene) } as Scene;
 
     expect(getNarrationSyncState(stale).status).toBe('audio-stale');
+  });
+
+  it('prioritizes narration generation when source and audio are both stale', () => {
+    const previous = sceneWithText('s1', 'Old concept', [speech('a', 'Old words', 'tts_a')]);
+    const current = {
+      ...previous,
+      content: slideContent('New concept'),
+      actions: [speech('a', 'New words', 'tts_a')],
+      sync: syncedNarrationMetadata(previous, { language: 'English', ttsVoice: 'alice' }),
+    } as Scene;
+
+    const decision = resolveNarrationSyncDecision(current, {
+      language: 'English',
+      ttsVoice: 'bob',
+    });
+
+    expect(decision.narrationSourceChanged).toBe(true);
+    expect(decision.audioChanged).toBe(true);
+    expect(decision.resolvedStaleState).toBe('narration-stale');
+    expect(decision.operation).toBe('narration-and-audio');
+  });
+
+  it('selects the four explicit sync operations from fingerprint state', () => {
+    const synced = {
+      ...sceneWithText('s1', 'Same concept', [speech('a', 'Same words', 'tts_a')]),
+    } as Scene;
+    synced.sync = syncedNarrationMetadata(synced, { language: 'English', ttsVoice: 'alice' });
+    const narrationStale = { ...synced, content: slideContent('New concept') } as Scene;
+    const audioStale = {
+      ...synced,
+      actions: [speech('a', 'Edited narration', 'tts_a')],
+    } as Scene;
+
+    expect(resolveNarrationSyncDecision(narrationStale).operation).toBe('narration-and-audio');
+    expect(
+      resolveNarrationSyncDecision(narrationStale, {
+        language: 'English',
+        ttsVoice: 'bob',
+      }).operation,
+    ).toBe('narration-and-audio');
+    expect(resolveNarrationSyncDecision(audioStale).operation).toBe('audio-only');
+    expect(
+      resolveNarrationSyncDecision(synced, { language: 'English', ttsVoice: 'alice' }).operation,
+    ).toBe('none');
+  });
+
+  it('keeps untouched legacy scenes idle but regenerates after a semantic legacy edit', () => {
+    const legacy = sceneWithText('legacy', 'Legacy slide', [speech('a', 'Legacy slide', 'tts_a')]);
+    const edited = {
+      ...legacy,
+      content: slideContent('Edited legacy slide'),
+    } as Scene;
+    const trackedEdit = applyNarrationSyncForSceneUpdate(legacy, edited);
+
+    expect(resolveNarrationSyncDecision(legacy).operation).toBe('unknown-legacy');
+    expect(trackedEdit.sync?.status).toBe('narration-stale');
+    expect(resolveNarrationSyncDecision(trackedEdit).operation).toBe('narration-and-audio');
+  });
+
+  it('does not advance the last generated narration source when marking audio stale', () => {
+    const previous = sceneWithText('s1', 'Generated source', [speech('a', 'Narration', 'tts_a')]);
+    const current = {
+      ...previous,
+      content: slideContent('Edited source'),
+      sync: syncedNarrationMetadata(previous),
+    } as Scene;
+    const stale = staleAudioMetadata(current);
+
+    expect(stale.narrationSourceFingerprint).toBe(getNarrationSourceFingerprint(previous));
+    expect(stale.narrationSourceFingerprint).not.toBe(getNarrationSourceFingerprint(current));
+  });
+
+  it('includes a visible slide title once when it also exists as a title element', () => {
+    const scene = {
+      ...sceneWithText('s1', 'Slide', []),
+      title: 'Collective Communication',
+      content: {
+        type: 'slide',
+        canvas: {
+          id: 'slide',
+          viewportSize: 1000,
+          viewportRatio: 0.5625,
+          theme: {
+            backgroundColor: '#ffffff',
+            themeColors: ['#5b9bd5'],
+            fontColor: '#111111',
+            fontName: 'Arial',
+          },
+          background: { type: 'solid', color: '#ffffff' },
+          elements: [
+            textElement('title', 'Collective Communication', 80, 40),
+            textElement('card', 'MPI_Allreduce', 80, 160),
+          ],
+        },
+      },
+    } as unknown as Scene;
+
+    expect(
+      buildNarrationSourceFromScene(scene)
+        .text.split('\n')
+        .filter((line) => line === 'Collective Communication'),
+    ).toHaveLength(1);
   });
 
   it('orders slide blocks by visual reading order instead of element array order', () => {

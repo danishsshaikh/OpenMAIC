@@ -88,9 +88,11 @@ import {
   getAudioSourceFingerprint,
   getNarrationSyncState,
   normalizeNarrationText,
+  resolveNarrationSyncDecision,
   stableStringify,
   staleAudioMetadata,
   syncedNarrationMetadata,
+  type NarrationSyncDecision,
   type NarrationSyncState,
   type NarrationVisualBlock,
 } from '@/lib/audio/narration-sync';
@@ -363,6 +365,7 @@ function reorderTargetPairsByVisualOrder(
       otherChunks.push({ originalIndex: index, actions: [action] });
     }
   }
+  if (!targetChunks.length) return [...generated] as Action[];
 
   const orderedTargets = targetChunks.sort((a, b) => {
     const aRank = targetRank.get(a.targetId);
@@ -372,10 +375,23 @@ function reorderTargetPairsByVisualOrder(
     if (bRank !== undefined) return 1;
     return a.originalIndex - b.originalIndex;
   });
+  const firstTargetIndex = Math.min(...targetChunks.map((chunk) => chunk.originalIndex));
+  const lastTargetIndex = Math.max(...targetChunks.map((chunk) => chunk.originalIndex));
+  const leadingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex < firstTargetIndex);
+  const middleOtherChunks = otherChunks.filter(
+    (chunk) => chunk.originalIndex >= firstTargetIndex && chunk.originalIndex <= lastTargetIndex,
+  );
+  const trailingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex > lastTargetIndex);
 
   return [
+    ...leadingOtherChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
     ...orderedTargets.flatMap((chunk) => chunk.actions),
-    ...otherChunks
+    ...middleOtherChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
+    ...trailingOtherChunks
       .sort((a, b) => a.originalIndex - b.originalIndex)
       .flatMap((chunk) => chunk.actions),
   ] as Action[];
@@ -549,6 +565,37 @@ function logNarrationOrderCheckpoint(payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === 'production') return;
   if (typeof console === 'undefined' || typeof console.info !== 'function') return;
   console.info(ORDER_LOG_PREFIX, payload);
+}
+
+function logSyncDecision(sceneId: string, decision: NarrationSyncDecision) {
+  logNarrationOrderCheckpoint({
+    checkpoint: 'sync-decision',
+    sceneId,
+    currentNarrationSourceFingerprint: fingerprintHash(decision.currentNarrationSourceFingerprint),
+    storedNarrationSourceFingerprint: fingerprintHash(decision.storedNarrationSourceFingerprint),
+    narrationSourceChanged: decision.narrationSourceChanged,
+    currentAudioFingerprint: fingerprintHash(decision.currentAudioFingerprint),
+    storedAudioFingerprint: fingerprintHash(decision.storedAudioFingerprint),
+    audioChanged: decision.audioChanged,
+    resolvedStaleState: decision.resolvedStaleState,
+    chosenOperation: decision.operation,
+    hasExistingNarration: decision.hasExistingNarration,
+    hasExistingAudio: decision.hasExistingAudio,
+    isLegacyWithoutNarrationFingerprint: decision.isLegacyWithoutNarrationFingerprint,
+    isLegacyWithoutAudioFingerprint: decision.isLegacyWithoutAudioFingerprint,
+  });
+  logNarrationOrderCheckpoint({
+    checkpoint: 'syncDecisionFlat',
+    sceneId,
+    order: [
+      `narrationSourceChanged:${decision.narrationSourceChanged}`,
+      `audioChanged:${decision.audioChanged}`,
+      `state:${decision.resolvedStaleState}`,
+      `operation:${decision.operation}`,
+      `hasNarration:${decision.hasExistingNarration}`,
+      `hasAudio:${decision.hasExistingAudio}`,
+    ],
+  });
 }
 
 function withStampedAudioIds(
@@ -1505,12 +1552,20 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
 
   useEffect(() => {
     if (!scene || !ttsActive || !syncState) return;
-    if (syncState.status === 'unknown-legacy' || syncState.status === 'syncing') return;
+    if (
+      syncState.status === 'unknown-legacy' ||
+      syncState.status === 'syncing' ||
+      syncState.status === 'narration-stale'
+    ) {
+      return;
+    }
     if (!syncState.hasSpeechAudio) return;
     const stamped = scene.sync?.audioSourceFingerprint;
     if (stamped && stamped !== getAudioSourceFingerprint(scene, ttsFingerprintSettings)) {
       useStageStore.getState().updateScene(scene.id, {
-        sync: staleAudioMetadata(scene, ttsFingerprintSettings),
+        sync: staleAudioMetadata(scene, ttsFingerprintSettings, {
+          narrationSourceFingerprint: scene.sync?.narrationSourceFingerprint,
+        }),
       });
     }
   }, [scene, syncState, ttsActive, ttsFingerprintSettings]);
@@ -1649,9 +1704,13 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         order: editedElementTextFlatForDiagnostics(latest),
       });
       if (!latest || !stage) return;
-      const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
-      if (beforeState.status !== 'narration-stale' && beforeState.status !== 'audio-stale') return;
       const source = buildNarrationSourceFromScene(latest);
+      const decision = resolveNarrationSyncDecision(latest, ttsFingerprintSettings, source);
+      logSyncDecision(targetSceneId, decision);
+      if (decision.operation !== 'narration-and-audio' && decision.operation !== 'audio-only') {
+        return;
+      }
+      const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
       logNarrationOrderCheckpoint({
         checkpoint: 'visual-block-order',
         sceneId: targetSceneId,
@@ -1669,7 +1728,7 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       });
       const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
 
-      if (beforeState.status === 'audio-stale') {
+      if (decision.operation === 'audio-only') {
         const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
         const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
         if (!current) return;
@@ -1820,7 +1879,20 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       if (!currentBeforeSave) return;
       const currentSource = buildNarrationSourceFromScene(currentBeforeSave);
       if (currentSource.fingerprint !== source.fingerprint) {
-        throw new Error('Scene changed while narration sync was running');
+        const message = 'Scene changed while narration sync was running';
+        useStageStore.getState().updateScene(targetSceneId, {
+          sync: {
+            ...(currentBeforeSave.sync ?? {}),
+            status: 'narration-stale',
+            narrationSourceFingerprint:
+              decision.storedNarrationSourceFingerprint ?? source.fingerprint,
+            audioSourceFingerprint:
+              decision.storedAudioFingerprint ?? beforeState.audioSourceFingerprint,
+            error: message,
+            updatedAt: Date.now(),
+          },
+        });
+        throw new Error(message);
       }
 
       const generatedNarrationFingerprint = fingerprintText(generatedNarration);
