@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Action } from '@/lib/types/action';
 import type { Scene } from '@/lib/types/stage';
+import type { PPTElement } from '@openmaic/dsl';
 import {
   applyNarrationSyncForSceneUpdate,
+  buildNarrationSourceFromScene,
   buildVisualNarrationBlocksFromScene,
+  getVisibleElementText,
   getNarrationSyncState,
   staleAudioMetadata,
   syncedNarrationMetadata,
@@ -150,6 +153,49 @@ describe('narration/audio sync fingerprints', () => {
         sync: syncedNarrationMetadata(initial),
       }).status,
     ).toBe('narration-stale');
+  });
+
+  it('extracts current renderer-backed text before stale compatibility fields', () => {
+    const text = textElement('reduce-text', 'One to Many', 80, 120);
+    const shape = {
+      ...cardBackground('reduce-shape', 80, 120),
+      content: '<p>Many to One</p>',
+      text: {
+        content: '<h2>MPI_Reduce</h2><p>One to Many</p>',
+        defaultFontName: 'Arial',
+        defaultColor: '#111111',
+        align: 'middle' as const,
+      },
+    } as unknown as PPTElement;
+    const scene = {
+      id: 'collective',
+      stageId: 'stage',
+      order: 1,
+      type: 'slide',
+      title: 'Collective Communication',
+      content: {
+        type: 'slide',
+        canvas: {
+          id: 'slide',
+          viewportSize: 1000,
+          viewportRatio: 0.5625,
+          theme: {
+            backgroundColor: '#ffffff',
+            themeColors: ['#5b9bd5'],
+            fontColor: '#111111',
+            fontName: 'Arial',
+          },
+          background: { type: 'solid', color: '#ffffff' },
+          elements: [text, shape],
+        },
+      },
+      actions: [],
+    } as unknown as Scene;
+
+    expect(getVisibleElementText(text as PPTElement)).toBe('One to Many');
+    expect(getVisibleElementText(shape)).toBe('MPI_Reduce One to Many');
+    expect(buildNarrationSourceFromScene(scene).text).toContain('One to Many');
+    expect(buildNarrationSourceFromScene(scene).text).not.toContain('Many to One');
   });
 });
 

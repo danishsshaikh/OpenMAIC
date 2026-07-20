@@ -75,6 +75,44 @@ export function normalizeNarrationText(value: unknown): string {
     .trim();
 }
 
+export function getVisibleElementText(element: PPTElement): string {
+  if (isHiddenSlideElement(element)) return '';
+  const record = element as unknown as Record<string, unknown>;
+  switch (element.type) {
+    case 'text':
+      return normalizeNarrationText(record.content);
+    case 'shape': {
+      const text = record.text;
+      const textContent =
+        text && typeof text === 'object' ? (text as { content?: unknown }).content : undefined;
+      if (text && typeof text === 'object') return normalizeNarrationText(textContent);
+      return normalizeNarrationText(record.content);
+    }
+    case 'table':
+      return (
+        (record.data as Array<Array<{ text?: unknown }>> | undefined)
+          ?.flatMap((row) => row.map((cell) => normalizeNarrationText(cell.text)))
+          .filter(Boolean)
+          .join('\n') ?? ''
+      );
+    case 'latex':
+      return normalizeNarrationText(record.latex);
+    case 'code':
+      return (
+        (record.lines as Array<{ content?: unknown }> | undefined)
+          ?.map((line) => normalizeNarrationText(line.content))
+          .filter(Boolean)
+          .join('\n') ?? ''
+      );
+    case 'image':
+    case 'video':
+    case 'audio':
+      return '';
+    default:
+      return visibleRecordText(record).join('\n');
+  }
+}
+
 export function stableStringify(value: unknown): string {
   return JSON.stringify(sortStable(value));
 }
@@ -341,7 +379,7 @@ function buildVisualNarrationBlocks(elements: readonly PPTElement[]): NarrationV
   const textual = visibleElements
     .map((element) => ({
       element,
-      text: visibleSlideElementText(element).filter(Boolean).join('\n'),
+      text: getVisibleElementText(element),
       bounds: elementBounds(element),
     }))
     .filter((item): item is TextualElement => Boolean(item.text));
@@ -445,7 +483,7 @@ function clusterRows<T>(items: T[], boundsFor: (item: T) => NarrationVisualBound
 
 function isVisualContainer(element: PPTElement): boolean {
   if (element.type !== 'shape') return false;
-  const text = visibleSlideElementText(element).join('');
+  const text = getVisibleElementText(element);
   if (text) return false;
   const bounds = elementBounds(element);
   return bounds.width > 80 && bounds.height > 40;
@@ -525,40 +563,6 @@ function overlapArea(a: NarrationVisualBounds, b: NarrationVisualBounds): number
   const right = Math.min(a.left + a.width, b.left + b.width);
   const bottom = Math.min(a.top + a.height, b.top + b.height);
   return Math.max(0, right - left) * Math.max(0, bottom - top);
-}
-
-function visibleSlideElementText(element: PPTElement): string[] {
-  if (isHiddenSlideElement(element)) return [];
-  const record = element as unknown as Record<string, unknown>;
-  const type = element.type;
-  switch (type) {
-    case 'text':
-      return [normalizeNarrationText(record.content)];
-    case 'shape':
-      return [normalizeNarrationText((record.text as { content?: unknown } | undefined)?.content)];
-    case 'table':
-      return (
-        (record.data as Array<Array<{ text?: unknown }>> | undefined)?.flatMap((row) =>
-          row.map((cell) => normalizeNarrationText(cell.text)),
-        ) ?? []
-      );
-    case 'chart':
-      return [normalizeNarrationText(record.data ? stableStringify(record.data) : '')];
-    case 'latex':
-      return [normalizeNarrationText(record.latex)];
-    case 'code':
-      return (
-        (record.lines as Array<{ content?: unknown }> | undefined)?.map((line) =>
-          normalizeNarrationText(line.content),
-        ) ?? []
-      );
-    case 'image':
-    case 'video':
-    case 'audio':
-      return [];
-    default:
-      return visibleRecordText(record);
-  }
 }
 
 function visibleRecordText(record: Record<string, unknown>): string[] {

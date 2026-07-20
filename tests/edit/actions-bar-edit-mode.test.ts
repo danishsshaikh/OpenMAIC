@@ -10,6 +10,7 @@ import type { Action } from '@/lib/types/action';
 import { makeScene, type Scene, type Stage } from '@/lib/types/stage';
 import {
   buildNarrationSourceFromScene,
+  getVisibleElementText,
   getAudioSourceFingerprint,
   getNarrationSyncState,
   syncedNarrationMetadata,
@@ -619,15 +620,36 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 3);
 
     const logs = narrationOrderLogs();
-    expect(logs.map((payload) => payload.checkpoint)).toEqual([
+    expect(logs.map((payload) => payload.checkpoint)).toEqual(
+      expect.arrayContaining([
+        'bulk-queue',
+        'current-scene',
+        'elementArrayOrderFlat',
+        'editedElementTextFlat',
+        'visual-block-order',
+        'visualBlockOrderFlat',
+        'narrationSourceTextFlat',
+        'generation-input-order',
+        'generationInputOrderFlat',
+        'generated-action-order',
+        'generatedActionOrderFlat',
+        'final-action-order',
+        'finalActionOrderFlat',
+        'saved-action-order',
+        'savedActionOrderFlat',
+        'tts-input-order',
+        'ttsInputOrderFlat',
+      ]),
+    );
+    expect(logs.slice(0, 8).map((payload) => payload.checkpoint)).toEqual([
       'bulk-queue',
       'current-scene',
+      'elementArrayOrderFlat',
+      'editedElementTextFlat',
       'visual-block-order',
+      'visualBlockOrderFlat',
+      'narrationSourceTextFlat',
       'generation-input-order',
-      'generated-action-order',
-      'final-action-order',
-      'saved-action-order',
-      'tts-input-order',
     ]);
     expect(logs[0].sceneIds).toEqual(['scene-1']);
 
@@ -669,6 +691,137 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
       'Processes narration.',
       'Rank narration.',
     ]);
+    expect(checkpoint(logs, 'visualBlockOrderFlat').order).toEqual([
+      '0:communicators-card:communicators-card:Communicators',
+      '1:processes-card:processes-card:Processes',
+      '2:rank-card:rank-card:Rank',
+    ]);
+    expect(checkpoint(logs, 'ttsInputOrderFlat').order).toEqual([
+      '0:speech-communicators:Communicators narration.',
+      '1:speech-processes:Processes narration.',
+      '2:speech-rank:Rank narration.',
+    ]);
+  });
+
+  it('syncs Collective Communication from current edited text and visual target order', async () => {
+    const scene = makeCollectiveCommunicationScene();
+    const reduce = slideElements(scene).find((element) => element.id === 'reduce-card');
+    expect(reduce ? getVisibleElementText(reduce) : '').toBe('MPI_Reduce One to Many');
+    expect(buildNarrationSourceFromScene(scene).text).toContain('One to Many');
+    expect(buildNarrationSourceFromScene(scene).text).not.toContain('Many to One');
+
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          { id: 'new-spot-bcast', type: 'spotlight', elementId: 'bcast-card' },
+          speech('new-speech-bcast', 'MPI_Bcast broadcasts data from one process to many.', ''),
+          { id: 'new-spot-reduce', type: 'spotlight', elementId: 'reduce-card' },
+          speech('new-speech-reduce', 'MPI_Reduce now shows One to Many communication.', ''),
+          { id: 'new-spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' },
+          speech('new-speech-allreduce', 'MPI_Allreduce combines and shares results.', ''),
+        ],
+      },
+    });
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 3);
+
+    const requestContent = mocks.fetchSceneActions.mock.calls[0][0].content as {
+      narrationSource?: {
+        text?: string;
+        blocks?: Array<{ targetElementId: string; text: string }>;
+      };
+      choreography?: Array<{ targetElementId: string; targetText: string }>;
+    };
+    expect(requestContent.narrationSource?.text).toContain('One to Many');
+    expect(requestContent.narrationSource?.text).not.toContain('Many to One');
+    expect(requestContent.narrationSource?.text).not.toContain('previous Bcast narration');
+    expect(requestContent.narrationSource?.blocks?.map((block) => block.targetElementId)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(requestContent.choreography?.map((block) => block.targetElementId)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+
+    const logs = narrationOrderLogs();
+    expect(flatText(checkpoint(logs, 'elementArrayOrderFlat'))).toEqual([
+      '0:bcast-card:400:150:MPI_Bcast Broadcast',
+      '1:reduce-card:700:150:MPI_Reduce One to Many',
+      '2:allreduce-card:100:150:MPI_Allreduce Combine and share',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'generationInputOrderFlat'))).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'generated-action-order').actions)).toEqual([
+      'bcast-card',
+      'reduce-card',
+      'allreduce-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'final-action-order').actions)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(targetActionOrder(checkpoint(logs, 'saved-action-order').actions)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(checkpoint(logs, 'tts-input-order').speechPreviews).toEqual([
+      'MPI_Allreduce combines and shares results.',
+      'MPI_Bcast broadcasts data from one process to many.',
+      'MPI_Reduce now shows One to Many communication.',
+    ]);
+
+    expect(mocks.regenerateSpeechAudio.mock.calls.map((call) => call[1].id)).toEqual([
+      'speech-allreduce',
+      'speech-bcast',
+      'speech-reduce',
+    ]);
+    expect(
+      mocks.regenerateSpeechAudio.mock.calls.map((call) => (call[1] as { text?: string }).text),
+    ).toEqual([
+      'MPI_Allreduce combines and shares results.',
+      'MPI_Bcast broadcasts data from one process to many.',
+      'MPI_Reduce now shows One to Many communication.',
+    ]);
+
+    const updated = getScene('scene-1');
+    const updatedActions = updated.actions ?? [];
+    expect(targetActionOrder(updatedActions)).toEqual([
+      'allreduce-card',
+      'bcast-card',
+      'reduce-card',
+    ]);
+    expect(updatedActions.map((action) => action.id)).toEqual([
+      'spot-allreduce',
+      'speech-allreduce',
+      'spot-bcast',
+      'speech-bcast',
+      'spot-reduce',
+      'speech-reduce',
+    ]);
+    expect(new Set(updatedActions.map((action) => action.id)).size).toBe(updatedActions.length);
+    expect(speechTextsForTest(updated)).toContain(
+      'MPI_Reduce now shows One to Many communication.',
+    );
+    expect(buildNarrationSourceFromScene(updated).text).toContain('One to Many');
+    expect(buildNarrationSourceFromScene(updated).text).not.toContain('Many to One');
   });
 });
 
@@ -914,6 +1067,89 @@ function mpiTextElement(id: string, text: string, left: number) {
   };
 }
 
+function makeCollectiveCommunicationScene(): Scene {
+  const initial = collectiveCommunicationScene({
+    bcastLeft: 100,
+    reduceLeft: 400,
+    allreduceLeft: 700,
+    reduceText: 'Many to One',
+  });
+  const edited = collectiveCommunicationScene({
+    bcastLeft: 400,
+    reduceLeft: 700,
+    allreduceLeft: 100,
+    reduceText: 'One to Many',
+  });
+  return {
+    ...edited,
+    sync: syncedNarrationMetadata(initial, TTS_SETTINGS),
+  };
+}
+
+function collectiveCommunicationScene(layout: {
+  bcastLeft: number;
+  reduceLeft: number;
+  allreduceLeft: number;
+  reduceText: string;
+}): Scene {
+  return makeScene(
+    {
+      id: 'scene-1',
+      stageId: 'stage-1',
+      title: 'Collective Communication',
+      order: 1,
+      outlineId: 'outline-1',
+      actions: [
+        { id: 'spot-bcast', type: 'spotlight', elementId: 'bcast-card' } as Action,
+        speech('speech-bcast', 'previous Bcast narration', 'tts_bcast'),
+        { id: 'spot-reduce', type: 'spotlight', elementId: 'reduce-card' } as Action,
+        speech('speech-reduce', 'previous Reduce Many to One narration', 'tts_reduce'),
+        { id: 'spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' } as Action,
+        speech('speech-allreduce', 'previous Allreduce narration', 'tts_allreduce'),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: 'collective-canvas',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#5b9bd5'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          collectiveTextElement('bcast-card', 'MPI_Bcast', 'Broadcast', layout.bcastLeft),
+          collectiveTextElement('reduce-card', 'MPI_Reduce', layout.reduceText, layout.reduceLeft),
+          collectiveTextElement(
+            'allreduce-card',
+            'MPI_Allreduce',
+            'Combine and share',
+            layout.allreduceLeft,
+          ),
+        ],
+      },
+    },
+  );
+}
+
+function collectiveTextElement(id: string, heading: string, body: string, left: number) {
+  return {
+    id,
+    type: 'text' as const,
+    left,
+    top: 150,
+    width: 230,
+    height: 120,
+    rotate: 0,
+    content: `<h2>${heading}</h2><p>${body}</p>`,
+    defaultFontName: 'Arial',
+    defaultColor: '#111111',
+  };
+}
+
 function makeManualInitialScene(
   options: {
     id?: string;
@@ -1100,9 +1336,28 @@ function textPreviewOrder(value: unknown) {
 }
 
 function targetActionOrder(value: unknown) {
-  return (value as Array<{ targetElementId?: string }>)
-    .filter((action) => action.targetElementId)
-    .map((action) => action.targetElementId);
+  return (value as Array<{ targetElementId?: string; elementId?: string }>)
+    .map((action) => action.targetElementId ?? action.elementId)
+    .filter(Boolean);
+}
+
+function flatText(payload: Record<string, unknown>) {
+  return payload.order as string[];
+}
+
+function flatTargets(payload: Record<string, unknown>) {
+  return (payload.order as string[]).map((item) => item.split(':')[2]);
+}
+
+function slideElements(scene: Scene) {
+  return scene.content.type === 'slide' ? scene.content.canvas.elements : [];
+}
+
+function speechTextsForTest(scene: Scene) {
+  return (scene.actions ?? [])
+    .filter((action) => action.type === 'speech')
+    .map((action) => ((action as { text?: string }).text ?? '').trim())
+    .join('\n');
 }
 
 function hasText(text: string): boolean {
