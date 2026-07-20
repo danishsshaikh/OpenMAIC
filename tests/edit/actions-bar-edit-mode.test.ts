@@ -191,10 +191,18 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     expect(getScene('scene-1').sync?.status).toBe('syncing');
 
     const request = mocks.fetchSceneActions.mock.calls[0][0] as {
-      content: unknown;
+      content: { narrationSource?: { text?: string } };
       previousSpeeches?: string[];
     };
     const requestSource = JSON.stringify(request.content);
+    const narrationSourceText = request.content.narrationSource?.text ?? '';
+    expect(narrationSourceText).toContain('Minimizing Efficiency');
+    expect(narrationSourceText).not.toContain('Maximizing Efficiency');
+    expect(narrationSourceText).not.toContain('Better Resource Utilization');
+    expect(narrationSourceText).not.toContain('Faster Execution');
+    expect(narrationSourceText).not.toContain(OLD_NARRATION);
+    expect(narrationSourceText).not.toContain('text-');
+    expect(narrationSourceText).not.toContain('width');
     expect(requestSource).toContain('Minimizing Efficiency');
     expect(requestSource).not.toContain('Maximizing Efficiency');
     expect(requestSource).not.toContain('Better Resource Utilization');
@@ -307,9 +315,12 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     });
     await waitForCondition(() => mocks.fetchSceneActions.mock.calls.length === 1);
 
-    const requestSource = JSON.stringify(mocks.fetchSceneActions.mock.calls[0][0].content);
-    expect(requestSource).toContain('Minimizing Efficiency');
-    expect(requestSource).not.toContain('Maximizing Efficiency');
+    const requestContent = mocks.fetchSceneActions.mock.calls[0][0].content as {
+      narrationSource?: { text?: string };
+    };
+    const narrationSourceText = requestContent.narrationSource?.text ?? '';
+    expect(narrationSourceText).toContain('Minimizing Efficiency');
+    expect(narrationSourceText).not.toContain('Maximizing Efficiency');
   });
 
   it('resolves each bulk stale scene by id when its queued turn starts', async () => {
@@ -375,7 +386,10 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     });
     await waitForCondition(() => mocks.fetchSceneActions.mock.calls.length === 2);
 
-    const secondRequestSource = JSON.stringify(mocks.fetchSceneActions.mock.calls[1][0].content);
+    const secondRequestContent = mocks.fetchSceneActions.mock.calls[1][0].content as {
+      narrationSource?: { text?: string };
+    };
+    const secondRequestSource = secondRequestContent.narrationSource?.text ?? '';
     expect(secondRequestSource).toContain('Newest Queue Claim');
     expect(secondRequestSource).not.toContain('Queued First Edit');
   });

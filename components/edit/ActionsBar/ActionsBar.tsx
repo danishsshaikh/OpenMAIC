@@ -103,6 +103,13 @@ import type {
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
 const log = createLogger('NarrationSync');
+type NarrationGenerationSlideContent = GeneratedSlideContent & {
+  narrationSource?: {
+    text: string;
+    elementCount: number;
+    fingerprint: string;
+  };
+};
 // Stable empty set for the "no lines regenerating" state (avoids re-allocating
 // on every reset and keeps a constant identity between batch runs).
 const NO_IDS: ReadonlySet<string> = new Set();
@@ -226,8 +233,9 @@ function speechTextsForScene(scene: Scene): string[] {
 
 function toGenerationContent(
   content: Scene['content'],
+  narrationSource?: ReturnType<typeof buildNarrationSourceFromScene>,
 ):
-  | GeneratedSlideContent
+  | NarrationGenerationSlideContent
   | GeneratedQuizContent
   | GeneratedInteractiveContent
   | GeneratedPBLContent {
@@ -235,7 +243,16 @@ function toGenerationContent(
     return {
       elements: content.canvas.elements ?? [],
       background: content.canvas.background,
-    } satisfies GeneratedSlideContent;
+      ...(narrationSource
+        ? {
+            narrationSource: {
+              text: narrationSource.text,
+              elementCount: narrationSource.elementCount,
+              fingerprint: narrationSource.fingerprint,
+            },
+          }
+        : {}),
+    } satisfies NarrationGenerationSlideContent;
   }
   return content as GeneratedQuizContent | GeneratedInteractiveContent | GeneratedPBLContent;
 }
@@ -1358,7 +1375,7 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       const result = await fetchSceneActions({
         outline,
         allOutlines: allOutlines.length ? allOutlines : [outline],
-        content: toGenerationContent(latest.content),
+        content: toGenerationContent(latest.content, source),
         stageId: stage.id,
         agents: selectedAgentsForGeneration,
         previousSpeeches: [],

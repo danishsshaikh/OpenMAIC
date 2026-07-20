@@ -101,6 +101,12 @@ export interface SceneActionsOptions {
   languageDirective?: string;
 }
 
+interface NarrationSourcePayload {
+  text?: string;
+  elementCount?: number;
+  fingerprint?: string;
+}
+
 // ==================== Backward Compatibility Helpers ====================
 
 /**
@@ -1521,11 +1527,18 @@ export async function generateSceneActions(
   if (outline.type === 'slide' && 'elements' in content) {
     // Format element list for AI to select from
     const elementsText = formatElementsForPrompt(content.elements);
+    const narrationSource = (content as { narrationSource?: NarrationSourcePayload })
+      .narrationSource;
+    const narrationSourceText =
+      typeof narrationSource?.text === 'string' && narrationSource.text.trim()
+        ? narrationSource.text.trim()
+        : elementsText;
 
     const prompts = buildPrompt(PROMPT_IDS.SLIDE_ACTIONS, {
       title: outline.title,
       keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
       description: outline.description,
+      narrationSource: narrationSourceText,
       elements: elementsText,
       courseContext: buildCourseContext(ctx),
       agents: agentsText,

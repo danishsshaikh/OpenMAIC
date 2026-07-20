@@ -1,4 +1,8 @@
-Elements: {{elements}}
+Narration Source (authoritative visible slide text for speech):
+{{narrationSource}}
+
+Element Targets (ids are for spotlight/laser targeting only, not narration content):
+{{elements}}
 Title: {{title}}
 Key Points: {{keyPoints}}
 Description: {{description}}
