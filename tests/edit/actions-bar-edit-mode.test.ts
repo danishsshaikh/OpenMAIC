@@ -227,7 +227,8 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     });
 
     const updated = getScene('scene-1');
-    expect(updated.actions).toEqual([
+    const updatedActions = updated.actions ?? [];
+    expect(updatedActions).toEqual([
       expect.objectContaining({
         id: 'speech-1',
         text: NEW_NARRATION,
@@ -323,6 +324,120 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     expect(narrationSourceText).not.toContain('Maximizing Efficiency');
   });
 
+  it('syncs swapped visual cards in spotlight target order without reordering elements', async () => {
+    const scene = makeSwappedParallelismScene();
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          { id: 'new-spot-task', type: 'spotlight', elementId: 'task-card' },
+          speech(
+            'new-speech-task',
+            'First, let us look at Task Parallelism and how independent tasks are scheduled.',
+            '',
+          ),
+          { id: 'new-spot-data', type: 'spotlight', elementId: 'data-card' },
+          speech(
+            'new-speech-data',
+            'Next, Data Parallelism applies the same operation across multiple data items.',
+            '',
+          ),
+        ],
+      },
+    });
+    setupStores(scene);
+
+    expect(buildNarrationSourceFromScene(scene).visualBlocks.map((block) => block.text)).toEqual([
+      'Task Parallelism',
+      'Data Parallelism',
+    ]);
+    expect(getNarrationSyncState(scene, TTS_SETTINGS).status).toBe('narration-stale');
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncNarrationAudio').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 2);
+
+    const requestContent = mocks.fetchSceneActions.mock.calls[0][0].content as {
+      narrationSource?: {
+        text?: string;
+        blocks?: Array<{ targetElementId: string; text: string }>;
+      };
+      choreography?: Array<{ targetElementId: string; targetText: string }>;
+      elements?: Array<{ id: string }>;
+    };
+    expect(requestContent.narrationSource?.text).toMatch(/Task Parallelism[\s\S]*Data Parallelism/);
+    expect(requestContent.narrationSource?.blocks?.[0]).toMatchObject({
+      targetElementId: 'task-card',
+      text: 'Task Parallelism',
+    });
+    expect(requestContent.narrationSource?.blocks?.[1]).toMatchObject({
+      targetElementId: 'data-card',
+      text: 'Data Parallelism',
+    });
+    expect(requestContent.choreography?.[0]).toMatchObject({
+      targetElementId: 'task-card',
+      targetText: 'Task Parallelism',
+    });
+    expect(requestContent.choreography?.[1]).toMatchObject({
+      targetElementId: 'data-card',
+      targetText: 'Data Parallelism',
+    });
+
+    expect(mocks.regenerateSpeechAudio.mock.calls[0][1]).toMatchObject({
+      id: 'speech-task',
+      text: 'First, let us look at Task Parallelism and how independent tasks are scheduled.',
+    });
+    expect(mocks.regenerateSpeechAudio.mock.calls[1][1]).toMatchObject({
+      id: 'speech-data',
+      text: 'Next, Data Parallelism applies the same operation across multiple data items.',
+    });
+
+    const updated = getScene('scene-1');
+    const updatedActions = updated.actions ?? [];
+    expect(updatedActions).toEqual([
+      expect.objectContaining({ id: 'spot-task', type: 'spotlight', elementId: 'task-card' }),
+      expect.objectContaining({
+        id: 'speech-task',
+        text: 'First, let us look at Task Parallelism and how independent tasks are scheduled.',
+        audioId: 'tts_speech-task',
+      }),
+      expect.objectContaining({ id: 'spot-data', type: 'spotlight', elementId: 'data-card' }),
+      expect.objectContaining({
+        id: 'speech-data',
+        text: 'Next, Data Parallelism applies the same operation across multiple data items.',
+        audioId: 'tts_speech-data',
+      }),
+    ]);
+    expect(new Set(updatedActions.map((action) => action.id)).size).toBe(updatedActions.length);
+    expect(
+      ((updated.content as { canvas: { elements: Array<{ id: string }> } }).canvas.elements ?? [])
+        .map((element) => element.id)
+        .slice(0, 2),
+    ).toEqual(['data-card', 'task-card']);
+
+    act(() => {
+      mounted?.root.render(
+        React.createElement(
+          StrictMode,
+          null,
+          React.createElement(ActionsBar, { sceneId: 'scene-1' }),
+        ),
+      );
+    });
+    expect((getScene('scene-1').actions ?? []).map((action) => action.id)).toEqual([
+      'spot-task',
+      'speech-task',
+      'spot-data',
+      'speech-data',
+    ]);
+  });
+
   it('resolves each bulk stale scene by id when its queued turn starts', async () => {
     const sceneOne = makeManualEditedStaleScene({
       id: 'scene-1',
@@ -392,6 +507,85 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     const secondRequestSource = secondRequestContent.narrationSource?.text ?? '';
     expect(secondRequestSource).toContain('Newest Queue Claim');
     expect(secondRequestSource).not.toContain('Queued First Edit');
+  });
+
+  it('uses latest swapped visual order when a bulk queued scene starts', async () => {
+    const sceneOne = makeManualEditedStaleScene({
+      id: 'scene-1',
+      order: 1,
+      outlineId: 'outline-1',
+    });
+    const sceneTwo = makeSwappedParallelismScene({
+      id: 'scene-2',
+      order: 2,
+      outlineId: 'outline-2',
+      dataLeft: 80,
+      taskLeft: 560,
+      sync: {
+        status: 'narration-stale',
+        narrationSourceFingerprint: 'previous-order',
+        audioSourceFingerprint: 'previous-audio',
+      },
+    });
+    const firstGeneration = deferredPromise<unknown>();
+    mocks.fetchSceneActions.mockImplementation((request: { content: unknown }) => {
+      const source = JSON.stringify(request.content);
+      if (source.includes('Minimizing Efficiency')) return firstGeneration.promise;
+      return Promise.resolve({
+        success: true,
+        scene: {
+          ...getScene('scene-2'),
+          actions: [
+            { id: 'new-spot-task', type: 'spotlight', elementId: 'task-card' },
+            speech('new-speech-task', 'Bulk Task narration.', ''),
+            { id: 'new-spot-data', type: 'spotlight', elementId: 'data-card' },
+            speech('new-speech-data', 'Bulk Data narration.', ''),
+          ],
+        },
+      });
+    });
+    setupStores(sceneOne, [sceneOne, sceneTwo]);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.fetchSceneActions.mock.calls.length === 1);
+
+    act(() => {
+      replaceScene(
+        makeSwappedParallelismScene({
+          id: 'scene-2',
+          order: 2,
+          outlineId: 'outline-2',
+          dataLeft: 560,
+          taskLeft: 80,
+          sync: getScene('scene-2').sync,
+        }),
+      );
+    });
+
+    await act(async () => {
+      firstGeneration.resolve({
+        success: true,
+        scene: { ...getScene('scene-1'), actions: [speech('speech-1', NEW_NARRATION, '')] },
+      });
+      await firstGeneration.promise;
+    });
+    await waitForCondition(() => mocks.fetchSceneActions.mock.calls.length === 2);
+
+    const secondRequestContent = mocks.fetchSceneActions.mock.calls[1][0].content as {
+      narrationSource?: { text?: string; blocks?: Array<{ targetElementId: string }> };
+    };
+    expect(secondRequestContent.narrationSource?.text).toMatch(
+      /Task Parallelism[\s\S]*Data Parallelism/,
+    );
+    expect(
+      secondRequestContent.narrationSource?.blocks?.map((block) => block.targetElementId),
+    ).toEqual(['task-card', 'data-card']);
   });
 });
 
@@ -468,6 +662,106 @@ function makeAudioStaleScene(): Scene {
     ...scene,
     sync: staleAudioMetadata(scene, TTS_SETTINGS),
   };
+}
+
+function makeSwappedParallelismScene(
+  options: {
+    id?: string;
+    order?: number;
+    outlineId?: string;
+    dataLeft?: number;
+    taskLeft?: number;
+    sync?: Scene['sync'];
+  } = {},
+): Scene {
+  const initial = parallelismScene({
+    id: options.id,
+    order: options.order,
+    outlineId: options.outlineId,
+    dataLeft: 80,
+    taskLeft: 560,
+  });
+  const swapped = parallelismScene({
+    id: options.id,
+    order: options.order,
+    outlineId: options.outlineId,
+    dataLeft: options.dataLeft ?? 560,
+    taskLeft: options.taskLeft ?? 80,
+  });
+  return {
+    ...swapped,
+    sync: options.sync ?? syncedNarrationMetadata(initial, TTS_SETTINGS),
+  };
+}
+
+function parallelismScene(options: {
+  id?: string;
+  order?: number;
+  outlineId?: string;
+  dataLeft: number;
+  taskLeft: number;
+}): Scene {
+  const id = options.id ?? 'scene-1';
+  const order = options.order ?? 1;
+  return makeScene(
+    {
+      id,
+      stageId: 'stage-1',
+      title: 'Data vs. Task Parallelism',
+      order,
+      outlineId: options.outlineId ?? `outline-${order}`,
+      actions: [
+        { id: 'spot-data', type: 'spotlight', elementId: 'data-card' } as Action,
+        speech('speech-data', 'First, let us look at Data Parallelism.', 'tts_speech_data'),
+        { id: 'spot-task', type: 'spotlight', elementId: 'task-card' } as Action,
+        speech(
+          'speech-task',
+          'Next, Task Parallelism schedules independent tasks.',
+          'tts_speech_task',
+        ),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: `${id}-canvas`,
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#5b9bd5'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          {
+            id: 'data-card',
+            type: 'text',
+            left: options.dataLeft,
+            top: 140,
+            width: 340,
+            height: 120,
+            rotate: 0,
+            content: '<h2>Data Parallelism</h2>',
+            defaultFontName: 'Arial',
+            defaultColor: '#111111',
+          },
+          {
+            id: 'task-card',
+            type: 'text',
+            left: options.taskLeft,
+            top: 140,
+            width: 340,
+            height: 120,
+            rotate: 0,
+            content: '<h2>Task Parallelism</h2>',
+            defaultFontName: 'Arial',
+            defaultColor: '#111111',
+          },
+        ],
+      },
+    },
+  );
 }
 
 function makeManualInitialScene(

@@ -123,7 +123,12 @@ describe('scene-generator language directive threading (issue #472)', () => {
     it('uses narrationSource as the authoritative slide actions speech source', async () => {
       const { aiCall, lastUser } = makeCapturingAiCall('[]');
       const content: GeneratedSlideContent & {
-        narrationSource: { text: string; elementCount: number; fingerprint: string };
+        narrationSource: {
+          text: string;
+          elementCount: number;
+          fingerprint: string;
+          blocks: Array<{ targetElementId: string; text: string; orderIndex: number }>;
+        };
       } = {
         elements: [
           {
@@ -145,6 +150,18 @@ describe('scene-generator language directive threading (issue #472)', () => {
           text: 'Introduction to Parallel Models\nCore Principles\nMinimizing Efficiency',
           elementCount: 2,
           fingerprint: 'source-fingerprint',
+          blocks: [
+            {
+              targetElementId: 'task-card',
+              text: 'Task Parallelism',
+              orderIndex: 0,
+            },
+            {
+              targetElementId: 'data-card',
+              text: 'Data Parallelism',
+              orderIndex: 1,
+            },
+          ],
         },
       };
 
@@ -152,6 +169,8 @@ describe('scene-generator language directive threading (issue #472)', () => {
 
       expect(lastUser()).toContain('Narration Source');
       expect(lastUser()).toContain('Minimizing Efficiency');
+      expect(lastUser()).toContain('Narration/Spotlight Choreography');
+      expect(lastUser()).toMatch(/targetElementId: "task-card"[\s\S]*targetElementId: "data-card"/);
       expect(lastUser()).toContain('Element Targets');
     });
 

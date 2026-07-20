@@ -3,6 +3,7 @@ import type { Action } from '@/lib/types/action';
 import type { Scene } from '@/lib/types/stage';
 import {
   applyNarrationSyncForSceneUpdate,
+  buildVisualNarrationBlocksFromScene,
   getNarrationSyncState,
   staleAudioMetadata,
   syncedNarrationMetadata,
@@ -71,6 +72,85 @@ describe('narration/audio sync fingerprints', () => {
 
     expect(getNarrationSyncState(stale).status).toBe('audio-stale');
   });
+
+  it('orders slide blocks by visual reading order instead of element array order', () => {
+    const swapped = parallelismScene({
+      dataLeft: 560,
+      taskLeft: 80,
+      dataTop: 120,
+      taskTop: 120,
+    });
+
+    const blocks = buildVisualNarrationBlocksFromScene(swapped);
+
+    expect(blocks.map((block) => block.text)).toEqual(['Task Parallelism', 'Data Parallelism']);
+  });
+
+  it('marks narration stale when card visual order swaps but not after a small same-order move', () => {
+    const initial = {
+      ...parallelismScene({ dataLeft: 80, taskLeft: 560, dataTop: 120, taskTop: 120 }),
+      sync: undefined,
+    } as Scene;
+    const synced = { ...initial, sync: syncedNarrationMetadata(initial) } as Scene;
+    const swapped = {
+      ...synced,
+      content: parallelismContent({ dataLeft: 560, taskLeft: 80, dataTop: 120, taskTop: 120 }),
+    } as Scene;
+    const smallMove = {
+      ...synced,
+      content: parallelismContent({ dataLeft: 85, taskLeft: 560, dataTop: 120, taskTop: 120 }),
+    } as Scene;
+
+    expect(getNarrationSyncState(swapped).status).toBe('narration-stale');
+    expect(applyNarrationSyncForSceneUpdate(initial, swapped).sync?.status).toBe('narration-stale');
+    expect(getNarrationSyncState(smallMove).status).toBe('synced');
+    expect(applyNarrationSyncForSceneUpdate(initial, smallMove).sync?.status).toBe('synced');
+  });
+
+  it('keeps grouped card text together while detecting full-card reorder', () => {
+    const initial = groupedParallelismScene({
+      dataLeft: 80,
+      taskLeft: 560,
+      dataBulletOffset: 0,
+    });
+    const smallBulletMove = groupedParallelismScene({
+      dataLeft: 80,
+      taskLeft: 560,
+      dataBulletOffset: 5,
+    });
+    const swapped = groupedParallelismScene({
+      dataLeft: 560,
+      taskLeft: 80,
+      dataBulletOffset: 0,
+    });
+
+    expect(buildVisualNarrationBlocksFromScene(initial).map((block) => block.text)).toEqual([
+      'Data Parallelism\nSame operation\nDifferent data items',
+      'Task Parallelism\nIndependent tasks\nSeparate scheduling',
+    ]);
+    expect(buildVisualNarrationBlocksFromScene(smallBulletMove).map((block) => block.text)).toEqual(
+      [
+        'Data Parallelism\nSame operation\nDifferent data items',
+        'Task Parallelism\nIndependent tasks\nSeparate scheduling',
+      ],
+    );
+    expect(buildVisualNarrationBlocksFromScene(swapped).map((block) => block.text)).toEqual([
+      'Task Parallelism\nIndependent tasks\nSeparate scheduling',
+      'Data Parallelism\nSame operation\nDifferent data items',
+    ]);
+    expect(
+      getNarrationSyncState({
+        ...smallBulletMove,
+        sync: syncedNarrationMetadata(initial),
+      }).status,
+    ).toBe('synced');
+    expect(
+      getNarrationSyncState({
+        ...swapped,
+        sync: syncedNarrationMetadata(initial),
+      }).status,
+    ).toBe('narration-stale');
+  });
 });
 
 function sceneWithText(id: string, text: string, actions: Action[]): Scene {
@@ -114,4 +194,117 @@ function slideContent(text: string, overrides: Record<string, unknown> = {}): Sc
 
 function speech(id: string, text: string, audioId?: string): Action {
   return { id, type: 'speech', text, ...(audioId ? { audioId } : {}) } as Action;
+}
+
+function parallelismScene(layout: {
+  dataLeft: number;
+  taskLeft: number;
+  dataTop: number;
+  taskTop: number;
+}): Scene {
+  return {
+    id: 'parallelism',
+    stageId: 'stage',
+    order: 1,
+    type: 'slide',
+    title: 'Data vs. Task Parallelism',
+    content: parallelismContent(layout),
+    actions: [
+      { id: 'spot-data', type: 'spotlight', elementId: 'data-card' },
+      speech('speech-data', 'Data narration', 'tts_data'),
+      { id: 'spot-task', type: 'spotlight', elementId: 'task-card' },
+      speech('speech-task', 'Task narration', 'tts_task'),
+    ],
+  } as Scene;
+}
+
+function parallelismContent(layout: {
+  dataLeft: number;
+  taskLeft: number;
+  dataTop: number;
+  taskTop: number;
+}): Scene['content'] {
+  return {
+    type: 'slide',
+    canvas: {
+      id: 'slide',
+      viewportSize: 1000,
+      viewportRatio: 0.5625,
+      background: { type: 'solid', color: '#ffffff' },
+      elements: [
+        textElement('data-card', 'Data Parallelism', layout.dataLeft, layout.dataTop),
+        textElement('task-card', 'Task Parallelism', layout.taskLeft, layout.taskTop),
+      ],
+    },
+  } as Scene['content'];
+}
+
+function groupedParallelismScene(layout: {
+  dataLeft: number;
+  taskLeft: number;
+  dataBulletOffset: number;
+}): Scene {
+  return {
+    ...parallelismScene({
+      dataLeft: layout.dataLeft,
+      taskLeft: layout.taskLeft,
+      dataTop: 120,
+      taskTop: 120,
+    }),
+    content: {
+      type: 'slide',
+      canvas: {
+        id: 'slide',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        background: { type: 'solid', color: '#ffffff' },
+        elements: [
+          cardBackground('data-bg', layout.dataLeft, 110),
+          cardBackground('task-bg', layout.taskLeft, 110),
+          textElement('data-heading', 'Data Parallelism', layout.dataLeft + 24, 130),
+          textElement(
+            'data-bullet-1',
+            'Same operation',
+            layout.dataLeft + 24 + layout.dataBulletOffset,
+            190,
+          ),
+          textElement('data-bullet-2', 'Different data items', layout.dataLeft + 24, 230),
+          textElement('task-heading', 'Task Parallelism', layout.taskLeft + 24, 130),
+          textElement('task-bullet-1', 'Independent tasks', layout.taskLeft + 24, 190),
+          textElement('task-bullet-2', 'Separate scheduling', layout.taskLeft + 24, 230),
+        ],
+      },
+    } as Scene['content'],
+  } as Scene;
+}
+
+function textElement(id: string, text: string, left: number, top: number) {
+  return {
+    id,
+    type: 'text',
+    left,
+    top,
+    width: 320,
+    height: 36,
+    rotate: 0,
+    content: `<p>${text}</p>`,
+    defaultFontName: 'Arial',
+    defaultColor: '#111111',
+  };
+}
+
+function cardBackground(id: string, left: number, top: number) {
+  return {
+    id,
+    type: 'shape',
+    left,
+    top,
+    width: 360,
+    height: 180,
+    rotate: 0,
+    viewBox: [360, 180],
+    path: '',
+    fixedRatio: false,
+    fill: '#ffffff',
+  };
 }

@@ -91,6 +91,7 @@ import {
   staleAudioMetadata,
   syncedNarrationMetadata,
   type NarrationSyncState,
+  type NarrationVisualBlock,
 } from '@/lib/audio/narration-sync';
 import type {
   GeneratedInteractiveContent,
@@ -108,7 +109,19 @@ type NarrationGenerationSlideContent = GeneratedSlideContent & {
     text: string;
     elementCount: number;
     fingerprint: string;
+    blocks: Array<{
+      blockId: string;
+      elementIds: string[];
+      targetElementId: string;
+      text: string;
+      orderIndex: number;
+    }>;
   };
+  choreography?: Array<{
+    targetElementId: string;
+    targetText: string;
+    orderIndex: number;
+  }>;
 };
 // Stable empty set for the "no lines regenerating" state (avoids re-allocating
 // on every reset and keeps a constant identity between batch runs).
@@ -249,7 +262,19 @@ function toGenerationContent(
               text: narrationSource.text,
               elementCount: narrationSource.elementCount,
               fingerprint: narrationSource.fingerprint,
+              blocks: narrationSource.visualBlocks.map((block) => ({
+                blockId: block.blockId,
+                elementIds: block.elementIds,
+                targetElementId: block.targetElementId,
+                text: block.text,
+                orderIndex: block.orderIndex,
+              })),
             },
+            choreography: narrationSource.visualBlocks.map((block) => ({
+              targetElementId: block.targetElementId,
+              targetText: block.text,
+              orderIndex: block.orderIndex,
+            })),
           }
         : {}),
     } satisfies NarrationGenerationSlideContent;
@@ -262,12 +287,18 @@ function preserveSpeechAudioByPosition(
   generated: readonly Action[],
 ): Action[] {
   const previousSpeech = previous.filter((action) => action.type === 'speech') as Array<
-    Action & { audioId?: string; audioUrl?: string }
+    Action & { id?: string; audioId?: string; audioUrl?: string }
   >;
+  const previousSpeechById = new Map(
+    previousSpeech
+      .filter((action) => action.id)
+      .map((action) => [action.id as string, action] as const),
+  );
   let speechIndex = 0;
   return generated.map((action) => {
     if (action.type !== 'speech') return action;
-    const prior = previousSpeech[speechIndex++];
+    const prior =
+      (action.id ? previousSpeechById.get(action.id) : undefined) ?? previousSpeech[speechIndex++];
     if (!prior?.audioId && !prior?.audioUrl) return action;
     return {
       ...action,
@@ -275,6 +306,70 @@ function preserveSpeechAudioByPosition(
       ...(prior.audioUrl ? { audioUrl: prior.audioUrl } : {}),
     } as Action;
   });
+}
+
+function preserveActionPairIdsByTarget(previous: readonly Action[], generated: readonly Action[]) {
+  const previousPairs = spotlightSpeechPairsByTarget(previous);
+  const generatedTargetCounts = new Map<string, number>();
+  let pendingTargetId: string | null = null;
+
+  return generated.map((action) => {
+    if (isElementTargetAction(action)) {
+      pendingTargetId = action.elementId;
+      const index = generatedTargetCounts.get(action.elementId) ?? 0;
+      generatedTargetCounts.set(action.elementId, index + 1);
+      const pair = previousPairs.get(action.elementId)?.[index];
+      return pair?.effectId ? ({ ...action, id: pair.effectId } as Action) : action;
+    }
+
+    if (action.type === 'speech' && pendingTargetId) {
+      const index = (generatedTargetCounts.get(pendingTargetId) ?? 1) - 1;
+      const pair = previousPairs.get(pendingTargetId)?.[index];
+      pendingTargetId = null;
+      return pair?.speechId ? ({ ...action, id: pair.speechId } as Action) : action;
+    }
+
+    return action;
+  });
+}
+
+function spotlightSpeechPairsByTarget(actions: readonly Action[]) {
+  const pairs = new Map<string, Array<{ effectId?: string; speechId?: string }>>();
+  let pending: { targetId: string; effectId?: string } | null = null;
+  for (const action of actions) {
+    if (isElementTargetAction(action)) {
+      pending = { targetId: action.elementId, effectId: action.id };
+      continue;
+    }
+    if (action.type === 'speech' && pending) {
+      const list = pairs.get(pending.targetId) ?? [];
+      list.push({ effectId: pending.effectId, speechId: action.id });
+      pairs.set(pending.targetId, list);
+      pending = null;
+    }
+  }
+  return pairs;
+}
+
+function isElementTargetAction(action: Action): action is Action & { elementId: string } {
+  return (
+    (action.type === 'spotlight' || action.type === 'laser') &&
+    typeof (action as { elementId?: unknown }).elementId === 'string' &&
+    Boolean((action as { elementId?: string }).elementId)
+  );
+}
+
+function targetActionsForDiagnostics(actions: readonly Action[]) {
+  return actions
+    .filter(isElementTargetAction)
+    .map((action) => ({ actionId: action.id, targetElementId: action.elementId }));
+}
+
+function speechIdsForDiagnostics(actions: readonly Action[]) {
+  return actions
+    .filter((action) => action.type === 'speech')
+    .map((action) => action.id)
+    .filter(Boolean) as string[];
 }
 
 function withStampedAudioIds(
@@ -371,6 +466,9 @@ function syncDiagnostic(args: {
   staleStateBefore?: NarrationSyncState['status'];
   staleStateAfter?: NarrationSyncState['status'];
   preview?: string;
+  visualBlocks?: readonly NarrationVisualBlock[];
+  narrationActionTargets?: Array<{ actionId?: string; targetElementId?: string }>;
+  generatedNarrationActionIds?: string[];
 }) {
   log.debug('sync operation', {
     sceneId: args.sceneId,
@@ -387,6 +485,13 @@ function syncDiagnostic(args: {
     staleStateBefore: args.staleStateBefore,
     staleStateAfter: args.staleStateAfter,
     preview: args.preview,
+    visualBlockOrder: args.visualBlocks?.map((block) => ({
+      blockId: block.blockId,
+      elementIds: block.elementIds,
+      boundedTextPreview: block.text.slice(0, 80),
+    })),
+    narrationActionTargets: args.narrationActionTargets,
+    generatedNarrationActionIds: args.generatedNarrationActionIds,
   });
 }
 
@@ -1309,6 +1414,9 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         staleStateBefore: beforeState.status,
         staleStateAfter: 'synced',
         preview: source.preview,
+        visualBlocks: source.visualBlocks,
+        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
@@ -1363,6 +1471,9 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
               ).status
             : undefined,
           preview: source.preview,
+          visualBlocks: source.visualBlocks,
+          narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+          generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
         });
         return;
       }
@@ -1385,7 +1496,10 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         throw new Error(result.error || 'Narration sync failed');
       }
 
-      const generatedActions = result.scene.actions ?? [];
+      const generatedActions = preserveActionPairIdsByTarget(
+        latest.actions ?? [],
+        result.scene.actions ?? [],
+      );
       const generatedNarration = generatedActions
         .filter((action) => action.type === 'speech')
         .map((action) => ((action as { text?: string }).text ?? '').trim())
@@ -1484,6 +1598,9 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
             ).status
           : undefined,
         preview: source.preview,
+        visualBlocks: source.visualBlocks,
+        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
       });
     },
     [

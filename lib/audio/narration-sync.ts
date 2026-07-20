@@ -39,6 +39,24 @@ export interface NarrationSource {
   elementCount: number;
   fingerprint: string;
   preview: string;
+  visualBlocks: NarrationVisualBlock[];
+}
+
+export interface NarrationVisualBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface NarrationVisualBlock {
+  blockId: string;
+  elementIds: string[];
+  targetElementId: string;
+  text: string;
+  bounds: NarrationVisualBounds;
+  orderIndex: number;
+  parentOrGroupId?: string;
 }
 
 export function normalizeNarrationText(value: unknown): string {
@@ -81,16 +99,41 @@ export function getNarrationSourceFingerprint(scene: Pick<Scene, 'content' | 'ti
 export function buildNarrationSourceFromScene(
   scene: Pick<Scene, 'content' | 'title'>,
 ): NarrationSource {
-  const lines = [normalizeNarrationText(scene.title), ...visibleContentLines(scene.content)].filter(
-    Boolean,
-  );
+  const visualBlocks =
+    scene.content.type === 'slide' ? buildVisualNarrationBlocksFromScene(scene) : [];
+  const contentLines =
+    scene.content.type === 'slide'
+      ? visualBlocks.map((block) => block.text)
+      : visibleContentLines(scene.content);
+  const lines = [normalizeNarrationText(scene.title), ...contentLines].filter(Boolean);
   const text = lines.join('\n');
   return {
     text,
-    elementCount: Math.max(0, lines.length - (normalizeNarrationText(scene.title) ? 1 : 0)),
-    fingerprint: stableStringify(lines),
+    elementCount:
+      scene.content.type === 'slide'
+        ? visualBlocks.reduce((count, block) => count + block.elementIds.length, 0)
+        : Math.max(0, lines.length - (normalizeNarrationText(scene.title) ? 1 : 0)),
+    fingerprint:
+      scene.content.type === 'slide'
+        ? stableStringify({
+            title: normalizeNarrationText(scene.title),
+            blocks: visualBlocks.map((block) => ({
+              blockId: block.blockId,
+              textFingerprint: stableStringify(block.text),
+              orderIndex: block.orderIndex,
+            })),
+          })
+        : stableStringify(lines),
     preview: text.slice(0, 120),
+    visualBlocks,
   };
+}
+
+export function buildVisualNarrationBlocksFromScene(
+  scene: Pick<Scene, 'content'>,
+): NarrationVisualBlock[] {
+  if (scene.content.type !== 'slide') return [];
+  return buildVisualNarrationBlocks(scene.content.canvas.elements);
 }
 
 export function getAudioSourceFingerprint(
@@ -258,7 +301,7 @@ function speechActions(actions: readonly Action[] | undefined): SpeechAction[] {
 function visibleContentLines(content: SceneContent): string[] {
   switch (content.type) {
     case 'slide':
-      return content.canvas.elements.flatMap(visibleSlideElementText);
+      return buildVisualNarrationBlocks(content.canvas.elements).map((block) => block.text);
     case 'quiz':
       return content.questions.flatMap((question) => [
         normalizeNarrationText(question.question),
@@ -274,6 +317,214 @@ function visibleContentLines(content: SceneContent): string[] {
         normalizeNarrationText(content.projectV2 ? stableStringify(content.projectV2) : ''),
       ];
   }
+}
+
+interface TextualElement {
+  element: PPTElement;
+  text: string;
+  bounds: NarrationVisualBounds;
+}
+
+interface VisualGroup {
+  key: string;
+  parentOrGroupId?: string;
+  targetElementId: string;
+  elements: TextualElement[];
+  bounds: NarrationVisualBounds;
+}
+
+function buildVisualNarrationBlocks(elements: readonly PPTElement[]): NarrationVisualBlock[] {
+  const visibleElements = elements.filter((element) => !isHiddenSlideElement(element));
+  const containers = visibleElements
+    .filter(isVisualContainer)
+    .sort((a, b) => elementArea(a) - elementArea(b));
+  const textual = visibleElements
+    .map((element) => ({
+      element,
+      text: visibleSlideElementText(element).filter(Boolean).join('\n'),
+      bounds: elementBounds(element),
+    }))
+    .filter((item): item is TextualElement => Boolean(item.text));
+  const groups = new Map<string, VisualGroup>();
+
+  for (const item of textual) {
+    const explicitGroup = elementGroupId(item.element);
+    const container = explicitGroup ? undefined : containingContainer(item.element, containers);
+    const key = explicitGroup ?? container?.id ?? item.element.id;
+    const parentOrGroupId = explicitGroup ?? container?.id;
+    const targetElementId = container?.id ?? item.element.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.elements.push(item);
+      existing.bounds = unionBounds(existing.bounds, item.bounds);
+    } else {
+      groups.set(key, {
+        key,
+        parentOrGroupId,
+        targetElementId,
+        elements: [item],
+        bounds: item.bounds,
+      });
+    }
+  }
+
+  const orderedGroups = orderVisualGroups([...groups.values()]);
+  return orderedGroups.map((group, orderIndex) => {
+    const orderedElements = orderTextualElements(group.elements);
+    const seenText = new Set<string>();
+    const text = orderedElements
+      .map((item) => item.text)
+      .filter((line) => {
+        const fingerprint = stableStringify(line);
+        if (seenText.has(fingerprint)) return false;
+        seenText.add(fingerprint);
+        return true;
+      })
+      .join('\n');
+    return {
+      blockId: group.key,
+      elementIds: orderedElements.map((item) => item.element.id),
+      targetElementId: group.targetElementId,
+      text,
+      bounds: group.bounds,
+      orderIndex,
+      ...(group.parentOrGroupId ? { parentOrGroupId: group.parentOrGroupId } : {}),
+    };
+  });
+}
+
+function orderVisualGroups(groups: VisualGroup[]): VisualGroup[] {
+  return clusterRows(groups, (group) => group.bounds).flatMap((row) =>
+    row.sort(
+      (a, b) =>
+        a.bounds.left - b.bounds.left || a.bounds.top - b.bounds.top || a.key.localeCompare(b.key),
+    ),
+  );
+}
+
+function orderTextualElements(elements: TextualElement[]): TextualElement[] {
+  return clusterRows(elements, (item) => item.bounds).flatMap((row) =>
+    row.sort(
+      (a, b) =>
+        a.bounds.left - b.bounds.left ||
+        a.bounds.top - b.bounds.top ||
+        a.element.id.localeCompare(b.element.id),
+    ),
+  );
+}
+
+function clusterRows<T>(items: T[], boundsFor: (item: T) => NarrationVisualBounds): T[][] {
+  const sorted = [...items].sort((a, b) => {
+    const aBounds = boundsFor(a);
+    const bBounds = boundsFor(b);
+    return aBounds.top - bBounds.top || aBounds.left - bBounds.left;
+  });
+  const rows: Array<{ top: number; height: number; items: T[] }> = [];
+  for (const item of sorted) {
+    const bounds = boundsFor(item);
+    const centerY = bounds.top + bounds.height / 2;
+    const row = rows.find((candidate) => {
+      const rowCenter = candidate.top + candidate.height / 2;
+      const tolerance = Math.max(
+        24,
+        Math.min(80, Math.max(candidate.height, bounds.height) * 0.35),
+      );
+      return Math.abs(centerY - rowCenter) <= tolerance;
+    });
+    if (row) {
+      row.items.push(item);
+      const bottom = Math.max(row.top + row.height, bounds.top + bounds.height);
+      row.top = Math.min(row.top, bounds.top);
+      row.height = bottom - row.top;
+    } else {
+      rows.push({ top: bounds.top, height: bounds.height, items: [item] });
+    }
+  }
+  return rows.sort((a, b) => a.top - b.top).map((row) => row.items);
+}
+
+function isVisualContainer(element: PPTElement): boolean {
+  if (element.type !== 'shape') return false;
+  const text = visibleSlideElementText(element).join('');
+  if (text) return false;
+  const bounds = elementBounds(element);
+  return bounds.width > 80 && bounds.height > 40;
+}
+
+function containingContainer(
+  element: PPTElement,
+  containers: readonly PPTElement[],
+): PPTElement | undefined {
+  const bounds = elementBounds(element);
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  return containers.find((candidate) => {
+    if (candidate.id === element.id) return false;
+    const containerBounds = elementBounds(candidate);
+    const padded = padBounds(containerBounds, 12);
+    if (
+      centerX < padded.left ||
+      centerX > padded.left + padded.width ||
+      centerY < padded.top ||
+      centerY > padded.top + padded.height
+    ) {
+      return false;
+    }
+    return (
+      overlapArea(bounds, padded) >= Math.min(elementArea(element), areaOfBounds(bounds)) * 0.35
+    );
+  });
+}
+
+function elementGroupId(element: PPTElement): string | undefined {
+  return (element as { groupId?: string }).groupId || undefined;
+}
+
+function elementBounds(element: PPTElement): NarrationVisualBounds {
+  const record = element as unknown as Record<string, unknown>;
+  return {
+    left: numberOrZero(record.left),
+    top: numberOrZero(record.top),
+    width: numberOrZero(record.width),
+    height: numberOrZero(record.height),
+  };
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function unionBounds(a: NarrationVisualBounds, b: NarrationVisualBounds): NarrationVisualBounds {
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  const right = Math.max(a.left + a.width, b.left + b.width);
+  const bottom = Math.max(a.top + a.height, b.top + b.height);
+  return { left, top, width: right - left, height: bottom - top };
+}
+
+function padBounds(bounds: NarrationVisualBounds, padding: number): NarrationVisualBounds {
+  return {
+    left: bounds.left - padding,
+    top: bounds.top - padding,
+    width: bounds.width + padding * 2,
+    height: bounds.height + padding * 2,
+  };
+}
+
+function areaOfBounds(bounds: NarrationVisualBounds): number {
+  return Math.max(0, bounds.width) * Math.max(0, bounds.height);
+}
+
+function elementArea(element: PPTElement): number {
+  return areaOfBounds(elementBounds(element));
+}
+
+function overlapArea(a: NarrationVisualBounds, b: NarrationVisualBounds): number {
+  const left = Math.max(a.left, b.left);
+  const top = Math.max(a.top, b.top);
+  const right = Math.min(a.left + a.width, b.left + b.width);
+  const bottom = Math.min(a.top + a.height, b.top + b.height);
+  return Math.max(0, right - left) * Math.max(0, bottom - top);
 }
 
 function visibleSlideElementText(element: PPTElement): string[] {
