@@ -34,6 +34,13 @@ export interface NarrationSyncState {
   hasSpeechAudio: boolean;
 }
 
+export interface NarrationSource {
+  text: string;
+  elementCount: number;
+  fingerprint: string;
+  preview: string;
+}
+
 export function normalizeNarrationText(value: unknown): string {
   if (value == null) return '';
   return String(value)
@@ -68,10 +75,22 @@ function sortStable(value: unknown): unknown {
 }
 
 export function getNarrationSourceFingerprint(scene: Pick<Scene, 'content' | 'title'>): string {
-  return stableStringify({
-    title: normalizeNarrationText(scene.title),
-    content: semanticContent(scene.content),
-  });
+  return buildNarrationSourceFromScene(scene).fingerprint;
+}
+
+export function buildNarrationSourceFromScene(
+  scene: Pick<Scene, 'content' | 'title'>,
+): NarrationSource {
+  const lines = [normalizeNarrationText(scene.title), ...visibleContentLines(scene.content)].filter(
+    Boolean,
+  );
+  const text = lines.join('\n');
+  return {
+    text,
+    elementCount: Math.max(0, lines.length - (normalizeNarrationText(scene.title) ? 1 : 0)),
+    fingerprint: stableStringify(lines),
+    preview: text.slice(0, 120),
+  };
 }
 
 export function getAudioSourceFingerprint(
@@ -236,75 +255,76 @@ function speechActions(actions: readonly Action[] | undefined): SpeechAction[] {
   return (actions ?? []).filter((action): action is SpeechAction => action.type === 'speech');
 }
 
-function semanticContent(content: SceneContent): unknown {
+function visibleContentLines(content: SceneContent): string[] {
   switch (content.type) {
     case 'slide':
-      return content.canvas.elements.map(semanticSlideElement);
+      return content.canvas.elements.flatMap(visibleSlideElementText);
     case 'quiz':
-      return content.questions.map((question) => ({
-        type: question.type,
-        question: normalizeNarrationText(question.question),
-        options: question.options?.map((option) => ({
-          label: option.label,
-          value: normalizeNarrationText(option.value),
-        })),
-        answer: question.answer,
-        analysis: normalizeNarrationText(question.analysis),
-      }));
+      return content.questions.flatMap((question) => [
+        normalizeNarrationText(question.question),
+        ...(question.options?.map((option) => normalizeNarrationText(option.value)) ?? []),
+        normalizeNarrationText(question.analysis),
+      ]);
     case 'interactive':
-      return {
-        widgetType: content.widgetType,
-        widgetConfig: content.widgetConfig,
-        html: normalizeNarrationText(content.html),
-        url: content.url,
-      };
+      return [normalizeNarrationText(content.html), normalizeNarrationText(content.widgetType)];
     case 'pbl':
-      return {
-        projectConfig: content.projectConfig,
-        projectV2: content.projectV2,
-      };
+      return [
+        normalizeNarrationText(content.projectConfig?.projectInfo?.title),
+        normalizeNarrationText(content.projectConfig?.projectInfo?.description),
+        normalizeNarrationText(content.projectV2 ? stableStringify(content.projectV2) : ''),
+      ];
   }
 }
 
-function semanticSlideElement(element: PPTElement): unknown {
+function visibleSlideElementText(element: PPTElement): string[] {
+  if (isHiddenSlideElement(element)) return [];
   const record = element as unknown as Record<string, unknown>;
   const type = element.type;
-  const id = element.id;
   switch (type) {
     case 'text':
-      return { id, type, text: normalizeNarrationText(record.content) };
+      return [normalizeNarrationText(record.content)];
     case 'shape':
-      return {
-        id,
-        type,
-        text: normalizeNarrationText((record.text as { content?: unknown } | undefined)?.content),
-      };
+      return [normalizeNarrationText((record.text as { content?: unknown } | undefined)?.content)];
     case 'table':
-      return {
-        id,
-        type,
-        cells: (record.data as Array<Array<{ text?: unknown }>> | undefined)?.map((row) =>
+      return (
+        (record.data as Array<Array<{ text?: unknown }>> | undefined)?.flatMap((row) =>
           row.map((cell) => normalizeNarrationText(cell.text)),
-        ),
-      };
+        ) ?? []
+      );
     case 'chart':
-      return { id, type, data: record.data };
+      return [normalizeNarrationText(record.data ? stableStringify(record.data) : '')];
     case 'latex':
-      return { id, type, latex: normalizeNarrationText(record.latex) };
+      return [normalizeNarrationText(record.latex)];
     case 'code':
-      return {
-        id,
-        type,
-        language: record.language,
-        lines: (record.lines as Array<{ content?: unknown }> | undefined)?.map((line) =>
+      return (
+        (record.lines as Array<{ content?: unknown }> | undefined)?.map((line) =>
           normalizeNarrationText(line.content),
-        ),
-      };
+        ) ?? []
+      );
     case 'image':
     case 'video':
     case 'audio':
-      return { id, type };
+      return [];
     default:
-      return { id, type, text: normalizeNarrationText(stableStringify(record)) };
+      return visibleRecordText(record);
   }
+}
+
+function visibleRecordText(record: Record<string, unknown>): string[] {
+  const text = record.text;
+  const textContent =
+    text && typeof text === 'object' ? (text as { content?: unknown }).content : text;
+  return [record.content, textContent, record.label, record.title, record.name, record.value]
+    .map(normalizeNarrationText)
+    .filter(Boolean);
+}
+
+function isHiddenSlideElement(element: PPTElement): boolean {
+  const record = element as unknown as Record<string, unknown>;
+  return (
+    record.visible === false ||
+    record.hidden === true ||
+    record.opacity === 0 ||
+    (record.style as { opacity?: unknown } | undefined)?.opacity === 0
+  );
 }

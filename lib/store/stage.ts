@@ -256,6 +256,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       // Rebind `type` to the merged content's kind (a type-only patch can no
       // longer desync the discriminant from the content).
       const next = makeScene({ ...scene, ...updates }, content);
+      if (updates.sync) return next;
       return applyNarrationSyncForSceneUpdate(scene, next, {
         language: get().stage?.languageDirective,
       });

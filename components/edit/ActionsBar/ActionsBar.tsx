@@ -45,6 +45,7 @@ import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { fetchSceneActions } from '@/lib/hooks/use-scene-generator';
+import { createLogger } from '@/lib/logger';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import {
   Select,
@@ -82,15 +83,26 @@ import {
   speechAudioId,
 } from '@/lib/audio/regenerate-speech-tts';
 import {
+  buildNarrationSourceFromScene,
   getAudioSourceFingerprint,
   getNarrationSyncState,
+  normalizeNarrationText,
+  stableStringify,
   staleAudioMetadata,
   syncedNarrationMetadata,
+  type NarrationSyncState,
 } from '@/lib/audio/narration-sync';
-import type { SceneOutline } from '@/lib/types/generation';
+import type {
+  GeneratedInteractiveContent,
+  GeneratedPBLContent,
+  GeneratedQuizContent,
+  GeneratedSlideContent,
+  SceneOutline,
+} from '@/lib/types/generation';
 
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
+const log = createLogger('NarrationSync');
 // Stable empty set for the "no lines regenerating" state (avoids re-allocating
 // on every reset and keeps a constant identity between batch runs).
 const NO_IDS: ReadonlySet<string> = new Set();
@@ -210,6 +222,155 @@ function speechTextsForScene(scene: Scene): string[] {
     .filter((action) => action.type === 'speech')
     .map((action) => ((action as { text?: string }).text ?? '').trim())
     .filter(Boolean);
+}
+
+function toGenerationContent(
+  content: Scene['content'],
+):
+  | GeneratedSlideContent
+  | GeneratedQuizContent
+  | GeneratedInteractiveContent
+  | GeneratedPBLContent {
+  if (content.type === 'slide') {
+    return {
+      elements: content.canvas.elements ?? [],
+      background: content.canvas.background,
+    } satisfies GeneratedSlideContent;
+  }
+  return content as GeneratedQuizContent | GeneratedInteractiveContent | GeneratedPBLContent;
+}
+
+function preserveSpeechAudioByPosition(
+  previous: readonly Action[],
+  generated: readonly Action[],
+): Action[] {
+  const previousSpeech = previous.filter((action) => action.type === 'speech') as Array<
+    Action & { audioId?: string; audioUrl?: string }
+  >;
+  let speechIndex = 0;
+  return generated.map((action) => {
+    if (action.type !== 'speech') return action;
+    const prior = previousSpeech[speechIndex++];
+    if (!prior?.audioId && !prior?.audioUrl) return action;
+    return {
+      ...action,
+      ...(prior.audioId ? { audioId: prior.audioId } : {}),
+      ...(prior.audioUrl ? { audioUrl: prior.audioUrl } : {}),
+    } as Action;
+  });
+}
+
+function withStampedAudioIds(
+  actions: readonly Action[],
+  okIds: ReadonlySet<string>,
+  sceneOrder: number,
+): Action[] {
+  let next = [...actions] as Action[];
+  for (const action of actions) {
+    if (action.type === 'speech' && action.id && okIds.has(action.id)) {
+      next = setAudioIdById(next, action.id, speechAudioId(sceneOrder, action.id));
+    }
+  }
+  return next;
+}
+
+function fingerprintText(value: string): string {
+  return stableStringify(value);
+}
+
+function significantTokens(value: string): string[] {
+  const stop = new Set([
+    'about',
+    'after',
+    'again',
+    'also',
+    'and',
+    'are',
+    'because',
+    'been',
+    'before',
+    'being',
+    'can',
+    'for',
+    'from',
+    'has',
+    'have',
+    'into',
+    'its',
+    'our',
+    'the',
+    'their',
+    'this',
+    'through',
+    'to',
+    'with',
+  ]);
+  return normalizeNarrationText(value)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 3 && !stop.has(token));
+}
+
+function unchangedNarrationStillLooksStale(
+  currentSourceText: string,
+  previousNarration: string,
+  generatedNarration: string,
+): boolean {
+  if (
+    !previousNarration.trim() ||
+    fingerprintText(previousNarration) !== fingerprintText(generatedNarration)
+  ) {
+    return false;
+  }
+  const sourceTokens = new Set(significantTokens(currentSourceText));
+  const previousTokens = significantTokens(previousNarration);
+  if (previousTokens.length < 5) return false;
+  const missing = previousTokens.filter((token) => !sourceTokens.has(token));
+  return missing.length >= Math.max(3, Math.ceil(previousTokens.length * 0.4));
+}
+
+function fingerprintHash(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function syncDiagnostic(args: {
+  sceneId: string;
+  operation: 'narration-and-audio' | 'audio-only';
+  currentSceneFingerprint: string;
+  storedNarrationSourceFingerprint?: string;
+  narrationSourceCharacterCount: number;
+  narrationSourceElementCount: number;
+  previousNarrationFingerprint?: string;
+  generatedNarrationFingerprint?: string;
+  ttsInputFingerprint?: string;
+  savedNarrationFingerprint?: string;
+  savedAudioFingerprint?: string;
+  staleStateBefore?: NarrationSyncState['status'];
+  staleStateAfter?: NarrationSyncState['status'];
+  preview?: string;
+}) {
+  log.debug('sync operation', {
+    sceneId: args.sceneId,
+    operation: args.operation,
+    currentSceneFingerprint: fingerprintHash(args.currentSceneFingerprint),
+    storedNarrationSourceFingerprint: fingerprintHash(args.storedNarrationSourceFingerprint),
+    narrationSourceCharacterCount: args.narrationSourceCharacterCount,
+    narrationSourceElementCount: args.narrationSourceElementCount,
+    previousNarrationFingerprint: fingerprintHash(args.previousNarrationFingerprint),
+    generatedNarrationFingerprint: fingerprintHash(args.generatedNarrationFingerprint),
+    ttsInputFingerprint: fingerprintHash(args.ttsInputFingerprint),
+    savedNarrationFingerprint: fingerprintHash(args.savedNarrationFingerprint),
+    savedAudioFingerprint: fingerprintHash(args.savedAudioFingerprint),
+    staleStateBefore: args.staleStateBefore,
+    staleStateAfter: args.staleStateAfter,
+    preview: args.preview,
+  });
 }
 
 /** Shared delete button — prominent, top-right of a card. */
@@ -1034,6 +1195,7 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const reduce = useReducedMotion();
   const dragRef = useRef<DragPayload | null>(null);
+  const syncingRef = useRef(false);
 
   const syncState = useMemo(
     () => (scene ? getNarrationSyncState(scene, ttsFingerprintSettings) : null),
@@ -1063,205 +1225,315 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     [sceneId],
   );
 
-  const markCurrentSceneSynced = useCallback(() => {
-    const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    if (!latest) return;
-    useStageStore.getState().updateScene(sceneId, {
-      sync: syncedNarrationMetadata(latest, ttsFingerprintSettings),
-    });
-  }, [sceneId, ttsFingerprintSettings]);
+  const synthesizeAudioForActions = useCallback(
+    async (targetScene: Scene, actionsForTts: readonly Action[]): Promise<Action[]> => {
+      const speeches = actionsForTts.filter(
+        (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
+      );
+      if (!speeches.length) return [...actionsForTts] as Action[];
+
+      const ids = speeches.map((a) => a.id).filter(Boolean) as string[];
+      setRegeneratingIds(new Set(ids));
+      const okIds = new Set<string>();
+      try {
+        for (const action of speeches) {
+          if (!action.id) continue;
+          const text = (action as { text?: string }).text ?? '';
+          const id = await regenerateSpeechAudio(
+            targetScene.order,
+            { id: action.id, text },
+            language,
+          );
+          if (id) okIds.add(action.id);
+        }
+      } finally {
+        setRegeneratingIds(NO_IDS);
+        setTtsRefresh((n) => n + 1);
+      }
+
+      if (okIds.size !== ids.length) {
+        throw new Error(t('edit.timeline.syncFailed'));
+      }
+
+      return withStampedAudioIds(actionsForTts, okIds, targetScene.order);
+    },
+    [language, t],
+  );
 
   // Regenerate TTS for every speech line in the scene, then stamp audioIds.
   // Reads the latest actions from the store at each step so a concurrent edit
   // isn't clobbered, and stamps by id (index-stale-safe).
   const regenerateAllAudio = useCallback(async () => {
-    if (regenAll) return;
-    const latest = () => useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    const speeches = (latest()?.actions ?? []).filter(
-      (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
-    );
-    if (!speeches.length) return;
-    const order = latest()?.order ?? 0;
-    setRegenAll(true);
-    // Light up every queued line's status row up front (they're all about to be
-    // synthesized), cleared together in the finally once the batch settles.
-    setRegeneratingIds(new Set(speeches.map((a) => a.id).filter(Boolean) as string[]));
-    // Stamp audioId only for lines that actually synthesized — a skipped/failed
-    // line must not get an id pointing at a blob that was never written.
-    const okIds = new Set<string>();
-    try {
-      for (const a of speeches) {
-        if (!a.id) continue;
-        try {
-          const id = await regenerateSpeechAudio(
-            order,
-            { id: a.id, text: (a as { text?: string }).text ?? '' },
-            language,
-          );
-          if (id) okIds.add(a.id);
-        } catch {
-          /* skip a failed line, keep going */
-        }
-      }
-      if (okIds.size > 0) {
-        commit((cur) => {
-          let next = cur;
-          for (const a of cur) {
-            if (a.type === 'speech' && a.id && okIds.has(a.id))
-              next = setAudioIdById(next, a.id, speechAudioId(order, a.id));
-          }
-          return next;
-        });
-        markCurrentSceneSynced();
-      }
-    } finally {
-      setRegenAll(false);
-      setRegeneratingIds(NO_IDS);
-      // Always re-check every line's audio at batch end — even when nothing
-      // synthesized — so each SpeechTtsBar resolves its status (and clears its
-      // batchPending flag) instead of getting stuck in 生成中.
-      setTtsRefresh((n) => n + 1);
-    }
-  }, [regenAll, sceneId, language, commit, markCurrentSceneSynced]);
-
-  const syncCurrentScene = useCallback(async () => {
+    if (regenAll || syncingRef.current) return;
     const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    if (!latest || !stage || syncing) return;
-    setSyncing(true);
-    setSyncError(null);
+    if (!latest) return;
+    const source = buildNarrationSourceFromScene(latest);
+    const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
+    const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
+    setRegenAll(true);
     try {
-      useStageStore.getState().updateScene(sceneId, {
-        sync: { ...syncedNarrationMetadata(latest, ttsFingerprintSettings), status: 'syncing' },
+      const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
+      const latestAfterTts = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (!latestAfterTts) return;
+      const syncedScene = { ...latestAfterTts, actions: actionsWithAudio } as Scene;
+      const sync = syncedNarrationMetadata(syncedScene, ttsFingerprintSettings);
+      useStageStore.getState().updateScene(sceneId, { actions: actionsWithAudio, sync });
+      syncDiagnostic({
+        sceneId,
+        operation: 'audio-only',
+        currentSceneFingerprint: source.fingerprint,
+        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+        narrationSourceCharacterCount: source.text.length,
+        narrationSourceElementCount: source.elementCount,
+        previousNarrationFingerprint,
+        ttsInputFingerprint: previousNarrationFingerprint,
+        savedNarrationFingerprint: previousNarrationFingerprint,
+        savedAudioFingerprint: sync.audioSourceFingerprint,
+        staleStateBefore: beforeState.status,
+        staleStateAfter: 'synced',
+        preview: source.preview,
       });
-
-      const state = getNarrationSyncState(latest, ttsFingerprintSettings);
-      if (state.status === 'narration-stale') {
-        const outline = outlineForScene(latest, allOutlines);
-        const result = await fetchSceneActions({
-          outline,
-          allOutlines: allOutlines.length ? allOutlines : [outline],
-          content: latest.content,
-          stageId: stage.id,
-          agents: selectedAgentsForGeneration,
-          previousSpeeches: speechTextsForScene(latest),
-          languageDirective: stage.languageDirective,
-        });
-        if (!result.success || !result.scene) {
-          throw new Error(result.error || 'Narration sync failed');
-        }
-        useStageStore.getState().updateScene(sceneId, { actions: result.scene.actions });
-      }
-
-      await regenerateAllAudio();
-      markCurrentSceneSynced();
     } catch (error) {
       const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
       setSyncError(message);
       const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
       if (current) {
         useStageStore.getState().updateScene(sceneId, {
-          sync: {
-            ...syncedNarrationMetadata(current, ttsFingerprintSettings),
-            status: 'error',
-            error: message,
-          },
+          sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
         });
       }
     } finally {
-      setSyncing(false);
+      setRegenAll(false);
     }
-  }, [
-    allOutlines,
-    markCurrentSceneSynced,
-    regenerateAllAudio,
-    sceneId,
-    selectedAgentsForGeneration,
-    stage,
-    syncing,
-    t,
-    ttsFingerprintSettings,
-  ]);
+  }, [regenAll, sceneId, synthesizeAudioForActions, t, ttsFingerprintSettings]);
 
-  const syncAllStaleScenes = useCallback(async () => {
-    if (!stage || syncing) return;
+  const syncSceneById = useCallback(
+    async (targetSceneId: string) => {
+      const latest = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      if (!latest || !stage) return;
+      const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
+      if (beforeState.status !== 'narration-stale' && beforeState.status !== 'audio-stale') return;
+      const source = buildNarrationSourceFromScene(latest);
+      const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
+
+      if (beforeState.status === 'audio-stale') {
+        const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
+        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        if (!current) return;
+        const currentSource = buildNarrationSourceFromScene(current);
+        const syncedScene = { ...current, actions: actionsWithAudio } as Scene;
+        const sync =
+          currentSource.fingerprint === source.fingerprint
+            ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
+            : current.sync;
+        useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
+        syncDiagnostic({
+          sceneId: targetSceneId,
+          operation: 'audio-only',
+          currentSceneFingerprint: source.fingerprint,
+          storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+          narrationSourceCharacterCount: source.text.length,
+          narrationSourceElementCount: source.elementCount,
+          previousNarrationFingerprint,
+          ttsInputFingerprint: previousNarrationFingerprint,
+          savedNarrationFingerprint: previousNarrationFingerprint,
+          savedAudioFingerprint: sync?.audioSourceFingerprint,
+          staleStateBefore: beforeState.status,
+          staleStateAfter: sync
+            ? getNarrationSyncState(
+                { ...current, actions: actionsWithAudio, sync },
+                ttsFingerprintSettings,
+              ).status
+            : undefined,
+          preview: source.preview,
+        });
+        return;
+      }
+
+      useStageStore.getState().updateScene(targetSceneId, {
+        sync: { ...(latest.sync ?? {}), status: 'syncing', updatedAt: Date.now() },
+      });
+
+      const outline = outlineForScene(latest, allOutlines);
+      const result = await fetchSceneActions({
+        outline,
+        allOutlines: allOutlines.length ? allOutlines : [outline],
+        content: toGenerationContent(latest.content),
+        stageId: stage.id,
+        agents: selectedAgentsForGeneration,
+        previousSpeeches: [],
+        languageDirective: stage.languageDirective,
+      });
+      if (!result.success || !result.scene) {
+        throw new Error(result.error || 'Narration sync failed');
+      }
+
+      const generatedActions = result.scene.actions ?? [];
+      const generatedNarration = generatedActions
+        .filter((action) => action.type === 'speech')
+        .map((action) => ((action as { text?: string }).text ?? '').trim())
+        .filter(Boolean)
+        .join('\n');
+      if (!generatedNarration) {
+        throw new Error(result.error || 'Narration sync produced no narration');
+      }
+      if (
+        unchangedNarrationStillLooksStale(
+          source.text,
+          speechTextsForScene(latest).join('\n'),
+          generatedNarration,
+        )
+      ) {
+        const message = 'Narration sync returned unchanged narration for changed slide content';
+        useStageStore.getState().updateScene(targetSceneId, {
+          sync: {
+            ...(latest.sync ?? {
+              narrationSourceFingerprint: beforeState.narrationSourceFingerprint,
+              audioSourceFingerprint: beforeState.audioSourceFingerprint,
+            }),
+            status: 'narration-stale',
+            error: message,
+            updatedAt: Date.now(),
+          },
+        });
+        throw new Error(message);
+      }
+
+      const currentBeforeSave = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      if (!currentBeforeSave) return;
+      const currentSource = buildNarrationSourceFromScene(currentBeforeSave);
+      if (currentSource.fingerprint !== source.fingerprint) {
+        throw new Error('Scene changed while narration sync was running');
+      }
+
+      const generatedNarrationFingerprint = fingerprintText(generatedNarration);
+      const actionsWithPriorAudio = preserveSpeechAudioByPosition(
+        currentBeforeSave.actions ?? [],
+        generatedActions,
+      );
+      useStageStore.getState().updateScene(targetSceneId, {
+        actions: actionsWithPriorAudio,
+        sync: {
+          status: 'audio-stale',
+          narrationSourceFingerprint: source.fingerprint,
+          audioSourceFingerprint: getAudioSourceFingerprint(
+            currentBeforeSave,
+            ttsFingerprintSettings,
+          ),
+          updatedAt: Date.now(),
+        },
+      });
+
+      let actionsWithAudio: Action[];
+      try {
+        actionsWithAudio = await synthesizeAudioForActions(currentBeforeSave, generatedActions);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        if (current) {
+          useStageStore.getState().updateScene(targetSceneId, {
+            sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
+          });
+        }
+        throw error;
+      }
+
+      const currentAfterTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      if (!currentAfterTts) return;
+      const latestSource = buildNarrationSourceFromScene(currentAfterTts);
+      const syncedScene = { ...currentAfterTts, actions: actionsWithAudio } as Scene;
+      const sync =
+        latestSource.fingerprint === source.fingerprint
+          ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
+          : currentAfterTts.sync;
+      useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
+      syncDiagnostic({
+        sceneId: targetSceneId,
+        operation: 'narration-and-audio',
+        currentSceneFingerprint: source.fingerprint,
+        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+        narrationSourceCharacterCount: source.text.length,
+        narrationSourceElementCount: source.elementCount,
+        previousNarrationFingerprint,
+        generatedNarrationFingerprint,
+        ttsInputFingerprint: generatedNarrationFingerprint,
+        savedNarrationFingerprint: fingerprintText(speechTextsForScene(syncedScene).join('\n')),
+        savedAudioFingerprint: sync?.audioSourceFingerprint,
+        staleStateBefore: beforeState.status,
+        staleStateAfter: sync
+          ? getNarrationSyncState(
+              { ...currentAfterTts, actions: actionsWithAudio, sync },
+              ttsFingerprintSettings,
+            ).status
+          : undefined,
+        preview: source.preview,
+      });
+    },
+    [
+      allOutlines,
+      selectedAgentsForGeneration,
+      stage,
+      synthesizeAudioForActions,
+      t,
+      ttsFingerprintSettings,
+    ],
+  );
+
+  const syncCurrentScene = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     setSyncError(null);
     try {
-      const staleScenes = useStageStore.getState().scenes.filter((s) => {
-        const state = getNarrationSyncState(s, ttsFingerprintSettings);
-        return state.status === 'narration-stale' || state.status === 'audio-stale';
-      });
+      await syncSceneById(sceneId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+      setSyncError(message);
+      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (current) {
+        const fallbackSync =
+          current.sync?.status === 'syncing'
+            ? ({ ...current.sync, status: 'error', error: message, updatedAt: Date.now() } as const)
+            : {
+                ...(current.sync ?? staleAudioMetadata(current, ttsFingerprintSettings)),
+                error: message,
+                updatedAt: Date.now(),
+              };
+        useStageStore.getState().updateScene(sceneId, {
+          sync: fallbackSync,
+        });
+      }
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [sceneId, syncSceneById, t, ttsFingerprintSettings]);
 
-      for (const staleScene of staleScenes) {
-        let current = useStageStore.getState().scenes.find((s) => s.id === staleScene.id);
-        if (!current) continue;
-        const state = getNarrationSyncState(current, ttsFingerprintSettings);
-        if (state.status === 'narration-stale') {
-          const outline = outlineForScene(current, allOutlines);
-          const result = await fetchSceneActions({
-            outline,
-            allOutlines: allOutlines.length ? allOutlines : [outline],
-            content: current.content,
-            stageId: stage.id,
-            agents: selectedAgentsForGeneration,
-            previousSpeeches: speechTextsForScene(current),
-            languageDirective: stage.languageDirective,
-          });
-          if (!result.success || !result.scene) {
-            throw new Error(result.error || t('edit.timeline.syncFailed'));
-          }
-          useStageStore.getState().updateScene(current.id, { actions: result.scene.actions });
-          current = useStageStore.getState().scenes.find((s) => s.id === current?.id);
-          if (!current) continue;
-        }
+  const syncAllStaleScenes = useCallback(async () => {
+    if (!stage || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const staleSceneIds = useStageStore
+        .getState()
+        .scenes.filter((s) => {
+          const state = getNarrationSyncState(s, ttsFingerprintSettings);
+          return state.status === 'narration-stale' || state.status === 'audio-stale';
+        })
+        .map((s) => s.id);
 
-        const currentActions = current.actions ?? [];
-        const speeches = currentActions.filter(
-          (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
-        );
-        const okIds = new Set<string>();
-        for (const a of speeches) {
-          if (!a.id) continue;
-          const id = await regenerateSpeechAudio(
-            current.order,
-            { id: a.id, text: (a as { text?: string }).text ?? '' },
-            language,
-          );
-          if (id) okIds.add(a.id);
-        }
-        if (okIds.size) {
-          useStageStore.getState().updateScene(current.id, {
-            actions: currentActions.reduce(
-              (next, action) =>
-                action.type === 'speech' && action.id && okIds.has(action.id)
-                  ? setAudioIdById(next, action.id, speechAudioId(current.order, action.id))
-                  : next,
-              currentActions,
-            ),
-          });
-        }
-        const synced = useStageStore.getState().scenes.find((s) => s.id === current?.id);
-        if (synced) {
-          useStageStore.getState().updateScene(synced.id, {
-            sync: syncedNarrationMetadata(synced, ttsFingerprintSettings),
-          });
-        }
+      for (const staleSceneId of staleSceneIds) {
+        await syncSceneById(staleSceneId);
       }
       setTtsRefresh((n) => n + 1);
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : t('edit.timeline.syncFailed'));
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
-  }, [
-    allOutlines,
-    language,
-    selectedAgentsForGeneration,
-    stage,
-    syncing,
-    t,
-    ttsFingerprintSettings,
-  ]);
+  }, [stage, syncSceneById, t, ttsFingerprintSettings]);
 
   // Height drag-resize (top edge).
   const sectionRef = useRef<HTMLElement>(null);
