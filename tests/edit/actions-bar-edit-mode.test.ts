@@ -848,11 +848,11 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
         ...scene,
         actions: [
           speech('new-intro', 'New intro narration.', ''),
-          { id: 'new-spot-bcast', type: 'spotlight', elementId: 'bcast-card' },
+          { id: 'new-spot-bcast', type: 'spotlight', elementId: 'shape__e9Y6KFe' },
           speech('new-speech-bcast', 'New Bcast narration.', ''),
-          { id: 'new-spot-reduce', type: 'spotlight', elementId: 'reduce-card' },
+          { id: 'new-spot-reduce', type: 'spotlight', elementId: 'shape_Lm0L-5Qw' },
           speech('new-speech-reduce', 'MPI_Reduce now explains One to Many communication.', ''),
-          { id: 'new-spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' },
+          { id: 'new-spot-allreduce', type: 'spotlight', elementId: 'shape_bcGuzJCR' },
           speech('new-speech-allreduce', 'New Allreduce narration.', ''),
           speech('new-outro', 'New outro narration.', ''),
         ],
@@ -904,14 +904,14 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     expect(requestContent.narrationSource?.text).not.toContain('MPI_Reduce Many to One');
     expect(requestContent.narrationSource?.text).not.toContain('previous Reduce Many-to-One');
     expect(requestContent.narrationSource?.blocks?.map((block) => block.targetElementId)).toEqual([
-      'allreduce-card',
-      'bcast-card',
-      'reduce-card',
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
     ]);
     expect(requestContent.choreography?.map((block) => block.targetElementId)).toEqual([
-      'allreduce-card',
-      'bcast-card',
-      'reduce-card',
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
     ]);
 
     const logs = narrationOrderLogs();
@@ -932,19 +932,29 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
       'hasAudio:true',
     ]);
     expect(flatTargets(checkpoint(logs, 'generationInputOrderFlat'))).toEqual([
-      'allreduce-card',
-      'bcast-card',
-      'reduce-card',
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
     ]);
     expect(targetActionOrder(checkpoint(logs, 'generated-action-order').actions)).toEqual([
-      'bcast-card',
-      'reduce-card',
-      'allreduce-card',
+      'shape__e9Y6KFe',
+      'shape_Lm0L-5Qw',
+      'shape_bcGuzJCR',
     ]);
     expect(targetActionOrder(checkpoint(logs, 'final-action-order').actions)).toEqual([
-      'allreduce-card',
-      'bcast-card',
-      'reduce-card',
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
+    ]);
+    expect(flatActionTargets(checkpoint(logs, 'savedActionOrderFlat'))).toEqual([
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
+    ]);
+    expect(flatActionTargets(checkpoint(logs, 'timelineActionOrderFlat'))).toEqual([
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
     ]);
     expect(checkpoint(logs, 'tts-input-order').speechPreviews).toEqual([
       'New intro narration.',
@@ -953,6 +963,7 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
       'MPI_Reduce now explains One to Many communication.',
       'New outro narration.',
     ]);
+    expect(checkpoint(logs, 'sync-completed').sceneId).toBe('scene-1');
 
     expect(
       mocks.regenerateSpeechAudio.mock.calls.map((call) => (call[1] as { text?: string }).text),
@@ -969,10 +980,23 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
 
     const updated = getScene('scene-1');
     expect(targetActionOrder(updated.actions ?? [])).toEqual([
-      'allreduce-card',
-      'bcast-card',
-      'reduce-card',
+      'text_PbN67VXO',
+      'text_yjG429Ep',
+      'text_NNGyLVuj',
     ]);
+    expect((updated.actions ?? []).map((action) => action.id).slice(1, -1)).toEqual([
+      'spot-allreduce',
+      'speech-allreduce',
+      'spot-bcast',
+      'speech-bcast',
+      'spot-reduce',
+      'speech-reduce',
+    ]);
+    expect((updated.actions?.[0] as { text?: string }).text).toBe('New intro narration.');
+    expect((updated.actions?.at(-1) as { text?: string }).text).toBe('New outro narration.');
+    expect(new Set((updated.actions ?? []).map((action) => action.id)).size).toBe(
+      updated.actions?.length,
+    );
     expect(speechTextsForTest(updated).split('\n')).toEqual([
       'New intro narration.',
       'New Allreduce narration.',
@@ -1030,6 +1054,36 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     expect(updated.sync?.narrationSourceFingerprint).not.toBe(
       buildNarrationSourceFromScene(updated).fingerprint,
     );
+    expect(checkpoint(narrationOrderLogs(), 'sync-failed')).toMatchObject({
+      sceneId: 'scene-1',
+      stage: 'pre-save-source-check',
+      errorName: 'Error',
+    });
+  });
+
+  it('emits a sync failure checkpoint when generation stops after input logging', async () => {
+    const scene = makeManualEditedStaleScene();
+    mocks.fetchSceneActions.mockRejectedValue(new Error('generator unavailable'));
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncNarrationAudio').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => Boolean(getScene('scene-1').sync?.error));
+
+    const logs = narrationOrderLogs();
+    expect(checkpoint(logs, 'generationInputOrderFlat')).toBeTruthy();
+    expect(checkpoint(logs, 'sync-failed')).toMatchObject({
+      sceneId: 'scene-1',
+      stage: 'generation',
+      errorName: 'Error',
+    });
+    expect(logs.some((payload) => payload.checkpoint === 'sync-completed')).toBe(false);
+    expect(getNarrationSyncState(getScene('scene-1'), TTS_SETTINGS).status).toBe('error');
   });
 });
 
@@ -1332,11 +1386,11 @@ function realCollectiveCommunicationScene(layout: {
       outlineId: 'outline-1',
       actions: [
         speech('intro', 'Intro', 'tts_intro'),
-        { id: 'spot-bcast', type: 'spotlight', elementId: 'bcast-card' } as Action,
+        { id: 'spot-bcast', type: 'spotlight', elementId: 'text_yjG429Ep' } as Action,
         speech('speech-bcast', 'previous Bcast narration', 'tts_bcast'),
-        { id: 'spot-reduce', type: 'spotlight', elementId: 'reduce-card' } as Action,
+        { id: 'spot-reduce', type: 'spotlight', elementId: 'text_NNGyLVuj' } as Action,
         speech('speech-reduce', 'previous Reduce Many-to-One narration', 'tts_reduce'),
-        { id: 'spot-allreduce', type: 'spotlight', elementId: 'allreduce-card' } as Action,
+        { id: 'spot-allreduce', type: 'spotlight', elementId: 'text_PbN67VXO' } as Action,
         speech('speech-allreduce', 'previous Allreduce narration', 'tts_allreduce'),
         speech('outro', 'Outro', 'tts_outro'),
       ],
@@ -1366,28 +1420,52 @@ function realCollectiveCommunicationScene(layout: {
             defaultFontName: 'Arial',
             defaultColor: '#111111',
           },
+          collectiveShapeElement('shape__e9Y6KFe', layout.bcastLeft),
           collectiveTextElement(
-            'bcast-card',
+            'text_yjG429Ep',
             'MPI_Bcast',
             'One-to-All Source to All',
             layout.bcastLeft,
+            'shape__e9Y6KFe',
           ),
+          collectiveShapeElement('shape_Lm0L-5Qw', layout.reduceLeft),
           collectiveTextElement(
-            'reduce-card',
+            'text_NNGyLVuj',
             'MPI_Reduce',
             layout.reduceLines.join(' '),
             layout.reduceLeft,
+            'shape_Lm0L-5Qw',
           ),
+          collectiveShapeElement('shape_bcGuzJCR', layout.allreduceLeft),
           collectiveTextElement(
-            'allreduce-card',
+            'text_PbN67VXO',
             'MPI_Allreduce',
             layout.allreduceLines.join(' '),
             layout.allreduceLeft,
+            'shape_bcGuzJCR',
           ),
         ],
       },
     },
   );
+}
+
+function collectiveShapeElement(id: string, left: number) {
+  return {
+    id,
+    type: 'shape' as const,
+    left,
+    top: 145,
+    width: 250,
+    height: 140,
+    rotate: 0,
+    shapeType: 'rect',
+    viewBox: [250, 140] as [number, number],
+    path: 'M 0 0 H 250 V 140 H 0 Z',
+    fixedRatio: false,
+    fill: '#ffffff',
+    line: { color: '#d0d7de', width: 1 },
+  };
 }
 
 function collectiveCommunicationScene(layout: {
@@ -1439,7 +1517,13 @@ function collectiveCommunicationScene(layout: {
   );
 }
 
-function collectiveTextElement(id: string, heading: string, body: string, left: number) {
+function collectiveTextElement(
+  id: string,
+  heading: string,
+  body: string,
+  left: number,
+  groupId?: string,
+) {
   return {
     id,
     type: 'text' as const,
@@ -1451,6 +1535,7 @@ function collectiveTextElement(id: string, heading: string, body: string, left: 
     content: `<h2>${heading}</h2><p>${body}</p>`,
     defaultFontName: 'Arial',
     defaultColor: '#111111',
+    ...(groupId ? { groupId } : {}),
   };
 }
 
@@ -1651,6 +1736,10 @@ function flatText(payload: Record<string, unknown>) {
 
 function flatTargets(payload: Record<string, unknown>) {
   return (payload.order as string[]).map((item) => item.split(':')[2]);
+}
+
+function flatActionTargets(payload: Record<string, unknown>) {
+  return (payload.order as string[]).map((item) => item.split(':')[3]).filter(Boolean);
 }
 
 function slideElements(scene: Scene) {
