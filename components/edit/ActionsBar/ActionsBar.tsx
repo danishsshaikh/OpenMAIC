@@ -96,6 +96,7 @@ import {
   type NarrationSyncState,
   type NarrationVisualBlock,
 } from '@/lib/audio/narration-sync';
+import type { PPTElement } from '@openmaic/dsl';
 import type {
   GeneratedInteractiveContent,
   GeneratedPBLContent,
@@ -108,6 +109,7 @@ const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
 const log = createLogger('NarrationSync');
 const ORDER_LOG_PREFIX = '[NarrationSyncOrder]';
+const SPOTLIGHT_TRACE_PREFIX = '[SpotlightTargetTrace]';
 type NarrationGenerationSlideContent = GeneratedSlideContent & {
   narrationSource?: {
     text: string;
@@ -290,6 +292,10 @@ function toGenerationContent(
 
 type NarrationGenerationBlock = NarrationVisualBlock & { targetElementId: string };
 
+interface TargetResolution {
+  elementId: string;
+}
+
 function preserveSpeechAudioByPosition(
   previous: readonly Action[],
   generated: readonly Action[],
@@ -349,8 +355,11 @@ function preserveActionPairIdsByVisualBlock(
 function reorderTargetPairsByVisualBlocks(
   generated: readonly Action[],
   blocks: readonly NarrationGenerationBlock[],
+  elements: readonly PPTElement[],
+  previous: readonly Action[] = [],
 ): Action[] {
   if (!blocks.length) return [...generated] as Action[];
+  const previousTargetByBlock = previousTargetIdByVisualBlock(previous, blocks);
   const targetChunks: Array<{ blockId: string; originalIndex: number; actions: Action[] }> = [];
   const unknownTargetChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
   const otherChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
@@ -360,11 +369,22 @@ function reorderTargetPairsByVisualBlocks(
     if (!action) continue;
     if (isElementTargetAction(action)) {
       const block = visualBlockForTargetId(blocks, action.elementId);
-      const normalizedAction = block
-        ? ({ ...action, elementId: block.targetElementId } as Action)
+      const next = generated[index + 1];
+      const speechText =
+        next?.type === 'speech' ? ((next as { text?: string }).text ?? '') : undefined;
+      const resolved = block
+        ? resolveSpotlightEffectTarget({
+            generatedTargetId: action.elementId,
+            previousTargetId: previousTargetByBlock.get(block.blockId),
+            block,
+            elements,
+            narrationText: speechText,
+          })
+        : undefined;
+      const normalizedAction = resolved
+        ? ({ ...action, elementId: resolved.elementId } as Action)
         : action;
       const actions: Action[] = [normalizedAction];
-      const next = generated[index + 1];
       if (next?.type === 'speech') {
         actions.push(next);
         index += 1;
@@ -414,6 +434,173 @@ function reorderTargetPairsByVisualBlocks(
       .sort((a, b) => a.originalIndex - b.originalIndex)
       .flatMap((chunk) => chunk.actions),
   ] as Action[];
+}
+
+function previousTargetIdByVisualBlock(
+  actions: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+) {
+  const targets = new Map<string, string>();
+  for (const action of actions) {
+    if (!isElementTargetAction(action)) continue;
+    const block = visualBlockForTargetId(blocks, action.elementId);
+    if (block && !targets.has(block.blockId)) targets.set(block.blockId, action.elementId);
+  }
+  return targets;
+}
+
+function resolveSpotlightEffectTarget(args: {
+  generatedTargetId: string;
+  previousTargetId?: string;
+  block: NarrationGenerationBlock;
+  elements: readonly PPTElement[];
+  narrationText?: string;
+}): TargetResolution {
+  const generated = targetCandidate(args.generatedTargetId, args.elements, args.block);
+  const generatedIsOrderingBlock =
+    generated.valid &&
+    (args.generatedTargetId === args.block.blockId ||
+      args.generatedTargetId === args.block.targetElementId) &&
+    !args.block.elementIds.includes(args.generatedTargetId) &&
+    Boolean(bestDescendantTarget(args.block, args.elements, args.narrationText));
+
+  if (generated.valid && !generated.oversized && !generatedIsOrderingBlock) {
+    return {
+      elementId: args.generatedTargetId,
+    };
+  }
+
+  const previous = args.previousTargetId
+    ? targetCandidate(args.previousTargetId, args.elements, args.block)
+    : undefined;
+  if (
+    previous?.valid &&
+    !previous.oversized &&
+    args.previousTargetId &&
+    args.block.elementIds.includes(args.previousTargetId)
+  ) {
+    return {
+      elementId: args.previousTargetId,
+    };
+  }
+
+  const descendant = bestDescendantTarget(args.block, args.elements, args.narrationText);
+  if (descendant) {
+    return {
+      elementId: descendant,
+    };
+  }
+
+  const blockTarget = targetCandidate(args.block.targetElementId, args.elements, args.block);
+  return {
+    elementId: blockTarget.valid ? args.block.targetElementId : args.generatedTargetId,
+  };
+}
+
+function targetCandidate(
+  targetId: string,
+  elements: readonly PPTElement[],
+  block: NarrationGenerationBlock,
+) {
+  const element = elementById(elements, targetId);
+  const bounds = element ? boundsForElement(element) : undefined;
+  const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
+  const valid =
+    Boolean(element) &&
+    Boolean(bounds) &&
+    Boolean(bounds && bounds.width > 0 && bounds.height > 0) &&
+    targetBelongsToBlock(targetId, block, elements);
+  const oversized = Boolean(valid && areaRatio != null && areaRatio > 0.68);
+  return { valid, areaRatio, oversized };
+}
+
+function bestDescendantTarget(
+  block: NarrationGenerationBlock,
+  elements: readonly PPTElement[],
+  narrationText?: string,
+): string | undefined {
+  const tokens = new Set(significantTokens(narrationText ?? block.text));
+  const candidates = block.elementIds
+    .map((id) => elementById(elements, id))
+    .filter((element): element is PPTElement => Boolean(element))
+    .filter((element) => {
+      const bounds = boundsForElement(element);
+      return Boolean(bounds.width > 0 && bounds.height > 0 && getVisibleElementText(element));
+    });
+  if (!candidates.length) return undefined;
+
+  return candidates
+    .map((element, index) => {
+      const elementTokens = significantTokens(getVisibleElementText(element));
+      const overlap = elementTokens.filter((token) => tokens.has(token)).length;
+      return { id: element.id, score: overlap * 100 + elementTokens.length, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index || a.id.localeCompare(b.id))[0]?.id;
+}
+
+function targetBelongsToBlock(
+  targetId: string,
+  block: NarrationGenerationBlock,
+  elements: readonly PPTElement[],
+): boolean {
+  if (
+    targetId === block.blockId ||
+    targetId === block.targetElementId ||
+    block.elementIds.includes(targetId)
+  ) {
+    return true;
+  }
+  const element = elementById(elements, targetId);
+  const bounds = element ? boundsForElement(element) : undefined;
+  if (!bounds) return false;
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  return (
+    centerX >= block.bounds.left &&
+    centerX <= block.bounds.left + block.bounds.width &&
+    centerY >= block.bounds.top &&
+    centerY <= block.bounds.top + block.bounds.height
+  );
+}
+
+function elementById(elements: readonly PPTElement[], targetId: string): PPTElement | undefined {
+  return elements.find((element) => element.id === targetId);
+}
+
+function boundsForElement(element: PPTElement): NarrationVisualBlock['bounds'] {
+  const record = element as unknown as Record<string, unknown>;
+  return {
+    left: finiteNumber(record.left),
+    top: finiteNumber(record.top),
+    width: finiteNumber(record.width),
+    height: finiteNumber(record.height),
+  };
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function spotlightTargetAreaRatio(
+  bounds: NarrationVisualBlock['bounds'],
+  elements: readonly PPTElement[],
+): number | undefined {
+  const slideWidth = Math.max(
+    ...elements.map((element) => {
+      const elementBounds = boundsForElement(element);
+      return elementBounds.left + elementBounds.width;
+    }),
+    0,
+  );
+  const slideHeight = Math.max(
+    ...elements.map((element) => {
+      const elementBounds = boundsForElement(element);
+      return elementBounds.top + elementBounds.height;
+    }),
+    0,
+  );
+  if (slideWidth <= 0 || slideHeight <= 0) return undefined;
+  return (bounds.width * bounds.height) / (slideWidth * slideHeight);
 }
 
 function targetIdsFromActions(actions: readonly Action[]): string[] {
@@ -600,6 +787,49 @@ function logNarrationOrderCheckpoint(payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === 'production') return;
   if (typeof console === 'undefined' || typeof console.info !== 'function') return;
   console.info(ORDER_LOG_PREFIX, payload);
+}
+
+function logSpotlightTargetCheckpoint(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(SPOTLIGHT_TRACE_PREFIX, payload);
+}
+
+function spotlightTargetFlatForDiagnostics(
+  actions: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+  elements: readonly PPTElement[],
+) {
+  return actions.filter(isElementTargetAction).map((action, index) => {
+    const block = visualBlockForTargetId(blocks, action.elementId);
+    const element = elementById(elements, action.elementId);
+    const bounds = element ? boundsForElement(element) : undefined;
+    const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
+    return [
+      index,
+      action.id ?? '',
+      action.elementId,
+      block?.blockId ?? '',
+      block?.targetElementId ?? '',
+      areaRatio == null ? '' : areaRatio.toFixed(4),
+      areaRatio != null && areaRatio > 0.68 ? 'oversized' : 'ok',
+    ].join(':');
+  });
+}
+
+function canonicalSpotlightBlocksFlatForDiagnostics(blocks: readonly NarrationGenerationBlock[]) {
+  return blocks.map((block) =>
+    [
+      block.orderIndex,
+      block.blockId,
+      block.targetElementId,
+      block.elementIds.join(','),
+      `${Math.round(block.bounds.width)}x${Math.round(block.bounds.height)}`,
+      block.text,
+    ]
+      .join(':')
+      .slice(0, 180),
+  );
 }
 
 function logSyncDecision(sceneId: string, decision: NarrationSyncDecision) {
@@ -1843,6 +2073,8 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
 
       const outline = outlineForScene(latest, allOutlines);
       const choreographyBlocks = targetableVisualBlocks(source, latest.actions ?? [], latest.title);
+      const slideElements =
+        latest.content.type === 'slide' ? (latest.content.canvas.elements ?? []) : [];
       const generationContent = toGenerationContent(latest.content, source, choreographyBlocks);
       logNarrationOrderCheckpoint({
         checkpoint: 'generation-input-order',
@@ -1853,6 +2085,11 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         checkpoint: 'generationInputOrderFlat',
         sceneId: targetSceneId,
         order: generationInputOrderFlatForDiagnostics(choreographyBlocks),
+      });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'canonicalSpotlightBlocksFlat',
+        sceneId: targetSceneId,
+        order: canonicalSpotlightBlocksFlatForDiagnostics(choreographyBlocks),
       });
       let result: Awaited<ReturnType<typeof fetchSceneActions>>;
       try {
@@ -1886,9 +2123,20 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         sceneId: targetSceneId,
         order: actionOrderFlatForDiagnostics(rawGeneratedActions),
       });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'generatedSpotlightTargetsFlat',
+        sceneId: targetSceneId,
+        order: spotlightTargetFlatForDiagnostics(
+          rawGeneratedActions,
+          choreographyBlocks,
+          slideElements,
+        ),
+      });
       const visuallyOrderedActions = reorderTargetPairsByVisualBlocks(
         rawGeneratedActions,
         choreographyBlocks,
+        slideElements,
+        latest.actions ?? [],
       );
       const generatedActions = preserveActionPairIdsByVisualBlock(
         latest.actions ?? [],
@@ -1904,6 +2152,15 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         checkpoint: 'finalActionOrderFlat',
         sceneId: targetSceneId,
         order: actionOrderFlatForDiagnostics(generatedActions),
+      });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'finalSavedSpotlightTargetsFlat',
+        sceneId: targetSceneId,
+        order: spotlightTargetFlatForDiagnostics(
+          generatedActions,
+          choreographyBlocks,
+          slideElements,
+        ),
       });
       const generatedNarration = generatedActions
         .filter((action) => action.type === 'speech')

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useLayoutEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
 import {
@@ -11,6 +11,8 @@ import {
   type SpotlightFocusRect,
   type SpotlightViewportSize,
 } from './spotlightGeometry';
+
+const SPOTLIGHT_TRACE_PREFIX = '[SpotlightTargetTrace]';
 
 export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
@@ -108,6 +110,38 @@ export function SpotlightOverlay({
       focusRect: staticFocusRect,
     });
   }
+
+  useEffect(() => {
+    if (!options?.static || !spotlightElementId || !rect || !staticFocusRect || !viewport) return;
+    logSpotlightTargetTrace({
+      checkpoint: 'snapshotResolvedTargetsFlat',
+      targetElementId: spotlightElementId,
+      order: [
+        [
+          spotlightElementId,
+          roundRectNumber(rect.x),
+          roundRectNumber(rect.y),
+          roundRectNumber(rect.w),
+          roundRectNumber(rect.h),
+          `${Math.round(viewport.width)}x${Math.round(viewport.height)}`,
+        ].join(':'),
+      ],
+    });
+    logSpotlightTargetTrace({
+      checkpoint: 'snapshotFocusRectsFlat',
+      targetElementId: spotlightElementId,
+      order: [
+        [
+          spotlightElementId,
+          roundRectNumber(staticFocusRect.x),
+          roundRectNumber(staticFocusRect.y),
+          roundRectNumber(staticFocusRect.w),
+          roundRectNumber(staticFocusRect.h),
+          roundRectNumber(staticFocusRect.rx),
+        ].join(':'),
+      ],
+    });
+  }, [options?.static, rect, spotlightElementId, staticFocusRect, viewport]);
 
   return (
     <div
@@ -294,6 +328,12 @@ function warnStaticSpotlightDiagnostic(
     reason,
     ...details,
   });
+}
+
+function logSpotlightTargetTrace(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(SPOTLIGHT_TRACE_PREFIX, payload);
 }
 
 function rectForLog(rect: DOMRect): Record<string, number> {

@@ -1011,6 +1011,113 @@ describe('ActionsBar edit-mode narration sync regressions', () => {
     expect(getNarrationSyncState(updated, TTS_SETTINGS).status).toBe('synced');
   });
 
+  it('keeps Memory Hierarchy generated text targets separate from broad card ordering blocks', async () => {
+    const scene = makeMemoryHierarchyScene();
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          { id: 'new-spot-private', type: 'spotlight', elementId: 'private-list' },
+          speech('new-speech-private', 'Private scope includes thread stack and registers.', ''),
+          { id: 'new-spot-shared', type: 'spotlight', elementId: 'shared-list' },
+          speech('new-speech-shared', 'Shared scope includes heap memory and global vars.', ''),
+        ],
+      },
+    });
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 2);
+
+    expect(mocks.fetchSceneActions).toHaveBeenCalledTimes(1);
+    const logs = spotlightTargetLogs();
+    expect(flatTargets(checkpoint(logs, 'generatedSpotlightTargetsFlat'))).toEqual([
+      'private-list',
+      'shared-list',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'finalSavedSpotlightTargetsFlat'))).toEqual([
+      'shared-list',
+      'private-list',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'canonicalSpotlightBlocksFlat'))).toEqual([
+      'shared-card',
+      'private-card',
+    ]);
+
+    const updated = getScene('scene-1');
+    expect(targetActionOrder(updated.actions ?? [])).toEqual(['shared-list', 'private-list']);
+    expect(targetActionOrder(updated.actions ?? [])).not.toEqual(['shared-card', 'private-card']);
+    expect(targetAreaRatioForTest(updated, 'shared-list')).toBeLessThan(0.18);
+    expect(targetAreaRatioForTest(updated, 'private-list')).toBeLessThan(0.18);
+    expect(getNarrationSyncState(updated, TTS_SETTINGS).status).toBe('synced');
+  });
+
+  it('keeps Runtime environment variable targets precise after visual reordering', async () => {
+    const scene = makeRuntimeEnvironmentScene();
+    mocks.fetchSceneActions.mockResolvedValue({
+      success: true,
+      scene: {
+        ...scene,
+        actions: [
+          { id: 'new-spot-env', type: 'spotlight', elementId: 'environment-list' },
+          speech('new-speech-env', 'Environment variables include OMP_NUM_THREADS.', ''),
+          { id: 'new-spot-tuning', type: 'spotlight', elementId: 'advanced-tuning-list' },
+          speech('new-speech-tuning', 'Advanced tuning adjusts dynamic behavior and affinity.', ''),
+          { id: 'new-spot-lib', type: 'spotlight', elementId: 'library-list' },
+          speech('new-speech-lib', 'Library functions report and set OpenMP thread counts.', ''),
+        ],
+      },
+    });
+    setupStores(scene);
+
+    mountActionsBar();
+    await findText('edit.timeline.narrationStale');
+
+    await act(async () => {
+      requiredButton('edit.timeline.syncAllStale').click();
+      await Promise.resolve();
+    });
+    await waitForCondition(() => mocks.regenerateSpeechAudio.mock.calls.length === 3);
+
+    const logs = spotlightTargetLogs();
+    expect(flatTargets(checkpoint(logs, 'generatedSpotlightTargetsFlat'))).toEqual([
+      'environment-list',
+      'advanced-tuning-list',
+      'library-list',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'finalSavedSpotlightTargetsFlat'))).toEqual([
+      'library-list',
+      'environment-list',
+      'advanced-tuning-list',
+    ]);
+    expect(flatTargets(checkpoint(logs, 'canonicalSpotlightBlocksFlat'))).toEqual([
+      'library-card',
+      'environment-card',
+      'advanced-tuning-block',
+    ]);
+
+    const updated = getScene('scene-1');
+    expect(targetActionOrder(updated.actions ?? [])).toEqual([
+      'library-list',
+      'environment-list',
+      'advanced-tuning-list',
+    ]);
+    expect(targetActionOrder(updated.actions ?? [])).not.toContain('slide-root');
+    expect(targetActionOrder(updated.actions ?? [])).not.toContain('library-card');
+    expect(targetActionOrder(updated.actions ?? [])).not.toContain('environment-card');
+    expect(targetAreaRatioForTest(updated, 'library-list')).toBeLessThan(0.18);
+    expect(targetAreaRatioForTest(updated, 'environment-list')).toBeLessThan(0.18);
+    expect(targetAreaRatioForTest(updated, 'advanced-tuning-list')).toBeLessThan(0.18);
+  });
+
   it('keeps a newer source stale when a scene changes during narration generation', async () => {
     const scene = makeManualEditedStaleScene();
     const generation = deferredPromise<unknown>();
@@ -1539,6 +1646,202 @@ function collectiveTextElement(
   };
 }
 
+function makeMemoryHierarchyScene(): Scene {
+  const initial = memoryHierarchyScene({
+    sharedLines: ['Heap Memory', 'Static Variables', 'Global Vars'],
+    privateLines: ['Thread Stack', 'CPU Registers', 'Thread-Local'],
+    speechSuffix: 'old',
+  });
+  const edited = memoryHierarchyScene({
+    sharedLines: ['Heap Memory', 'Static Variables', 'Global Vars'],
+    privateLines: ['Thread Stack', 'CPU Registers', 'Thread-Local'],
+    speechSuffix: 'edited',
+  });
+  return {
+    ...edited,
+    sync: syncedNarrationMetadata(
+      {
+        ...initial,
+        title: 'Memory Hierarchy: Global vs Private',
+      },
+      TTS_SETTINGS,
+    ),
+  };
+}
+
+function memoryHierarchyScene(options: {
+  sharedLines: string[];
+  privateLines: string[];
+  speechSuffix: string;
+}): Scene {
+  return makeScene(
+    {
+      id: 'scene-1',
+      stageId: 'stage-1',
+      title: 'Memory Hierarchy: Global vs. Private',
+      order: 1,
+      outlineId: 'outline-1',
+      actions: [
+        { id: 'spot-shared', type: 'spotlight', elementId: 'shared-card' } as Action,
+        speech('speech-shared', `Shared old narration ${options.speechSuffix}.`, 'tts_shared'),
+        { id: 'spot-private', type: 'spotlight', elementId: 'private-card' } as Action,
+        speech('speech-private', `Private old narration ${options.speechSuffix}.`, 'tts_private'),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: 'memory-canvas',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#2b58a8'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          textElement('memory-title', 'Memory Hierarchy: Global vs. Private', 56, 52, 820, 72),
+          textElement(
+            'memory-subtitle',
+            'Understanding Memory Scope in Multi-threaded Environments',
+            56,
+            138,
+            760,
+            48,
+          ),
+          shapeElement('shared-card', 90, 245, 410, 270, '#dbeafe'),
+          textElement('shared-heading', 'Shared Scope', 230, 332, 180, 48),
+          textElement('shared-list', bulletHtml(options.sharedLines), 116, 350, 240, 112),
+          shapeElement('private-card', 570, 245, 410, 270, '#fef3c7'),
+          textElement('private-heading', 'Private Scope', 730, 332, 180, 48),
+          textElement('private-list', bulletHtml(options.privateLines), 600, 350, 250, 112),
+        ],
+      },
+    },
+  );
+}
+
+function makeRuntimeEnvironmentScene(): Scene {
+  const initial = runtimeEnvironmentScene({
+    libraryLines: ['omp_get_num_threads()', 'omp_get_thread_num()'],
+    environmentLines: ['OMP_NUM_THREADS', 'OMP_SCHEDULE'],
+    tuningLines: ['OMP_DYNAMIC: old dynamic behavior'],
+  });
+  const edited = runtimeEnvironmentScene({
+    libraryLines: ['omp_get_num_threads()', 'omp_get_thread_num()', 'omp_set_num_threads(n)'],
+    environmentLines: ['OMP_NUM_THREADS', 'OMP_SCHEDULE', 'Affinity & Dynamic'],
+    tuningLines: [
+      'OMP_DYNAMIC: Enable dynamic thread allocation',
+      'OMP_PROC_BIND: Set thread affinity to cores',
+    ],
+  });
+  return {
+    ...edited,
+    sync: syncedNarrationMetadata(initial, TTS_SETTINGS),
+  };
+}
+
+function runtimeEnvironmentScene(options: {
+  libraryLines: string[];
+  environmentLines: string[];
+  tuningLines: string[];
+}): Scene {
+  return makeScene(
+    {
+      id: 'scene-1',
+      stageId: 'stage-1',
+      title: 'Runtime & Environment Variables',
+      order: 1,
+      outlineId: 'outline-1',
+      actions: [
+        { id: 'spot-library', type: 'spotlight', elementId: 'library-card' } as Action,
+        speech('speech-library', 'Library old narration.', 'tts_library'),
+        { id: 'spot-environment', type: 'spotlight', elementId: 'environment-card' } as Action,
+        speech('speech-environment', 'Environment old narration.', 'tts_environment'),
+        { id: 'spot-tuning', type: 'spotlight', elementId: 'advanced-tuning-block' } as Action,
+        speech('speech-tuning', 'Tuning old narration.', 'tts_tuning'),
+      ],
+    },
+    {
+      type: 'slide',
+      canvas: {
+        id: 'runtime-canvas',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        theme: {
+          backgroundColor: '#ffffff',
+          themeColors: ['#2b58a8'],
+          fontColor: '#111111',
+          fontName: 'Arial',
+        },
+        elements: [
+          textElement('runtime-title', 'Runtime & Environment Variables', 64, 56, 760, 72),
+          shapeElement('library-card', 64, 172, 410, 260, '#eff6ff'),
+          textElement('library-heading', 'Library Functions', 92, 204, 250, 48),
+          textElement('library-list', bulletHtml(options.libraryLines), 110, 294, 300, 120),
+          shapeElement('environment-card', 530, 172, 410, 260, '#ecfdf5'),
+          textElement('environment-heading', 'Environment Variables', 558, 204, 310, 48),
+          textElement('environment-list', bulletHtml(options.environmentLines), 584, 294, 300, 120),
+          textElement('advanced-tuning-block', 'Advanced Tuning', 64, 455, 310, 48),
+          textElement('advanced-tuning-list', bulletHtml(options.tuningLines), 96, 510, 660, 88),
+        ],
+      },
+    },
+  );
+}
+
+function shapeElement(
+  id: string,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  fill: string,
+) {
+  return {
+    id,
+    type: 'shape' as const,
+    left,
+    top,
+    width,
+    height,
+    rotate: 0,
+    shapeType: 'rect',
+    viewBox: [width, height] as [number, number],
+    path: `M 0 0 H ${width} V ${height} H 0 Z`,
+    fixedRatio: false,
+    fill,
+    line: { color: '#d0d7de', width: 1 },
+  };
+}
+
+function textElement(
+  id: string,
+  content: string,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+) {
+  return {
+    id,
+    type: 'text' as const,
+    left,
+    top,
+    width,
+    height,
+    rotate: 0,
+    content,
+    defaultFontName: 'Arial',
+    defaultColor: '#111111',
+  };
+}
+
+function bulletHtml(lines: string[]): string {
+  return `<ul>${lines.map((line) => `<li>${line}</li>`).join('')}</ul>`;
+}
+
 function makeManualInitialScene(
   options: {
     id?: string;
@@ -1714,6 +2017,12 @@ function narrationOrderLogs(): Array<Record<string, unknown>> {
     .map((call: unknown[]) => call[1] as Record<string, unknown>);
 }
 
+function spotlightTargetLogs(): Array<Record<string, unknown>> {
+  return consoleInfo.mock.calls
+    .filter((call: unknown[]) => call[0] === '[SpotlightTargetTrace]')
+    .map((call: unknown[]) => call[1] as Record<string, unknown>);
+}
+
 function checkpoint(logs: Array<Record<string, unknown>>, name: string) {
   const found = logs.find((payload) => payload.checkpoint === name);
   expect(found).toBeTruthy();
@@ -1744,6 +2053,18 @@ function flatActionTargets(payload: Record<string, unknown>) {
 
 function slideElements(scene: Scene) {
   return scene.content.type === 'slide' ? scene.content.canvas.elements : [];
+}
+
+function targetAreaRatioForTest(scene: Scene, targetId: string): number {
+  if (scene.content.type !== 'slide') return 1;
+  const element = scene.content.canvas.elements.find((item) => item.id === targetId);
+  if (!element) return 1;
+  const record = element as unknown as Record<string, unknown>;
+  const width = typeof record.width === 'number' ? record.width : 0;
+  const height = typeof record.height === 'number' ? record.height : 0;
+  const slideWidth = scene.content.canvas.viewportSize;
+  const slideHeight = scene.content.canvas.viewportSize * scene.content.canvas.viewportRatio;
+  return (width * height) / (slideWidth * slideHeight);
 }
 
 function speechTextsForTest(scene: Scene) {
