@@ -67,6 +67,15 @@ export function isVideoExportEnabled(): boolean {
   return readFeatureFlagBoolean(process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT);
 }
 
+/**
+ * Optional burned-in captions for MP4/Hyperframes export. Default OFF so the
+ * exported video does not cover slide content unless explicitly requested.
+ * Sidecar subtitles (`subtitles.srt` / `subtitles.vtt`) are still emitted.
+ */
+export function isVideoExportBurnedInCaptionsEnabled(): boolean {
+  return readFeatureFlagBoolean(process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS);
+}
+
 const featureFlags = {
   companionSelector: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR),
   classroomChat: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT),

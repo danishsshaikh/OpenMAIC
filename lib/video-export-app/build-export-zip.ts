@@ -15,6 +15,7 @@
  * App-side / impure: reads the store + Dexie and does IO.
  */
 import { compileVideoTimeline, emitHyperframes } from '@/lib/video-export';
+import { isVideoExportBurnedInCaptionsEnabled } from '@/lib/config/feature-flags';
 import { useStageStore } from '@/lib/store';
 import { db } from '@/lib/utils/database';
 import { createVideoTimelineDeps } from './timeline-deps';
@@ -69,7 +70,11 @@ export async function buildExportZip(resolution: VideoResolution): Promise<Build
   const ir = compileVideoTimeline({ stage: { id: stage.id, name: stageName }, scenes }, deps);
 
   // 3. emit the Hyperframes project text.
-  const project = emitHyperframes(ir, { width, height });
+  const project = emitHyperframes(ir, {
+    width,
+    height,
+    burnInCaptions: isVideoExportBurnedInCaptionsEnabled(),
+  });
 
   // 4. collect asset bytes (slide snapshots + narration/media).
   const { blobs, missing } = await collectVideoAssets(ir, scenes, deps.records, {

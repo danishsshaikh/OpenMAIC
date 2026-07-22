@@ -8,6 +8,7 @@ const FLAG_KEYS = [
   'OPENMAIC_ENABLE_VOCATIONAL',
   'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
   'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
+  'NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS',
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
   'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
@@ -144,15 +145,19 @@ describe('legacy feature flags', () => {
   it('keeps vocational test UI and video export default off', async () => {
     delete process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI;
     delete process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT;
+    delete process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS;
     let flags = await loadFlags();
     expect(flags.shouldShowVocationalTestUi()).toBe(false);
     expect(flags.isVideoExportEnabled()).toBe(false);
+    expect(flags.isVideoExportBurnedInCaptionsEnabled()).toBe(false);
 
     process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI = 'yes';
     process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT = '1';
+    process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS = 'true';
     flags = await loadFlags();
     expect(flags.shouldShowVocationalTestUi()).toBe(true);
     expect(flags.isVideoExportEnabled()).toBe(true);
+    expect(flags.isVideoExportBurnedInCaptionsEnabled()).toBe(true);
   });
 });
 

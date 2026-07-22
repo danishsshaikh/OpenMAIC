@@ -38,6 +38,11 @@ export interface EmitHyperframesOptions {
   width?: number;
   /** Render height in px. Default derived from `width` at 16:9. */
   height?: number;
+  /**
+   * Burn narration captions into the rendered frame. Default false; sidecar
+   * subtitle files are still emitted regardless of this option.
+   */
+  burnInCaptions?: boolean;
   /** Composition id used for the root `data-composition-id` and the timeline key. Default `openmaic`. */
   compositionId?: string;
   /** Relative path the emitted HTML loads GSAP from. Default `assets/vendor/gsap.min.js`. */
@@ -258,8 +263,10 @@ export function emitHyperframes(
     }
   }
 
-  // Burned-in subtitle overlay, driven by the same paused timeline.
-  const subtitles = renderSubtitles(ir, height);
+  // Optional burned-in subtitle overlay, driven by the same paused timeline.
+  const subtitles = options.burnInCaptions
+    ? renderSubtitles(ir, height)
+    : { html: '', statements: [] };
   statements.push(...subtitles.statements);
 
   // Extend the timeline to the full composition length even if the last tween

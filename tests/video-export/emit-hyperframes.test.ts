@@ -86,18 +86,37 @@ describe('emitHyperframes', () => {
     expect(html).toContain('#00ff88'); // authored laser color survives into the DOM
   });
 
-  it('burns in a subtitle overlay driven by the timeline', () => {
+  it('keeps burned-in captions disabled by default while emitting sidecar subtitle files', () => {
+    expect(html).not.toContain('id="subtitles"');
+    expect(html).not.toContain('id="subtitle-cue-0"');
+    expect(project.files.find((f) => f.path === 'subtitles.srt')?.content).toContain(
+      'Welcome to the lesson',
+    );
+    expect(project.files.find((f) => f.path === 'subtitles.vtt')?.content).toContain(
+      'Welcome to the lesson',
+    );
+  });
+
+  it('burns in a subtitle overlay when captions are explicitly enabled', () => {
+    const captionedHtml = emitHyperframes(ir, {
+      width: 1920,
+      height: 1080,
+      burnInCaptions: true,
+    }).files.find((f) => f.path === 'index.html')!.content;
+
     // A caption container plus one cue div per non-empty speech action.
-    expect(html).toContain('id="subtitles"');
-    expect(html).toContain('id="subtitle-cue-0"');
+    expect(captionedHtml).toContain('id="subtitles"');
+    expect(captionedHtml).toContain('id="subtitle-cue-0"');
     // Cues start hidden (display:none, out of layout) and are toggled by the
     // paused timeline — see the multi-cue positioning test below for why
     // display (not visibility) matters.
-    expect(html).toMatch(/id="subtitle-cue-0"[^>]*display:none/);
-    expect(html).toMatch(/tl\.set\('#subtitle-cue-0',\{display:'inline-block'\},[\d.]+\);/);
-    expect(html).toMatch(/tl\.set\('#subtitle-cue-0',\{display:'none'\},[\d.]+\);/);
+    expect(captionedHtml).toMatch(/id="subtitle-cue-0"[^>]*display:none/);
+    expect(captionedHtml).toMatch(
+      /tl\.set\('#subtitle-cue-0',\{display:'inline-block'\},[\d.]+\);/,
+    );
+    expect(captionedHtml).toMatch(/tl\.set\('#subtitle-cue-0',\{display:'none'\},[\d.]+\);/);
     // Narration text is rendered into the caption.
-    expect(html).toContain('Welcome to the lesson');
+    expect(captionedHtml).toContain('Welcome to the lesson');
   });
 
   it('references vendored GSAP, never a CDN', () => {
@@ -134,7 +153,7 @@ describe('emitHyperframes multi-cue subtitle positioning (regression)', () => {
       assets: stubAssets({ sp1: audioMeta('a1'), sp2: audioMeta('a2'), sp3: audioMeta('a3') }, {}),
     },
   );
-  const html = emitHyperframes(ir, { width: 1920, height: 1080 }).files.find(
+  const html = emitHyperframes(ir, { width: 1920, height: 1080, burnInCaptions: true }).files.find(
     (f) => f.path === 'index.html',
   )!.content;
 

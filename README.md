@@ -259,6 +259,11 @@ The render service is intentionally separate from the app because it uses Node
 22, Chromium, and FFmpeg. See [`render-service/README.md`](render-service/README.md)
 for standalone setup.
 
+Burned-in narration captions are disabled by default because they can cover slide
+content. Set `NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS=true` to render captions
+into the video frame; sidecar `subtitles.srt` and `subtitles.vtt` files are
+always included in the Hyperframes project ZIP.
+
 ### Optional: MinerU (Advanced Document Parsing)
 
 [MinerU](https://github.com/opendatalab/MinerU) provides enhanced parsing for complex tables, formulas, and OCR. You can use the [MinerU official API](https://mineru.net/) or [self-host your own instance](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/).
