@@ -14,7 +14,7 @@
  */
 import type { PPTElement } from '@openmaic/dsl';
 import type { CompilerScene } from '../deps';
-import { findElementGeometry, findElementPlacement } from '../geometry';
+import { findElementPlacement, findSpotlightGeometry } from '../geometry';
 import type { Diagnostic, EffectSegment, VideoSegment, VideoTimelineScene } from '../ir';
 
 export interface GeometryResult {
@@ -30,8 +30,15 @@ export interface GeometryResult {
 export function resolveEffectGeometry(
   effect: EffectSegment,
   elements: readonly PPTElement[] | undefined,
+  context: { sceneId?: string; viewportSize?: number; viewportRatio?: number } = {},
 ): { effect: EffectSegment; unresolved: boolean } {
-  const geometry = elements ? findElementGeometry([...elements], effect.elementId) : null;
+  const geometry = elements
+    ? findSpotlightGeometry(elements, effect.elementId, {
+        ...context,
+        allElements: elements,
+        actionId: effect.actionId,
+      })
+    : null;
   if (geometry) return { effect: { ...effect, geometry, degraded: false }, unresolved: false };
   return { effect: { ...effect, geometry: null, degraded: true }, unresolved: true };
 }
@@ -69,10 +76,15 @@ export function applyGeometry(
   const scenes = timelineScenes.map((scene, index) => {
     if (scene.effects.length === 0 && scene.videos.length === 0) return scene;
 
-    const elements = sourceScenes[index]?.content?.canvas?.elements;
+    const canvas = sourceScenes[index]?.content?.canvas;
+    const elements = canvas?.elements;
 
     const effects = scene.effects.map((effect) => {
-      const { effect: resolved, unresolved } = resolveEffectGeometry(effect, elements);
+      const { effect: resolved, unresolved } = resolveEffectGeometry(effect, elements, {
+        sceneId: scene.id,
+        viewportSize: canvas?.viewportSize,
+        viewportRatio: canvas?.viewportRatio,
+      });
       if (unresolved) {
         diagnostics.push({
           severity: 'warn',

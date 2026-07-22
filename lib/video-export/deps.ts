@@ -35,7 +35,10 @@ import type {
  */
 export type CompilerScene = SceneCore & {
   type: SceneType;
-  content?: { type?: string; canvas?: { elements?: PPTElement[] } };
+  content?: {
+    type?: string;
+    canvas?: { elements?: PPTElement[]; viewportSize?: number; viewportRatio?: number };
+  };
 };
 
 /**
