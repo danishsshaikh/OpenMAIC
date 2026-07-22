@@ -13,6 +13,7 @@ export type FeatureFlag =
   | 'companionSelector'
   | 'classroomChat'
   | 'interactiveScenes'
+  | 'deterministicInteractives'
   | 'discussionScenes'
   | 'workspaceScenes'
   | 'flowScenes';
@@ -70,6 +71,10 @@ const featureFlags = {
   companionSelector: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR),
   classroomChat: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT),
   interactiveScenes: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES),
+  deterministicInteractives:
+    process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES == null
+      ? true
+      : readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES),
   discussionScenes:
     readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES) &&
     readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES),
@@ -99,6 +104,14 @@ export function isInteractiveScenesEnabled(): boolean {
   return isFeatureEnabled('interactiveScenes');
 }
 
+export function isDeterministicInteractivesEnabled(): boolean {
+  return isFeatureEnabled('deterministicInteractives');
+}
+
+export function shouldMountInteractiveIframeHost(): boolean {
+  return isInteractiveScenesEnabled() || isDeterministicInteractivesEnabled();
+}
+
 export function isDiscussionScenesEnabled(): boolean {
   return isFeatureEnabled('discussionScenes');
 }
@@ -114,7 +127,7 @@ export function isFlowScenesEnabled(): boolean {
 export function isSceneTypeEnabled(sceneType: SceneType): boolean {
   switch (sceneType) {
     case 'interactive':
-      return isInteractiveScenesEnabled();
+      return isInteractiveScenesEnabled() || isDeterministicInteractivesEnabled();
     case 'pbl':
       return isWorkspaceScenesEnabled();
     case 'slide':
@@ -133,7 +146,19 @@ function isFlowScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
   return false;
 }
 
+export function isDeterministicInteractiveScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
+  if (scene.type !== 'interactive' || scene.content.type !== 'interactive') return false;
+  return scene.content.widgetType === 'code' || scene.content.widgetType === 'simulation';
+}
+
 export function isSceneEnabled(scene: Pick<Scene, 'type' | 'content'>): boolean {
+  if (scene.type === 'interactive') {
+    if (isDeterministicInteractiveScene(scene)) {
+      return isDeterministicInteractivesEnabled();
+    }
+    if (isFlowScene(scene)) return isFlowScenesEnabled();
+    return isFeatureEnabled('interactiveScenes');
+  }
   if (!isSceneTypeEnabled(scene.type)) return false;
   if (isFlowScene(scene) && !isFlowScenesEnabled()) return false;
   return true;

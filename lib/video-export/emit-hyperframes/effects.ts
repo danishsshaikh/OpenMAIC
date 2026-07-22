@@ -83,19 +83,13 @@ function n(value: number): string {
  * animated mask cutout, plus a settling border. Mirrors `SpotlightOverlay` and
  * the `spotlight.v1` cutout/border/dim tracks (all in 0–100 percentage space).
  */
-function emitSpotlight(
-  seg: EffectSegment,
-  geometry: PercentageGeometry,
-  id: string,
-  dims: FrameDims,
-): EmittedEffect {
+function emitSpotlight(seg: EffectSegment, g: PercentageGeometry, id: string): EmittedEffect {
   const dimness = typeof seg.params.dimness === 'number' ? seg.params.dimness : 0.5;
   const start = sec(seg.startMs);
   const exit = Math.max(start, sec(seg.startMs + seg.durationMs) - 0.3);
   const maskId = `${id}-mask`;
   const cut = `#${id}-cut`;
   const border = `#${id}-border`;
-  const g = snapSpotlightGeometry(geometry, dims);
   const focus = {
     x: g.x - 0.4,
     y: g.y - 0.6,
@@ -198,29 +192,9 @@ function emitLaser(
  */
 export function emitEffect(seg: EffectSegment, id: string, dims: FrameDims): EmittedEffect {
   if (seg.degraded || !seg.geometry) return { html: '', statements: [] };
-  if (seg.type === 'spotlight') return emitSpotlight(seg, seg.geometry, id, dims);
+  if (seg.type === 'spotlight') return emitSpotlight(seg, seg.geometry, id);
   if (seg.type === 'laser') return emitLaser(seg, seg.geometry, id, dims);
   return { html: '', statements: [] };
-}
-
-function snapSpotlightGeometry(g: PercentageGeometry, dims: FrameDims): PercentageGeometry {
-  if (dims.width <= 0 || dims.height <= 0) return g;
-  const left = Math.floor(((g.x - 0.4) / 100) * dims.width);
-  const top = Math.floor(((g.y - 0.6) / 100) * dims.height);
-  const right = Math.ceil(((g.x + g.w + 0.4) / 100) * dims.width);
-  const bottom = Math.ceil(((g.y + g.h + 0.6) / 100) * dims.height);
-  const x = (left / dims.width) * 100 + 0.4;
-  const y = (top / dims.height) * 100 + 0.6;
-  const w = ((right - left) / dims.width) * 100 - 0.8;
-  const h = ((bottom - top) / dims.height) * 100 - 1.2;
-  return {
-    x,
-    y,
-    w: Math.max(0, w),
-    h: Math.max(0, h),
-    centerX: x + w / 2,
-    centerY: y + h / 2,
-  };
 }
 
 function stableGeometryData(g: Pick<PercentageGeometry, 'x' | 'y' | 'w' | 'h'>): string {

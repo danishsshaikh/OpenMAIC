@@ -5,8 +5,6 @@ import {
   Archive,
   Download,
   FileDown,
-  Film,
-  Images,
   Loader2,
   Monitor,
   Moon,
@@ -21,10 +19,10 @@ import { useStageStore } from '@/lib/store';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { useExportClassroom } from '@/lib/export/use-export-classroom';
-import { useExportVideoFrames } from '@/lib/export/use-export-video-frames';
-import { useExportVideoMp4 } from '@/lib/export/use-export-video-mp4';
 import { isVideoExportEnabled } from '@/lib/config/feature-flags';
-import { useExportVideo, VIDEO_RESOLUTIONS } from '@/lib/video-export-app/use-export-video';
+import { useVideoRenderStore } from '@/lib/store/video-render';
+import { CircularProgress } from '@/components/ui/circular-progress';
+import { VideoExportMenu } from './video-export-menu';
 import { LanguageSwitcher } from '../language-switcher';
 import { SettingsDialog } from '../settings';
 import {
@@ -48,8 +46,6 @@ interface HeaderControlsProps {
    */
   readonly variant?: 'default' | 'compact';
 }
-
-const ENABLE_LOCAL_MP4_EXPORT = true;
 
 /**
  * Stage-level global controls: language picker, theme picker, settings
@@ -85,10 +81,11 @@ export function HeaderControls({
   const mediaTasks = useMediaGenerationStore((s) => s.tasks);
   const { exporting: isExporting, exportPPTX, exportResourcePack } = useExportPPTX();
   const { exporting: isExportingZip, exportClassroomZip } = useExportClassroom();
-  const { exporting: isExportingVideoFrames, exportVideoFrames } = useExportVideoFrames();
-  const { exporting: isExportingVideoMp4, exportVideoMp4 } = useExportVideoMp4();
-  const { exporting: isExportingVideo, exportVideo } = useExportVideo();
   const videoExportEnabled = isVideoExportEnabled();
+  const videoRendering = useVideoRenderStore(
+    (s) => s.status === 'compiling' || s.status === 'rendering',
+  );
+  const videoRenderPercent = useVideoRenderStore((s) => s.percent);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
@@ -252,55 +249,30 @@ export function HeaderControls({
       <div className="relative" ref={exportRef}>
         <button
           onClick={() => {
-            if (
-              canExport &&
-              !isExporting &&
-              !isExportingZip &&
-              !isExportingVideoFrames &&
-              !isExportingVideoMp4 &&
-              !isExportingVideo
-            ) {
+            if (canExport && !isExporting && !isExportingZip) {
               setExportMenuOpen(!exportMenuOpen);
             }
           }}
-          disabled={
-            !canExport ||
-            isExporting ||
-            isExportingZip ||
-            isExportingVideoFrames ||
-            isExportingVideoMp4 ||
-            isExportingVideo
-          }
+          disabled={!canExport || isExporting || isExportingZip}
           title={
             canExport
-              ? isExporting ||
-                isExportingZip ||
-                isExportingVideoFrames ||
-                isExportingVideoMp4 ||
-                isExportingVideo
+              ? isExporting || isExportingZip
                 ? t('export.exporting')
                 : t('export.pptx')
               : t('share.notReady')
           }
           className={cn(
             'shrink-0 p-2 rounded-full transition-all',
-            canExport &&
-              !isExporting &&
-              !isExportingZip &&
-              !isExportingVideoFrames &&
-              !isExportingVideoMp4 &&
-              !isExportingVideo
+            canExport && !isExporting && !isExportingZip
               ? 'text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm'
               : 'text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50',
           )}
           aria-label={t('export.pptx')}
         >
-          {isExporting ||
-          isExportingZip ||
-          isExportingVideoFrames ||
-          isExportingVideoMp4 ||
-          isExportingVideo ? (
+          {isExporting || isExportingZip ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : videoRendering ? (
+            <CircularProgress value={videoRenderPercent} size={20} className="text-primary" />
           ) : (
             <Download className="w-4 h-4" />
           )}
@@ -335,71 +307,6 @@ export function HeaderControls({
             <button
               onClick={() => {
                 setExportMenuOpen(false);
-                exportVideoFrames();
-              }}
-              disabled={isExportingVideoFrames}
-              className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2.5"
-            >
-              <Images className="w-4 h-4 text-gray-400 shrink-0" />
-              <div>
-                <div>{t('export.videoFrames.title')}</div>
-                <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                  {t('export.videoFrames.desc')}
-                </div>
-              </div>
-            </button>
-            {ENABLE_LOCAL_MP4_EXPORT && (
-              <button
-                onClick={() => {
-                  setExportMenuOpen(false);
-                  exportVideoMp4();
-                }}
-                disabled={isExportingVideoMp4}
-                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2.5"
-              >
-                <Film className="w-4 h-4 text-gray-400 shrink-0" />
-                <div>
-                  <div>{t('export.videoMp4.title')}</div>
-                  <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                    {t('export.videoMp4.desc')}
-                  </div>
-                </div>
-              </button>
-            )}
-            {videoExportEnabled && (
-              <>
-                <div className="border-t border-gray-200 dark:border-gray-700" />
-                <div className="px-4 pt-2.5 pb-1 flex items-center gap-2.5 text-sm">
-                  <Film className="w-4 h-4 text-gray-400 shrink-0" />
-                  <div>
-                    <div>{t('export.video')}</div>
-                    <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                      {t('export.videoDesc')}
-                    </div>
-                  </div>
-                </div>
-                <div className="px-4 pb-2.5 flex gap-1.5">
-                  {(Object.keys(VIDEO_RESOLUTIONS) as (keyof typeof VIDEO_RESOLUTIONS)[]).map(
-                    (res) => (
-                      <button
-                        key={res}
-                        onClick={() => {
-                          setExportMenuOpen(false);
-                          exportVideo(res);
-                        }}
-                        disabled={isExportingVideo}
-                        className="flex-1 px-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                      >
-                        {res === '4k' ? '4K' : res}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </>
-            )}
-            <button
-              onClick={() => {
-                setExportMenuOpen(false);
                 exportClassroomZip();
               }}
               disabled={isExportingZip}
@@ -413,6 +320,7 @@ export function HeaderControls({
                 </div>
               </div>
             </button>
+            {videoExportEnabled && <VideoExportMenu onClose={() => setExportMenuOpen(false)} />}
           </div>
         )}
       </div>

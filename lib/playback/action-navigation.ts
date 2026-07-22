@@ -13,6 +13,11 @@ export interface ActionLineProgress {
   totalLines: number;
 }
 
+export interface NarrationCueItem extends ActionNavigationTarget {
+  text: string;
+  active: boolean;
+}
+
 const UNSAFE_ACTION_TYPES = new Set<Action['type']>([
   'play_video',
   'discussion',
@@ -89,6 +94,28 @@ export function buildActionNavigationTargets(actions: readonly Action[]): Action
         actionType: action.type,
         lineNumber,
         canJump: canReconstructPrefixForAction(actions, actionIndex),
+      },
+    ];
+  });
+}
+
+export function buildNarrationCueItems(
+  actions: readonly Action[],
+  currentActionIndex: number | null | undefined,
+): NarrationCueItem[] {
+  const targets = buildActionNavigationTargets(actions);
+  const cursor = Math.max(0, currentActionIndex ?? 0);
+  return targets.flatMap((target, targetIndex) => {
+    const action = actions[target.actionIndex];
+    if (action?.type !== 'speech') return [];
+    const next = targets[targetIndex + 1];
+    return [
+      {
+        ...target,
+        text: action.text,
+        active:
+          cursor >= target.actionIndex &&
+          (next ? cursor < next.actionIndex : cursor >= target.actionIndex),
       },
     ];
   });

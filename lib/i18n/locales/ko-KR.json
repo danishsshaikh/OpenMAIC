@@ -98,7 +98,22 @@
     "videoWarnings": "{{assets}}개의 에셋이 누락되었고 내보내기 보고서에 {{diagnostics}}개의 문제가 있습니다.",
     "noSlides": "내보낼 슬라이드가 없습니다",
     "noSlidesSkipped": "이 코스에 슬라이드가 없어 PPTX를 건너뛰었습니다",
-    "nothingToExport": "내보낼 항목이 없습니다"
+    "nothingToExport": "내보낼 항목이 없습니다",
+    "videoMp4Success": "Video rendered",
+    "videoServiceUnavailable": "Render service not configured - downloaded the project ZIP for local rendering.",
+    "videoResolution": "Resolution",
+    "videoFps": "Frame rate",
+    "videoQuality": "Quality",
+    "videoQuality_draft": "Draft",
+    "videoQuality_standard": "Standard",
+    "videoQuality_high": "High",
+    "videoProgress": "{{percent}}%",
+    "videoProgressWithEta": "{{percent}}% - about {{remaining}} left",
+    "videoEtaMinSec": "{{min}} min {{sec}} sec",
+    "videoEtaSec": "{{sec}} sec",
+    "videoRenderMp4": "Render MP4",
+    "videoDownloadZip": "Download project ZIP",
+    "videoServiceHint": "MP4 rendering needs the render service. Download the ZIP to render locally."
   },
   "import": {
     "classroom": "교실 가져오기",
