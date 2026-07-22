@@ -24,7 +24,7 @@ exports[`emitHyperframes > matches the HTML snapshot 1`] = `
   <div style="font-size:2.2vw;font-weight:700">checkpoint</div>
   <div style="font-size:1.2vw;color:#94a3b8;max-width:70%">Quiz scenes are represented by markers; video rendering is deferred to the Hyperframes renderer.</div>
 </div>
-<div id="fx-0-1" class="fx fx-spotlight" data-openmaic-spotlight-target="e1" data-openmaic-spotlight-focus="{&quot;x&quot;:&quot;24.6&quot;,&quot;y&quot;:&quot;24.2889&quot;,&quot;w&quot;:&quot;50.8&quot;,&quot;h&quot;:&quot;50.9778&quot;}" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">
+<div id="fx-0-1" class="fx fx-spotlight" data-openmaic-spotlight-target="e1" data-openmaic-spotlight-normalized="{&quot;x&quot;:&quot;25&quot;,&quot;y&quot;:&quot;24.8889&quot;,&quot;w&quot;:&quot;50&quot;,&quot;h&quot;:&quot;49.7778&quot;}" data-openmaic-spotlight-focus="{&quot;x&quot;:&quot;24.6&quot;,&quot;y&quot;:&quot;24.2889&quot;,&quot;w&quot;:&quot;50.8&quot;,&quot;h&quot;:&quot;50.9778&quot;}" data-openmaic-spotlight-output="{&quot;x&quot;:&quot;472.32&quot;,&quot;y&quot;:&quot;262.32&quot;,&quot;w&quot;:&quot;975.36&quot;,&quot;h&quot;:&quot;550.56&quot;}" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">
   <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0">
     <defs><mask id="fx-0-1-mask">
       <rect x="0" y="0" width="100" height="100" fill="white"/>
