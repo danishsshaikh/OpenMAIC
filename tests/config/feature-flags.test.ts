@@ -11,6 +11,7 @@ const FLAG_KEYS = [
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
   'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
+  'NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES',
   'NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES',
   'NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES',
   'NEXT_PUBLIC_FEATURE_FLOW_SCENES',
@@ -163,13 +164,14 @@ describe('classroom feature flags', () => {
       companionSelector: false,
       classroomChat: false,
       interactiveScenes: false,
+      deterministicInteractives: true,
       discussionScenes: false,
       workspaceScenes: false,
       flowScenes: false,
     });
   });
 
-  it('enables subordinate scene flags only when the interactive master is on', async () => {
+  it('enables runtime AI and flow scene flags only behind their precise gates', async () => {
     process.env.NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES = 'true';
     process.env.NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES = 'true';
     process.env.NEXT_PUBLIC_FEATURE_FLOW_SCENES = 'true';
@@ -187,6 +189,42 @@ describe('classroom feature flags', () => {
     expect(flags.isDiscussionScenesEnabled()).toBe(true);
     expect(flags.isWorkspaceScenesEnabled()).toBe(true);
     expect(flags.isFlowScenesEnabled()).toBe(true);
+  });
+
+  it('keeps deterministic interactives separate from broad flow enablement', async () => {
+    const simulation = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
+        html: '<button />',
+        widgetType: 'simulation',
+      },
+      sceneCore({ id: 'simulation-1' }),
+    );
+    const flow = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
+        html: '<div />',
+        widgetType: 'diagram',
+        widgetConfig: flowWidgetConfig,
+      },
+      sceneCore({ id: 'flow-1' }),
+    );
+
+    let flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(true);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';
+    flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(true);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES = 'false';
+    flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(false);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
   });
 
   it('filters disabled interactive, workspace, and flow scenes from playback navigation', async () => {
@@ -217,6 +255,7 @@ describe('classroom feature flags', () => {
     expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
       slide,
       quiz,
+      interactive,
     ]);
 
     process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';
