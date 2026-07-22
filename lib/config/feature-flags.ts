@@ -8,6 +8,7 @@
  */
 
 import type { Scene, SceneType } from '@/lib/types/stage';
+import { isAllowedDeterministicInteractiveScene } from '@/lib/interactive/capabilities';
 
 export type FeatureFlag =
   | 'companionSelector'
@@ -156,13 +157,22 @@ function isFlowScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
 }
 
 export function isDeterministicInteractiveScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
-  if (scene.type !== 'interactive' || scene.content.type !== 'interactive') return false;
-  return scene.content.widgetType === 'code' || scene.content.widgetType === 'simulation';
+  return isAllowedDeterministicInteractiveScene({
+    id: '',
+    title: '',
+    ...scene,
+  } as Pick<Scene, 'id' | 'title' | 'type' | 'content'>);
 }
 
 export function isSceneEnabled(scene: Pick<Scene, 'type' | 'content'>): boolean {
   if (scene.type === 'interactive') {
-    if (isDeterministicInteractiveScene(scene)) {
+    if (
+      isAllowedDeterministicInteractiveScene({
+        id: '',
+        title: '',
+        ...scene,
+      } as Pick<Scene, 'id' | 'title' | 'type' | 'content'>)
+    ) {
       return isDeterministicInteractivesEnabled();
     }
     if (isFlowScene(scene)) return isFlowScenesEnabled();

@@ -7,6 +7,10 @@ import { QuizView } from '../scene-renderers/quiz-view';
 import { InteractiveRenderer } from '../scene-renderers/interactive-renderer';
 import { PBLRenderer } from '../scene-renderers/pbl-renderer';
 import { isSceneEnabled } from '@/lib/config/feature-flags';
+import {
+  buildInteractiveCapabilityTrace,
+  traceInteractiveCapability,
+} from '@/lib/interactive/capabilities';
 
 interface SceneRendererProps {
   readonly scene: Scene;
@@ -20,6 +24,7 @@ interface SceneRendererProps {
  */
 export function SceneRenderer({ scene, mode }: SceneRendererProps) {
   const renderer = useMemo(() => {
+    traceInteractiveCapability('interactiveRendererFlat', buildInteractiveCapabilityTrace(scene));
     if (!isSceneEnabled(scene)) {
       return (
         <div className="flex h-full w-full items-center justify-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">

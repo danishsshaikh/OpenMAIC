@@ -146,9 +146,13 @@ Use `interactive` type when a concept benefits significantly from hands-on inter
 **Constraints**:
 
 - Limit to **1-2 interactive scenes per course** (they are resource-intensive)
-- Interactive scenes **require** an `interactiveConfig` object
+- Interactive scenes **require** `widgetType` and `widgetOutline`
 - Do NOT use interactive for purely textual/conceptual content - use slides instead
-- The `interactiveConfig.designIdea` should describe the specific interactive elements and user interactions
+- Runtime learner interaction must be deterministic and local: no LLM call, chat, TTS generation, ASR, AI image generation, AI feedback, AI discussion, or provider request while the learner uses it.
+- Prefer `code` for runnable programming exercises and algorithm behavior. Prefer browser-local `javascript` or `typescript` when the exercise must run directly in the classroom.
+- Prefer `simulation` when sliders, toggles, or parameter controls can update a visual result deterministically.
+- Do NOT select generated step-by-step flow scenes where the learner only clicks Next/Previous through a flowchart/procedure. Those are experimental and must not be used by default.
+- Do NOT use interactive for discussion, workspace, companion, chat, AI tutor, AI evaluation, or agent workflows.
 
 ### Widget Type Selection for Interactive Scenes
 
@@ -159,8 +163,8 @@ When generating an interactive scene, you MUST select the appropriate widget typ
 | Concept Characteristics | Widget Type | widgetOutline Fields |
 |-------------------------|-------------|---------------------|
 | Physics/chemistry phenomena with adjustable parameters | `simulation` | `concept`, `keyVariables` |
-| Processes, workflows, cause-effect chains | `diagram` | `diagramType` |
-| Programming concepts, algorithms | `code` | `language` |
+| Non-step structural maps, hierarchies, systems | `diagram` | `diagramType` (`mindmap`, `hierarchy`, or `system`; avoid default `flowchart`) |
+| Programming concepts, runnable algorithms | `code` | `language` (`javascript` or `typescript` for browser-local execution unless a language is explicitly required) |
 | Practice activities, gamified assessment | `game` | `gameType`, `challenge` |
 | Biological/geometric structures, 3D models | `visualization3d` | `visualizationType`, `objects` |
 
@@ -175,12 +179,12 @@ When generating an interactive scene, you MUST select the appropriate widget typ
 
 // diagram
 "widgetOutline": {
-  "diagramType": "flowchart"
+  "diagramType": "system"
 }
 
 // code
 "widgetOutline": {
-  "language": "python"
+  "language": "javascript"
 }
 
 // game
