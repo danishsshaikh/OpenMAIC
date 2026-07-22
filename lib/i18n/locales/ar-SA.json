@@ -98,7 +98,22 @@
     "videoWarnings": "{{assets}} من الموارد مفقودة و {{diagnostics}} من المشكلات في تقرير التصدير.",
     "noSlides": "لا توجد شرائح للتصدير",
     "noSlidesSkipped": "لا توجد شرائح في هذه الدورة — تم تخطي PPTX",
-    "nothingToExport": "لا يوجد محتوى للتصدير"
+    "nothingToExport": "لا يوجد محتوى للتصدير",
+    "videoMp4Success": "Video rendered",
+    "videoServiceUnavailable": "Render service not configured - downloaded the project ZIP for local rendering.",
+    "videoResolution": "Resolution",
+    "videoFps": "Frame rate",
+    "videoQuality": "Quality",
+    "videoQuality_draft": "Draft",
+    "videoQuality_standard": "Standard",
+    "videoQuality_high": "High",
+    "videoProgress": "{{percent}}%",
+    "videoProgressWithEta": "{{percent}}% - about {{remaining}} left",
+    "videoEtaMinSec": "{{min}} min {{sec}} sec",
+    "videoEtaSec": "{{sec}} sec",
+    "videoRenderMp4": "Render MP4",
+    "videoDownloadZip": "Download project ZIP",
+    "videoServiceHint": "MP4 rendering needs the render service. Download the ZIP to render locally."
   },
   "import": {
     "classroom": "استيراد فصل",

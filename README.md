@@ -248,6 +248,17 @@ cp .env.example .env.local
 docker compose up --build
 ```
 
+### Optional: MP4 Video Export
+
+The "Export Video" menu builds a self-contained Hyperframes project in the
+browser. If `RENDER_SERVICE_URL` points to the isolated `render-service`, the
+same project ZIP is rendered to MP4 through that service. When the service is not
+configured or unavailable, the menu still offers the project ZIP fallback.
+
+The render service is intentionally separate from the app because it uses Node
+22, Chromium, and FFmpeg. See [`render-service/README.md`](render-service/README.md)
+for standalone setup.
+
 ### Optional: MinerU (Advanced Document Parsing)
 
 [MinerU](https://github.com/opendatalab/MinerU) provides enhanced parsing for complex tables, formulas, and OCR. You can use the [MinerU official API](https://mineru.net/) or [self-host your own instance](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/).

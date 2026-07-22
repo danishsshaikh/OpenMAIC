@@ -24,14 +24,14 @@ exports[`emitHyperframes > matches the HTML snapshot 1`] = `
   <div style="font-size:2.2vw;font-weight:700">checkpoint</div>
   <div style="font-size:1.2vw;color:#94a3b8;max-width:70%">Quiz scenes are represented by markers; video rendering is deferred to the Hyperframes renderer.</div>
 </div>
-<div id="fx-0-1" class="fx fx-spotlight" data-openmaic-spotlight-target="e1" data-openmaic-spotlight-focus="{&quot;x&quot;:&quot;24.5833&quot;,&quot;y&quot;:&quot;24.2593&quot;,&quot;w&quot;:&quot;50.8333&quot;,&quot;h&quot;:&quot;51.0185&quot;}" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">
+<div id="fx-0-1" class="fx fx-spotlight" data-openmaic-spotlight-target="e1" data-openmaic-spotlight-focus="{&quot;x&quot;:&quot;24.6&quot;,&quot;y&quot;:&quot;24.2889&quot;,&quot;w&quot;:&quot;50.8&quot;,&quot;h&quot;:&quot;50.9778&quot;}" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">
   <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0">
     <defs><mask id="fx-0-1-mask">
       <rect x="0" y="0" width="100" height="100" fill="white"/>
-      <rect id="fx-0-1-cut" fill="black" x="16.9833" y="16.8593" width="66.0333" height="65.8185" rx="4"/>
+      <rect id="fx-0-1-cut" fill="black" x="17" y="16.8889" width="66" height="65.7778" rx="4"/>
     </mask></defs>
     <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.5)" mask="url(#fx-0-1-mask)"/>
-    <rect id="fx-0-1-border" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.2" vector-effect="non-scaling-stroke" x="20.9833" y="20.8593" width="58.0333" height="57.8185" rx="2" opacity="0"/>
+    <rect id="fx-0-1-border" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.2" vector-effect="non-scaling-stroke" x="21" y="20.8889" width="58" height="57.7778" rx="2" opacity="0"/>
   </svg>
 </div>
 <div id="fx-0-2" class="fx fx-laser" style="position:absolute;z-index:101;pointer-events:none;left:50%;top:49.7778%;visibility:hidden;opacity:0">
@@ -39,6 +39,9 @@ exports[`emitHyperframes > matches the HTML snapshot 1`] = `
     <div id="fx-0-2-ring" style="position:absolute;inset:0;border-radius:9999px;border:1.5px solid #00ff88;opacity:0.6"></div>
     <div style="width:10px;height:10px;border-radius:9999px;background-color:#00ff88;box-shadow:0 0 8px 2px #00ff8860"></div>
   </div>
+</div>
+<div id="subtitles" style="position:absolute;left:0;right:0;bottom:59px;z-index:50;display:grid;justify-items:center;text-align:center;pointer-events:none;font-family:system-ui,sans-serif">
+  <div id="subtitle-cue-0" style="grid-area:1/1;display:none;justify-self:center;max-width:80%;padding:13px 25px;background:rgba(0,0,0,0.66);color:#fff;font-size:36px;line-height:1.3;border-radius:13px;white-space:pre-wrap;text-shadow:0 1px 2px rgba(0,0,0,0.9)">Welcome to the lesson</div>
 </div>
 </div>
 <script src="assets/vendor/gsap.min.js"></script>
@@ -76,8 +79,8 @@ var EASE_IN = cubicBezier(0.4, 0, 1, 1);
 var EASE_OUT = cubicBezier(0, 0, 0.58, 1);
 var tl = gsap.timeline({ paused: true });
 tl.fromTo('#fx-0-1',{autoAlpha:0},{autoAlpha:1,duration:0.3,ease:'none'},2);
-tl.fromTo('#fx-0-1-cut',{attr:{x:16.9833,y:16.8593,width:66.0333,height:65.8185,rx:4}},{attr:{x:24.5833,y:24.2593,width:50.8333,height:51.0185,rx:1},duration:0.6,ease:EASE_OUT_EXPO},2);
-tl.fromTo('#fx-0-1-border',{attr:{x:20.9833,y:20.8593,width:58.0333,height:57.8185,rx:2},opacity:0},{attr:{x:24.5833,y:24.2593,width:50.8333,height:51.0185,rx:1},opacity:1,duration:0.5,ease:EASE_OUT_EXPO},2.05);
+tl.fromTo('#fx-0-1-cut',{attr:{x:17,y:16.8889,width:66,height:65.7778,rx:4}},{attr:{x:24.6,y:24.2889,width:50.8,height:50.9778,rx:1},duration:0.6,ease:EASE_OUT_EXPO},2);
+tl.fromTo('#fx-0-1-border',{attr:{x:21,y:20.8889,width:58,height:57.7778,rx:2},opacity:0},{attr:{x:24.6,y:24.2889,width:50.8,height:50.9778,rx:1},opacity:1,duration:0.5,ease:EASE_OUT_EXPO},2.05);
 tl.to('#fx-0-1',{autoAlpha:0,duration:0.3,ease:'none'},4.7);
 tl.set('#fx-0-1',{autoAlpha:0},5);
 tl.fromTo('#fx-0-2',{autoAlpha:0},{autoAlpha:1,duration:0.15,ease:'none'},2);
@@ -86,6 +89,8 @@ tl.fromTo('#fx-0-2-ring',{scale:1,opacity:0.6},{scale:2.8,opacity:0,duration:1.5
 tl.to('#fx-0-2',{autoAlpha:0,x:-1056,y:-591.6,duration:0.25,ease:EASE_IN},4.75);
 tl.set('#fx-0-2',{autoAlpha:0},5);
 tl.set('#fx-0-2-ring',{opacity:0},5);
+tl.set('#subtitle-cue-0',{display:'inline-block'},0);
+tl.set('#subtitle-cue-0',{display:'none'},2);
 tl.set({}, {}, 7);
 window.__timelines = window.__timelines || {};
 window.__timelines["openmaic"] = tl;
