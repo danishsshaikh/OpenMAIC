@@ -21,6 +21,7 @@ import { Roundtable } from '@/components/roundtable';
 import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
 import type { EngineMode, PlaybackProgress, TriggerEvent, Effect } from '@/lib/playback';
 import {
+  buildNarrationCueItems,
   canJumpWithinReconstructablePrefix,
   isUnsafePlaybackNavigationAction,
 } from '@/lib/playback/action-navigation';
@@ -1539,6 +1540,18 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           )}
         </div>
 
+        {currentScene && (
+          <NarrationCueRail
+            sceneId={currentScene.id}
+            actions={currentScene.actions ?? []}
+            currentActionIndex={currentPlaybackActionIndex}
+            canJumpToAction={canJumpToAction}
+            onJumpToAction={(sceneId, actionIndex) => {
+              void handleJumpToAction(sceneId, actionIndex);
+            }}
+          />
+        )}
+
         {/* Chat Area — playback / autonomous always renders it here; Pro
           (edit) mode unmounts this whole PlaybackChromeRoot, so the
           edit branch has no chat. */}
@@ -1654,3 +1667,66 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     );
   },
 );
+
+function NarrationCueRail({
+  sceneId,
+  actions,
+  currentActionIndex,
+  canJumpToAction,
+  onJumpToAction,
+}: {
+  readonly sceneId: string;
+  readonly actions: readonly Action[];
+  readonly currentActionIndex: number | null;
+  readonly canJumpToAction: (sceneId: string, actionIndex: number) => boolean;
+  readonly onJumpToAction: (sceneId: string, actionIndex: number) => void;
+}) {
+  const cueItems = useMemo(
+    () => buildNarrationCueItems(actions, currentActionIndex),
+    [actions, currentActionIndex],
+  );
+
+  if (cueItems.length === 0) return null;
+
+  return (
+    <aside
+      className="hidden w-72 shrink-0 border-l border-gray-200/80 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/70 lg:flex lg:flex-col"
+      aria-label="Narration transcript"
+    >
+      <div className="border-b border-gray-200/80 px-4 py-3 dark:border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+          Narration
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="space-y-2">
+          {cueItems.map((cue) => {
+            const canJump = canJumpToAction(sceneId, cue.actionIndex);
+            return (
+              <button
+                key={cue.actionId || cue.actionIndex}
+                type="button"
+                disabled={!canJump}
+                onClick={() => onJumpToAction(sceneId, cue.actionIndex)}
+                className={cn(
+                  'w-full rounded-md border px-3 py-2 text-left text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500',
+                  cue.active
+                    ? 'border-violet-300 bg-violet-50 text-violet-950 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800',
+                  !canJump && 'cursor-not-allowed opacity-50',
+                )}
+                aria-current={cue.active ? 'true' : undefined}
+                aria-label={`Jump to narration cue ${cue.lineNumber}`}
+              >
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                  Cue {cue.lineNumber}
+                </span>
+                <span className="line-clamp-4">{cue.text}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </aside>
+  );
+}
