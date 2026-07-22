@@ -54,6 +54,20 @@ interface TextBlock {
   fontSize: number;
 }
 
+type TextHorizontalAlign = 'left' | 'center' | 'right';
+
+interface TextElementVisibleLayout {
+  box: PixelBox;
+  align: TextHorizontalAlign;
+  innerWidth: number;
+  visibleTextWidth: number;
+  visibleWidth: number;
+  visibleHeight: number;
+  horizontalOffset: number;
+  verticalOffset: number;
+  blockCount: number;
+}
+
 /**
  * Percentage geometry (0–100) for a single positioned element. Returns null for
  * elements without `left/top/width/height` (e.g. some line elements), matching
@@ -136,7 +150,8 @@ export function findSpotlightGeometry(
     viewportRatio,
   );
   const rawBox = getElementPixelBox(element);
-  const measuredBox = resolveSpotlightMeasurementBox(element, rawBox);
+  const textLayout = isTextElement(element) ? getTextElementVisibleLayout(element) : null;
+  const measuredBox = resolveSpotlightMeasurementBox(element, rawBox, textLayout);
   const rawGeometry = getPixelBoxPercentageGeometry(rawBox, viewportSize, viewportRatio);
   const measuredGeometry = getPixelBoxPercentageGeometry(measuredBox, viewportSize, viewportRatio);
   const transformedGeometry = transformPercentageGeometry(
@@ -157,6 +172,18 @@ export function findSpotlightGeometry(
     measuredGeometry,
     transformedGeometry,
     measurementReason: measuredBox === rawBox ? 'element-box' : 'visible-text-content',
+    textLayout: textLayout
+      ? {
+          align: textLayout.align,
+          innerWidth: roundMetric(textLayout.innerWidth),
+          visibleTextWidth: roundMetric(textLayout.visibleTextWidth),
+          visibleWidth: roundMetric(textLayout.visibleWidth),
+          visibleHeight: roundMetric(textLayout.visibleHeight),
+          horizontalOffset: roundMetric(textLayout.horizontalOffset),
+          verticalOffset: roundMetric(textLayout.verticalOffset),
+          blockCount: textLayout.blockCount,
+        }
+      : undefined,
   });
 
   return transformedGeometry;
@@ -187,9 +214,13 @@ export function findElementPlacement(
   return { geometry, rotate };
 }
 
-function resolveSpotlightMeasurementBox(element: PPTElement, fallback: PixelBox): PixelBox {
+function resolveSpotlightMeasurementBox(
+  element: PPTElement,
+  fallback: PixelBox,
+  textLayout: TextElementVisibleLayout | null = null,
+): PixelBox {
   if (isTextElement(element)) {
-    return getTextElementVisibleBox(element) ?? fallback;
+    return textLayout?.box ?? fallback;
   }
 
   if (isShapeElement(element) && element.text?.content) {
@@ -217,7 +248,7 @@ function getElementPixelBox(element: PPTElement): PixelBox {
   };
 }
 
-function getTextElementVisibleBox(element: PPTTextElement): PixelBox | null {
+function getTextElementVisibleLayout(element: PPTTextElement): TextElementVisibleLayout | null {
   if (typeof element.content !== 'string' || element.content.trim().length === 0) return null;
 
   const blocks = extractTextBlocks(element.content);
@@ -226,17 +257,18 @@ function getTextElementVisibleBox(element: PPTTextElement): PixelBox | null {
   const paragraphGap = element.paragraphSpace ?? 5;
   const innerWidth = Math.max(1, element.width - TEXT_PADDING_PX * 2);
   let textHeight = 0;
-  let longestLineWidth = 0;
+  let visibleTextWidth = 0;
 
   for (const block of blocks) {
     const lineHeight = inferLineHeightPx(element.lineHeight, block.fontSize);
     const estimatedWidth = estimateTextWidth(block.text, block.fontSize);
-    longestLineWidth = Math.max(longestLineWidth, estimatedWidth);
-    textHeight += Math.max(1, Math.ceil(estimatedWidth / innerWidth)) * lineHeight;
+    const wrappedLineCount = Math.max(1, Math.ceil(estimatedWidth / innerWidth));
+    visibleTextWidth = Math.max(visibleTextWidth, Math.min(innerWidth, estimatedWidth));
+    textHeight += wrappedLineCount * lineHeight;
   }
   textHeight += Math.max(0, blocks.length - 1) * Math.max(0, paragraphGap);
   const visibleWidth = clamp(
-    Math.ceil(Math.min(element.width, longestLineWidth + TEXT_PADDING_PX * 2)),
+    Math.ceil(Math.min(element.width, visibleTextWidth + TEXT_PADDING_PX * 2)),
     MIN_TEXT_BOX_WIDTH_PX,
     Math.max(MIN_TEXT_BOX_WIDTH_PX, element.width),
   );
@@ -253,12 +285,60 @@ function getTextElementVisibleBox(element: PPTTextElement): PixelBox | null {
         ? Math.max(0, element.height - visibleHeight)
         : 0;
 
+  const align = resolveTextHorizontalAlign(element);
+  const horizontalOffset =
+    align === 'center'
+      ? Math.max(0, (element.width - visibleWidth) / 2)
+      : align === 'right'
+        ? Math.max(0, element.width - visibleWidth)
+        : 0;
+
   return {
-    left: element.left,
-    top: element.top + verticalOffset,
-    width: visibleWidth,
-    height: visibleHeight,
+    box: {
+      left: element.left + horizontalOffset,
+      top: element.top + verticalOffset,
+      width: visibleWidth,
+      height: visibleHeight,
+    },
+    align,
+    innerWidth,
+    visibleTextWidth,
+    visibleWidth,
+    visibleHeight,
+    horizontalOffset,
+    verticalOffset,
+    blockCount: blocks.length,
   };
+}
+
+function resolveTextHorizontalAlign(element: PPTTextElement): TextHorizontalAlign {
+  const elementAlign = normalizeTextAlign(
+    (element as { align?: unknown; textAlign?: unknown }).align ??
+      (element as { align?: unknown; textAlign?: unknown }).textAlign,
+  );
+  if (elementAlign) return elementAlign;
+
+  return inferHtmlTextAlign(element.content) ?? 'left';
+}
+
+function inferHtmlTextAlign(html: string): TextHorizontalAlign | null {
+  for (const match of html.matchAll(/text-align\s*:\s*(left|center|right)\b/gi)) {
+    const align = normalizeTextAlign(match[1]);
+    if (align) return align;
+  }
+  for (const match of html.matchAll(/\balign\s*=\s*["']?(left|center|right)\b/gi)) {
+    const align = normalizeTextAlign(match[1]);
+    if (align) return align;
+  }
+  return null;
+}
+
+function normalizeTextAlign(value: unknown): TextHorizontalAlign | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'center' || normalized === 'right' || normalized === 'left'
+    ? normalized
+    : null;
 }
 
 function extractTextBlocks(html: string): TextBlock[] {
@@ -432,6 +512,12 @@ function traceVideoSpotlightParity(checkpoint: string, payload: Record<string, u
     'videoSpotlightNormalizedRectFlat',
     [actionId, `normalized:${formatGeometryFlat(payload.transformedGeometry)}`].join(' | '),
   );
+  if (payload.textLayout) {
+    console.info(
+      'videoSpotlightTextLayoutFlat',
+      [actionId, formatTextLayoutFlat(payload.textLayout)].join(' | '),
+    );
+  }
 }
 
 function formatGeometryFlat(value: unknown): string {
@@ -440,4 +526,25 @@ function formatGeometryFlat(value: unknown): string {
   return [geometry.x, geometry.y, geometry.w, geometry.h]
     .map((part) => (typeof part === 'number' ? Number(part.toFixed(4)) : ''))
     .join(',');
+}
+
+function formatTextLayoutFlat(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const layout = value as Record<string, unknown>;
+  return [
+    `align:${String(layout.align ?? '')}`,
+    `inner:${formatMetric(layout.innerWidth)}`,
+    `text:${formatMetric(layout.visibleTextWidth)}`,
+    `box:${formatMetric(layout.visibleWidth)}x${formatMetric(layout.visibleHeight)}`,
+    `offset:${formatMetric(layout.horizontalOffset)},${formatMetric(layout.verticalOffset)}`,
+    `blocks:${formatMetric(layout.blockCount)}`,
+  ].join(' | ');
+}
+
+function formatMetric(value: unknown): string {
+  return typeof value === 'number' ? String(roundMetric(value)) : '';
+}
+
+function roundMetric(value: number): number {
+  return Number(value.toFixed(4));
 }

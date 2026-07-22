@@ -109,6 +109,79 @@ describe('Hyperframes spotlight geometry parity', () => {
     expect(geometry.x + geometry.w).toBeLessThanOrEqual(96);
     expect(geometry.y + geometry.h).toBeLessThanOrEqual(94);
   });
+
+  it('centers multiline title and subtitle spotlight bounds inside wide text boxes', () => {
+    const ir = compileHpcJobSubmissionFixture();
+    const effects = effectMap(ir.scenes[0].effects);
+    const title = effects.get('spot-hpc-title')!.geometry!;
+    const subtitle = effects.get('spot-hpc-subtitle')!.geometry!;
+    const firstCard = effects.get('spot-hpc-write')!.geometry!;
+    const secondCard = effects.get('spot-hpc-params')!.geometry!;
+    const thirdCard = effects.get('spot-hpc-submit')!.geometry!;
+
+    expect(title.x).toBeGreaterThan(20);
+    expect(title.centerX).toBeCloseTo(50, 0);
+    expect(title.y).toBeLessThan(percentY(132));
+    expect(title.y + title.h).toBeGreaterThan(percentY(195));
+    expect(title.y + title.h).toBeLessThan(subtitle.y);
+
+    expect(subtitle.x).toBeGreaterThan(27);
+    expect(subtitle.centerX).toBeCloseTo(50, 0);
+    expect(subtitle.y).toBeGreaterThan(title.y + title.h);
+    expect(subtitle.w).toBeLessThan(46);
+
+    expect(firstCard.centerX).toBeCloseTo(17.5, 0);
+    expect(secondCard.centerX).toBeCloseTo(48, 0);
+    expect(thirdCard.centerX).toBeCloseTo(79, 0);
+    expect(firstCard.x).toBeGreaterThan(8);
+    expect(secondCard.x).toBeGreaterThan(38);
+    expect(thirdCard.x).toBeGreaterThan(70);
+  });
+
+  it.each([
+    ['left' as const, 10, undefined],
+    ['center' as const, undefined, 50],
+    ['right' as const, undefined, undefined],
+  ])(
+    'aligns %s text spotlight bounds within the element box',
+    (align, expectedX, expectedCenterX) => {
+      const geometry = compileSingleTextSpotlight(
+        textElement(`align-${align}`, 100, 120, 800, 72, 'Workflow Overview', 34, 1.1, { align }),
+      );
+
+      if (typeof expectedX === 'number') {
+        expect(geometry.x).toBeCloseTo(expectedX, 0);
+      }
+      if (typeof expectedCenterX === 'number') {
+        expect(geometry.centerX).toBeCloseTo(expectedCenterX, 0);
+      }
+      if (align === 'right') {
+        expect(geometry.x + geometry.w).toBeCloseTo(90, 0);
+      }
+    },
+  );
+
+  it('keeps centered wrapped text within the source element while preserving vertical alignment', () => {
+    const geometry = compileSingleTextSpotlight(
+      textElement(
+        'centered-wrapped',
+        150,
+        90,
+        500,
+        240,
+        'Introduction to high-performance computing workflow overview and runtime configuration',
+        30,
+        1.15,
+        { align: 'center', vAlign: 'middle' },
+      ),
+    );
+
+    expect(geometry.x).toBeGreaterThanOrEqual(percentX(150));
+    expect(geometry.x + geometry.w).toBeLessThanOrEqual(percentX(650));
+    expect(geometry.centerX).toBeCloseTo(percentX(400), 0);
+    expect(geometry.y).toBeGreaterThan(percentY(90));
+    expect(geometry.y + geometry.h).toBeLessThan(percentY(280));
+  });
 });
 
 function compileFixture() {
@@ -186,6 +259,108 @@ function compileFixture() {
   );
 }
 
+function compileHpcJobSubmissionFixture() {
+  const scene = {
+    id: 'hpc-job-submission',
+    stageId: 'stage',
+    title: 'HPC Job Submission Project',
+    order: 0,
+    type: 'slide',
+    content: {
+      type: 'slide',
+      canvas: {
+        viewportSize: VIEWPORT_WIDTH,
+        viewportRatio: VIEWPORT_HEIGHT / VIEWPORT_WIDTH,
+        elements: [
+          textElement('hpc_title', 80, 56, 840, 172, ['HPC Job Submission', 'Project'], 44, 1.1, {
+            align: 'center',
+            vAlign: 'middle',
+          }),
+          textElement('hpc_subtitle', 80, 246, 840, 64, 'Workflow Overview', 34, 1.1, {
+            align: 'center',
+            vAlign: 'middle',
+          }),
+          shapeElement('hpc_card_write', 58, 335, 230, 170),
+          shapeElement('hpc_card_params', 365, 335, 230, 170),
+          shapeElement('hpc_card_submit', 675, 335, 230, 170),
+          textElement('hpc_write', 90, 395, 170, 64, ['Write script', '#SBATCH'], 27, 1.05, {
+            align: 'center',
+            vAlign: 'middle',
+          }),
+          textElement(
+            'hpc_params',
+            392,
+            395,
+            176,
+            64,
+            ['Set params:', 'Time/Partition'],
+            27,
+            1.05,
+            {
+              align: 'center',
+              vAlign: 'middle',
+            },
+          ),
+          textElement('hpc_submit', 706, 395, 168, 64, ['Submit &', 'Monitor'], 27, 1.05, {
+            align: 'center',
+            vAlign: 'middle',
+          }),
+        ],
+      },
+    },
+    actions: [
+      spotlight('spot-hpc-title', 'hpc_title'),
+      speech('speech-hpc-title', 'HPC Job Submission Project.'),
+      spotlight('spot-hpc-subtitle', 'hpc_subtitle'),
+      speech('speech-hpc-subtitle', 'Workflow Overview.'),
+      spotlight('spot-hpc-write', 'hpc_write'),
+      speech('speech-hpc-write', 'Write script.'),
+      spotlight('spot-hpc-params', 'hpc_params'),
+      speech('speech-hpc-params', 'Set params.'),
+      spotlight('spot-hpc-submit', 'hpc_submit'),
+      speech('speech-hpc-submit', 'Submit and monitor.'),
+    ],
+  };
+
+  return compileVideoTimeline(
+    { stage: { id: 'stage', name: 'HPC Job Submission Project' }, scenes: [scene as never] },
+    {
+      timing: stubProbe({
+        'speech-hpc-title': 1000,
+        'speech-hpc-subtitle': 1000,
+        'speech-hpc-write': 1000,
+        'speech-hpc-params': 1000,
+        'speech-hpc-submit': 1000,
+      }),
+      assets: NO_ASSETS,
+    },
+  );
+}
+
+function compileSingleTextSpotlight(element: PPTElement) {
+  const scene = {
+    id: 'single-text',
+    stageId: 'stage',
+    title: 'Single Text',
+    order: 0,
+    type: 'slide',
+    content: {
+      type: 'slide',
+      canvas: {
+        viewportSize: VIEWPORT_WIDTH,
+        viewportRatio: VIEWPORT_HEIGHT / VIEWPORT_WIDTH,
+        elements: [element],
+      },
+    },
+    actions: [spotlight('spot-single', element.id), speech('speech-single', 'Single.')],
+  };
+
+  return compileVideoTimeline(
+    { stage: { id: 'stage', name: 'Single Text' }, scenes: [scene as never] },
+    { timing: stubProbe({ 'speech-single': 1000 }), assets: NO_ASSETS },
+  ).scenes[0].effects[0].geometry!;
+}
+
 function effectMap(effects: readonly EffectSegment[]) {
   return new Map(effects.map((effect) => [effect.actionId, effect]));
 }
@@ -199,12 +374,17 @@ function textElement(
   content: string | string[],
   fontSize: number,
   lineHeight: number,
+  options: {
+    align?: 'left' | 'center' | 'right';
+    vAlign?: 'top' | 'middle' | 'bottom';
+  } = {},
 ): PPTElement {
   const lines = Array.isArray(content) ? content : [content];
+  const textAlign = options.align ? `text-align:${options.align};` : '';
   const html = lines
     .map((line, index) => {
       const tag = index === 0 && lines.length > 1 ? 'strong' : 'span';
-      return `<p><${tag} style="font-size:${fontSize}px">${line}</${tag}></p>`;
+      return `<p style="${textAlign}"><${tag} style="font-size:${fontSize}px">${line}</${tag}></p>`;
     })
     .join('');
   return {
@@ -220,6 +400,8 @@ function textElement(
     defaultColor: '#111111',
     lineHeight,
     paragraphSpace: 4,
+    align: options.align,
+    vAlign: options.vAlign,
   } as unknown as PPTElement;
 }
 
