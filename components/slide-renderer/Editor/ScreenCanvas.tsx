@@ -4,6 +4,7 @@ import { ScreenElement } from './ScreenElement';
 import { HighlightOverlay } from './HighlightOverlay';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
+import { RendererScreenCanvas } from './RendererScreenCanvas';
 import { useSlideBackgroundStyle } from '@/lib/hooks/use-slide-background-style';
 import { useCanvasStore } from '@/lib/store';
 import { useSceneSelector } from '@/lib/contexts/scene-context';
@@ -15,6 +16,7 @@ import { useViewportSize } from './Canvas/hooks/useViewportSize';
 import { useRef, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { computeSlideFitTransform, transformPercentageGeometry } from '../utils/slideFit';
+import { isPlaybackRendererEnabled } from '@/lib/config/feature-flags';
 
 export function ScreenCanvas() {
   const canvasScale = useCanvasStore.use.canvasScale();
@@ -150,4 +152,8 @@ export function ScreenCanvas() {
       </div>
     </div>
   );
+}
+
+export function PlaybackScreenCanvas() {
+  return isPlaybackRendererEnabled() ? <RendererScreenCanvas /> : <ScreenCanvas />;
 }

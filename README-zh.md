@@ -33,12 +33,13 @@
 <p align="center">
   <a href="./README.md">English</a> | <a href="./README-zh.md">简体中文</a>
   <br/>
-  <a href="https://open.maic.chat/">在线体验</a> · <a href="#-快速开始">快速开始</a> · <a href="#lemonade-local-ai">Lemonade</a> · <a href="#-功能特性">功能特性</a> · <a href="#-使用场景">使用场景</a> · <a href="#-openclaw-集成">OpenClaw</a>
+  <a href="https://open.maic.chat/">在线体验</a> · <a href="#-快速开始">快速开始</a> · <a href="#lemonade-local-ai">Lemonade</a> · <a href="#funasr-local-asr">FunASR</a> · <a href="#-功能特性">功能特性</a> · <a href="#-使用场景">使用场景</a> · <a href="#-openclaw-集成">OpenClaw</a>
 </p>
 
 
 ## 🗞️ 动态
 
+- **2026-07-21** — [v0.3.1 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.3.1) 一键导出 MP4 课程视频；服务端课堂运行时存储（含 Postgres 参考服务）；编辑器直接操作幻灯片元素（拖拽、缩放、旋转、框选多选）；“Edit with AI”升级（校验式 JSON Patch 编辑、多会话历史）；文档解析扩展（多格式上传、音视频抽取、阿里 DocMind、MinerU）；新增 Azure OpenAI / SearXNG / ComfyUI 与 GPT-5.6 系列模型；动作级播放导航；SSRF 安全加固。查看[更新日志](CHANGELOG.md)。
 - **2026-06-28** — [v0.3.0 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.3.0) 项目式学习（PBL）v2 与课堂界面；“Edit with AI”专业模式编辑智能体；`@openmaic/*` SDK 系列（DSL/渲染器/导入器）发布至 npm；可选的分阶段模型路由；新增 GLM-5.2 / Kimi K2.7 Code / Qwen3.7 Plus·Max 等模型；职业学习任务引擎；新增韩语（ko-KR）；并将开源协议由 AGPL-3.0 调整为 MIT。查看[更新日志](CHANGELOG.md)。
 - **2026-06-02** — [v0.2.2 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.2.2) MAIC Editor（v0）专业模式，可轻量编辑生成的幻灯片；生成前可编辑大纲；交互课堂离线导出；新增 Brave/百度/博查/MiniMax 搜索与 Azure STT；新增 Claude Opus 4.8 / MiniMax M3 / Gemini 3.5 Flash 等模型；新增繁体中文（zh-TW）与巴西葡萄牙语（pt-BR）。查看[更新日志](CHANGELOG.md)。
 - **2026-04-26** — [v0.2.1 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.2.1) 接入 [VoxCPM2](https://github.com/OpenBMB/VoxCPM) TTS，支持音色克隆与自动生成音色；新增按模型思考配置；新增课程完成页与作答状态持久化；新增 DeepSeek-V4 / GPT-5.5 / GPT-Image-2 / 小米 MiMo / Hy3 等最新发布的模型。查看[更新日志](CHANGELOG.md)。
@@ -114,6 +115,7 @@ GROK_API_KEY=xai-...
 OPENROUTER_API_KEY=sk-or-...
 TENCENT_API_KEY=sk-...
 XIAOMI_API_KEY=...
+# 或使用 AWS 凭证和 BEDROCK_REGION 配置 Amazon Bedrock。
 ```
 
 也可以通过 `server-providers.yml` 配置服务商：
@@ -129,9 +131,23 @@ providers:
       - YOUR-DEPLOYMENT-NAME
   anthropic:
     apiKey: sk-ant-...
+  bedrock:
+    models:
+      - us.anthropic.claude-sonnet-5
+      - us.anthropic.claude-opus-4-8
 ```
 
-支持的服务商：**OpenAI**、**Azure OpenAI**、**Anthropic**、**Google Gemini**、**DeepSeek**、**通义千问 Qwen**、**Kimi**、**MiniMax**、**Grok (xAI)**、**OpenRouter**、**豆包**、**腾讯混元 / TokenHub**、**小米 MiMo**、**智谱 GLM**、**Ollama**（本地）、**Lemonade**（本地 LLM / 图像 / TTS / ASR）以及任何兼容 OpenAI API 的服务。
+支持的服务商：**OpenAI**、**Azure OpenAI**、**Anthropic**、**Amazon Bedrock**、**Google Gemini**、**DeepSeek**、**通义千问 Qwen**、**Kimi**、**MiniMax**、**Grok (xAI)**、**OpenRouter**、**豆包**、**腾讯混元 / TokenHub**、**小米 MiMo**、**智谱 GLM**、**Ollama**（本地）、**Lemonade**（本地 LLM / 图像 / TTS / ASR）、**FunASR**（本地 ASR）以及任何兼容 OpenAI API 的服务。
+
+Amazon Bedrock 快速示例：
+
+```env
+BEDROCK_REGION=us-east-1
+BEDROCK_MODELS=us.anthropic.claude-sonnet-5,us.anthropic.claude-opus-4-8
+DEFAULT_MODEL=bedrock:us.anthropic.claude-sonnet-5
+```
+
+Bedrock 使用 AWS 环境凭证或 AWS SDK 凭证链。临时凭证可设置 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 和 `AWS_SESSION_TOKEN`，也可以使用运行环境可用的 AWS profile / role。
 
 <a id="lemonade-local-ai"></a>
 
@@ -147,6 +163,28 @@ TTS_LEMONADE_BASE_URL=http://localhost:13305/v1
 ASR_LEMONADE_BASE_URL=http://localhost:13305/v1
 IMAGE_LEMONADE_BASE_URL=http://localhost:13305/v1
 ```
+
+<a id="funasr-local-asr"></a>
+
+### 可选：FunASR（本地语音识别）
+
+OpenMAIC 可以通过 FunASR 的 OpenAI 兼容服务完成本地转写。内置 provider 支持 SenseVoiceSmall、Paraformer 和 Fun-ASR-Nano，无需 API Key。
+
+```bash
+python -m pip install torch torchaudio
+python -m pip install "funasr==1.4.0" fastapi uvicorn python-multipart
+# NVIDIA GPU 上运行 Fun-ASR-Nano 时再安装 vLLM
+python -m pip install vllm
+funasr-server --device cuda --model fun-asr-nano
+```
+
+将 OpenMAIC 指向该服务：
+
+```env
+ASR_FUNASR_BASE_URL=http://localhost:8000/v1
+```
+
+纯 CPU 环境可运行 `funasr-server --device cpu --model sensevoice`。生产部署方式参见 [FunASR 部署指南](https://github.com/modelscope/FunASR#deploy)。
 
 OpenAI 快速示例：
 

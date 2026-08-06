@@ -63,7 +63,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDraftCache } from '@/lib/hooks/use-draft-cache';
 import { SpeechButton } from '@/components/audio/speech-button';
 import { useImportClassroom } from '@/lib/import/use-import-classroom';
-import { isInteractiveScenesEnabled, shouldShowVocationalTestUi } from '@/lib/config/feature-flags';
+import {
+  isInteractiveScenesEnabled,
+  isPptxImportEnabled,
+  shouldShowVocationalTestUi,
+} from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { InteractiveModeButton } from '@/components/generation/interactive-mode-button';
 
@@ -76,8 +80,7 @@ const INTERACTIVE_MODE_STORAGE_KEY = 'interactiveModeEnabled';
 // PPTX import is still scaffolding: `useImportPptx` has no `onImported` consumer
 // yet, so the flow only logs the parsed slides. Hide the entry point behind a
 // flag until it's wired end-to-end, so the UI doesn't expose a no-op button.
-// Enable with NEXT_PUBLIC_ENABLE_PPTX_IMPORT=true.
-const PPTX_IMPORT_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT === 'true';
+const PPTX_IMPORT_ENABLED = isPptxImportEnabled();
 
 interface FormState {
   courseMaterials: SelectedCourseMaterial[];
@@ -205,6 +208,7 @@ function HomePage() {
       }
     } catch (err) {
       log.error('Failed to load classrooms:', err);
+      toast.error('Persistence is unavailable. Saved classrooms could not be loaded.');
     }
   };
 
@@ -712,8 +716,8 @@ function HomePage() {
                   >
                     <span
                       className={cn(
-                        'absolute top-0.5 size-2.5 rounded-full bg-white transition-transform',
-                        form.vocationalTestMode ? 'translate-x-3' : 'translate-x-0.5',
+                        'absolute left-0.5 top-0.5 size-2.5 rounded-full bg-white transition-transform',
+                        form.vocationalTestMode ? 'translate-x-2.5' : 'translate-x-0',
                       )}
                     />
                   </span>

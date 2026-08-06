@@ -17,6 +17,8 @@ import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { createLogger } from '@/lib/logger';
+import { isVideoExportBurnedInCaptionsEnabled } from '@/lib/config/feature-flags';
+import { acquireExport, releaseExport } from './export-in-flight';
 import {
   buildExportZip,
   NoScenesError,
@@ -31,27 +33,29 @@ const log = createLogger('ExportVideo');
 export { VIDEO_RESOLUTIONS };
 export type { VideoResolution };
 
-// Module-level, NOT a per-hook ref: this hook lives in the export menu, which
-// unmounts as soon as the ZIP click closes it — a per-instance ref would reset
-// to false on the next mount and let a second concurrent snapshot/ZIP pipeline
-// start. A module singleton makes the in-flight guard survive remounts.
-let exportInFlight = false;
-
 export function useExportVideo() {
   const [exporting, setExporting] = useState(false);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const exportVideo = useCallback(
-    async (resolution: VideoResolution = '1080p') => {
-      if (exportInFlight) return;
+    async (
+      resolution: VideoResolution = '1080p',
+      burnInSubtitles = isVideoExportBurnedInCaptionsEnabled(),
+    ) => {
+      // Shared with the subtitles-only download: only one export operation reads
+      // the stage store / Dexie / off-screen renders at a time.
+      if (!acquireExport()) return;
 
-      exportInFlight = true;
       setExporting(true);
       const toastId = toast.loading(t('export.videoCompiling'));
 
       try {
         toast.loading(t('export.videoRendering'), { id: toastId });
-        const { zipBlob, stageName, missingCount, errorCount } = await buildExportZip(resolution);
+        const { zipBlob, stageName, missingCount, errorCount } = await buildExportZip({
+          resolution,
+          burnInSubtitles,
+          locale,
+        });
 
         toast.loading(t('export.videoPackaging'), { id: toastId });
         saveAs(zipBlob, `${sanitizeFilename(stageName)}-video.zip`);
@@ -70,11 +74,11 @@ export function useExportVideo() {
           toast.error(t('export.videoFailed'), { id: toastId });
         }
       } finally {
-        exportInFlight = false;
+        releaseExport();
         setExporting(false);
       }
     },
-    [t],
+    [t, locale],
   );
 
   return { exporting, exportVideo };

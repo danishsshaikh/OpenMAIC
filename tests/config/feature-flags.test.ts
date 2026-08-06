@@ -5,10 +5,14 @@ import type { PBLProjectConfig } from '@/lib/pbl/types';
 
 const FLAG_KEYS = [
   'NEXT_PUBLIC_MAIC_EDITOR_ENABLED',
+  'NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED',
+  'NEXT_PUBLIC_PI_CHAT_ENABLED',
+  'OPENMAIC_ENABLE_PI_WEB_SEARCH',
   'OPENMAIC_ENABLE_VOCATIONAL',
   'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
   'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
   'NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS',
+  'NEXT_PUBLIC_ENABLE_PPTX_IMPORT',
   'NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS',
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
@@ -104,7 +108,7 @@ afterEach(() => {
 });
 
 describe('readFeatureFlagBoolean', () => {
-  it('accepts explicit truthy values only', async () => {
+  it('accepts local-build truthy values only', async () => {
     const { readFeatureFlagBoolean } = await loadFlags();
 
     expect(readFeatureFlagBoolean('true')).toBe(true);
@@ -119,7 +123,7 @@ describe('readFeatureFlagBoolean', () => {
   });
 });
 
-describe('legacy feature flags', () => {
+describe('standalone feature flags', () => {
   it('keeps MAIC editor default off and supports true-like values', async () => {
     delete process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED;
     let flags = await loadFlags();
@@ -128,6 +132,30 @@ describe('legacy feature flags', () => {
     process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED = 'on';
     flags = await loadFlags();
     expect(flags.isMaicEditorEnabled()).toBe(true);
+  });
+
+  it('keeps playback renderer, Pi chat, Pi web search, and PPTX import default off', async () => {
+    delete process.env.NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED;
+    delete process.env.NEXT_PUBLIC_PI_CHAT_ENABLED;
+    delete process.env.OPENMAIC_ENABLE_PI_WEB_SEARCH;
+    delete process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT;
+    let flags = await loadFlags();
+
+    expect(flags.isPlaybackRendererEnabled()).toBe(false);
+    expect(flags.isPiChatEnabled()).toBe(false);
+    expect(flags.isPiWebSearchEnabled()).toBe(false);
+    expect(flags.isPptxImportEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED = 'true';
+    process.env.NEXT_PUBLIC_PI_CHAT_ENABLED = '1';
+    process.env.OPENMAIC_ENABLE_PI_WEB_SEARCH = 'yes';
+    process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT = 'on';
+    flags = await loadFlags();
+
+    expect(flags.isPlaybackRendererEnabled()).toBe(true);
+    expect(flags.isPiChatEnabled()).toBe(true);
+    expect(flags.isPiWebSearchEnabled()).toBe(true);
+    expect(flags.isPptxImportEnabled()).toBe(true);
   });
 
   it('requires request intent and the server vocational flag', async () => {
@@ -143,7 +171,7 @@ describe('legacy feature flags', () => {
     expect(flags.resolveVocationalActive({ taskEngineMode: true })).toBe(false);
   });
 
-  it('keeps vocational test UI and video export default off', async () => {
+  it('keeps vocational test UI, video export, and burned-in captions default off', async () => {
     delete process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI;
     delete process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT;
     delete process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS;
@@ -163,7 +191,7 @@ describe('legacy feature flags', () => {
 });
 
 describe('classroom feature flags', () => {
-  it('defaults every new classroom feature off', async () => {
+  it('defaults AI/runtime classroom features off while deterministic interactives stay enabled', async () => {
     const flags = await loadFlags();
 
     expect(flags.FEATURE_FLAGS).toEqual({
@@ -207,7 +235,7 @@ describe('classroom feature flags', () => {
     expect(flags.isFlowScenesEnabled()).toBe(true);
   });
 
-  it('keeps deterministic interactives separate from broad flow enablement', async () => {
+  it('keeps deterministic simulations separate from broad flow enablement', async () => {
     const simulation = scene(
       {
         type: 'interactive',

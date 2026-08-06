@@ -6,11 +6,18 @@
  */
 
 import type { UIMessage } from 'ai';
+import type { CleanupSource } from '@/lib/playback/auto-resume';
 import type { ThinkingConfig } from './provider';
 
 // Session Types
 export type SessionType = 'qa' | 'discussion' | 'lecture';
-export type SessionStatus = 'idle' | 'active' | 'interrupted' | 'completed' | 'error';
+export type SessionStatus =
+  | 'idle'
+  | 'active'
+  | 'soft-closing'
+  | 'interrupted'
+  | 'completed'
+  | 'error';
 
 /**
  * Metadata attached to chat messages
@@ -52,6 +59,16 @@ export interface ChatSession {
   updatedAt: number;
   sceneId?: string;
   lastActionIndex?: number;
+  endReason?: string;
+  /** Absolute deadline for the client-side soft-closing grace window. */
+  softCloseDeadline?: number;
+  directorState?: DirectorState;
+}
+
+export interface PiSessionBoundaryContext {
+  isFirstRequestInLiveSession: true;
+  previousEndSource?: CleanupSource;
+  sameSceneAsPrevious?: boolean;
 }
 
 /**
@@ -273,7 +290,10 @@ export interface LectureNoteEntry {
 // ==================== Stateless Multi-Agent API Types ====================
 
 import type { Stage, Scene, StageMode } from '@/lib/types/stage';
+import type { SceneOutline } from '@/lib/types/generation';
 import type { AgentTurnSummary, WhiteboardActionRecord } from '@/lib/orchestration/types';
+import type { DirectorCompactionTrace } from '@/lib/chat/pi/director-compaction';
+import type { DirectorToolTraceEntry } from '@/lib/chat/pi/types';
 
 /**
  * Accumulated director state passed between per-agent requests.
@@ -296,6 +316,8 @@ export interface StatelessChatRequest {
   storeState: {
     stage: Stage | null;
     scenes: Scene[];
+    /** Thin course map available to the Pi Director before it reads any scene. */
+    outlines?: SceneOutline[];
     currentSceneId: string | null;
     mode: StageMode;
     whiteboardOpen: boolean;
@@ -342,9 +364,17 @@ export interface StatelessChatRequest {
       isGenerated?: boolean;
       boundStageId?: string;
     }>;
+    /** Pi PoC: max child agent turns in one server-side loop. */
+    piMaxAgentTurns?: number;
+    /** Pi PoC: max emitted actions per child agent turn. */
+    piMaxActionsPerAgent?: number;
+    /** Pi PoC: opt in to whiteboard tools; defaults off to keep the first A/B pass comparable. */
+    piEnableWhiteboardTools?: boolean;
   };
   /** Accumulated director state from previous per-agent requests */
   directorState?: DirectorState;
+  /** Pi-only context for the first request in a newly created live UI session. */
+  piSessionBoundary?: PiSessionBoundaryContext;
   /** User profile for personalization */
   userProfile?: {
     nickname?: string;
@@ -414,6 +444,11 @@ export type StatelessEvent =
         totalActions: number;
         totalAgents: number;
         agentHadContent?: boolean;
+        cueUserReceived?: boolean;
+        sessionClosed?: boolean;
+        endReason?: string;
+        directorCompaction?: DirectorCompactionTrace;
+        directorToolTrace?: DirectorToolTraceEntry[];
         directorState?: DirectorState;
       };
     }

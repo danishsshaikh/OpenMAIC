@@ -2,9 +2,12 @@
  * Playback Types - Types for lecture playback and live discussion engine
  */
 
-import type { PlaybackSnapshot } from '@/lib/utils/playback-storage';
-
-export type { PlaybackSnapshot };
+export interface PlaybackSnapshot {
+  sceneIndex: number;
+  actionIndex: number;
+  consumedDiscussions: string[];
+  sceneId?: string;
+}
 
 /** Playback progress for the active classroom scene. */
 export interface PlaybackProgress {

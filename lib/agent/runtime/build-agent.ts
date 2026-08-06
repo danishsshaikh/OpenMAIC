@@ -10,7 +10,10 @@
  */
 import {
   Agent,
+  type AfterToolCallContext,
+  type AfterToolCallResult,
   type AgentMessage,
+  type AgentOptions,
   type AgentTool,
   type StreamFn,
 } from '@earendil-works/pi-agent-core';
@@ -38,14 +41,28 @@ const STUB_MODEL = {
 export interface BuildAgentOptions {
   streamFn: StreamFn;
   systemPrompt: string;
-  tools: AgentTool<never, never>[];
+  tools: AgentTool[];
+  /** Tool names allowed for this agent. Defaults to the editor v0 allowlist. */
+  allowedToolNames?: ReadonlySet<string>;
   /** Prior conversation turns to seed the agent with, so it has multi-turn memory. */
   history?: AgentMessage[];
+  /** Optional Pi context transform, used by the Director's native compaction path. */
+  transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
+  /** Optional Pi message conversion, required when a context transform emits custom roles. */
+  convertToLlm?: AgentOptions['convertToLlm'];
+  /** Optional request-scoped hook composed with the shared quota hook. */
+  afterToolCall?: (
+    context: AfterToolCallContext,
+    signal?: AbortSignal,
+  ) => Promise<AfterToolCallResult | undefined> | AfterToolCallResult | undefined;
 }
 
 export function buildAgent(opts: BuildAgentOptions): Agent {
+  const quotaHook = makeQuotaHook({ remaining: () => Number.MAX_SAFE_INTEGER });
   return new Agent({
     streamFn: opts.streamFn,
+    transformContext: opts.transformContext,
+    convertToLlm: opts.convertToLlm,
     toolExecution: 'sequential',
     initialState: {
       systemPrompt: opts.systemPrompt,
@@ -55,8 +72,17 @@ export function buildAgent(opts: BuildAgentOptions): Agent {
       // conversation in context — without this the agent is stateless per turn.
       ...(opts.history && opts.history.length > 0 ? { messages: opts.history } : {}),
     },
-    beforeToolCall: makeAllowlistGate(V0_ALLOWLIST),
-    afterToolCall: makeQuotaHook({ remaining: () => Number.MAX_SAFE_INTEGER }),
+    beforeToolCall: makeAllowlistGate(opts.allowedToolNames ?? V0_ALLOWLIST),
+    afterToolCall: async (context, signal) => {
+      const quotaResult = await quotaHook(context);
+      const requestResult = await opts.afterToolCall?.(context, signal);
+      if (!quotaResult && !requestResult) return undefined;
+      return {
+        ...quotaResult,
+        ...requestResult,
+        terminate: quotaResult?.terminate === true || requestResult?.terminate === true,
+      };
+    },
   });
 }
 

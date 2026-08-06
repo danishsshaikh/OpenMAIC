@@ -9,6 +9,7 @@
 import { describe, expect, test } from 'vitest';
 import { RUNTIME_DSL_VERSION } from '@openmaic/dsl';
 import type { RuntimeRecordInit } from '@openmaic/dsl';
+import { RuntimeAppendConflictError } from '../src/index.js';
 import type { RuntimeStore, RuntimeSessionInit } from '../src/index.js';
 
 // --- fixtures ---------------------------------------------------------------
@@ -144,6 +145,20 @@ export function runRuntimeStoreContract(name: string, makeStore: () => RuntimeSt
         );
       });
 
+      test('setSessionStatus can compare the record tail before transitioning', async () => {
+        const store = makeStore();
+        await store.createSession(makeSession());
+        await store.appendRecord(makeRecordInit('sess-1'));
+
+        await expect(
+          store.setSessionStatus('sess-1', 'completed', T1, { expectedLastSeq: null }),
+        ).rejects.toBeInstanceOf(RuntimeAppendConflictError);
+        expect((await store.getSession('sess-1'))?.status).toBe('active');
+
+        await store.setSessionStatus('sess-1', 'completed', T1, { expectedLastSeq: 0 });
+        expect((await store.getSession('sess-1'))?.status).toBe('completed');
+      });
+
       test('deleteSession removes the session and its records; idempotent', async () => {
         const store = makeStore();
         await store.createSession(makeSession());
@@ -157,6 +172,15 @@ export function runRuntimeStoreContract(name: string, makeStore: () => RuntimeSt
     });
 
     describe('records', () => {
+      test('appendRecord rejects an invalid envelope with the shared validation message', async () => {
+        const store = makeStore();
+        const init = makeRecordInit('sess-1', { createdAt: 'not-iso' });
+
+        await expect(store.appendRecord(init)).rejects.toThrow(
+          `@openmaic/storage: invalid runtime record ${JSON.stringify(init.id)}: /createdAt: expected ISO 8601 \`createdAt\``,
+        );
+      });
+
       test('appendRecord assigns monotonic seq from 0 and stamps nothing on the record', async () => {
         const store = makeStore();
         await store.createSession(makeSession());
@@ -188,6 +212,46 @@ export function runRuntimeStoreContract(name: string, makeStore: () => RuntimeSt
         await store.createSession(makeSession());
         await store.setSessionStatus('sess-1', 'completed', T1);
         await expect(store.appendRecord(makeRecordInit('sess-1'))).rejects.toThrow(/active/);
+      });
+
+      test('appendRecord can atomically transition its active parent session', async () => {
+        const store = makeStore();
+        await store.createSession(makeSession());
+
+        const record = await store.appendRecord(makeRecordInit('sess-1'), {
+          expectedLastSeq: null,
+          sessionTransition: { status: 'completed', updatedAt: T1 },
+        });
+
+        expect(record.seq).toBe(0);
+        expect(await store.listRecords('sess-1')).toEqual([record]);
+        expect(await store.getSession('sess-1')).toMatchObject({
+          status: 'completed',
+          updatedAt: T1,
+        });
+        await expect(store.appendRecord(makeRecordInit('sess-1'))).rejects.toThrow(/active/);
+      });
+
+      test('appendRecord rejects a stale expectedLastSeq without appending', async () => {
+        const store = makeStore();
+        await store.createSession(makeSession());
+        const existing = await store.appendRecord(makeRecordInit('sess-1'));
+
+        let failure: unknown;
+        try {
+          await store.appendRecord(makeRecordInit('sess-1'), { expectedLastSeq: null });
+        } catch (error) {
+          failure = error;
+        }
+
+        expect(failure).toMatchObject({
+          name: 'RuntimeAppendConflictError',
+          sessionId: 'sess-1',
+          expectedLastSeq: null,
+          actualLastSeq: 0,
+        });
+        expect(failure).toBeInstanceOf(RuntimeAppendConflictError);
+        expect(await store.listRecords('sess-1')).toEqual([existing]);
       });
 
       test('appendRecord validates skeleton payloads for skeleton kinds by default', async () => {

@@ -26,6 +26,8 @@ export function readFeatureFlagBoolean(envValue: string | undefined): boolean {
   return TRUE_VALUES.has((envValue ?? '').trim().toLowerCase());
 }
 
+const readBoolean = readFeatureFlagBoolean;
+
 /**
  * MAIC Editor (edit mode) gate. Default OFF — gates only the edit toggle
  * affordance in `Header`. The `StageMode` type union is unaffected so
@@ -34,6 +36,30 @@ export function readFeatureFlagBoolean(envValue: string | undefined): boolean {
  */
 export function isMaicEditorEnabled(): boolean {
   return readFeatureFlagBoolean(process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED);
+}
+
+/**
+ * Experimental playback canvas renderer. Default OFF so classroom playback uses
+ * the legacy in-app renderer unless explicitly enabled in `.env.local`.
+ */
+export function isPlaybackRendererEnabled(): boolean {
+  return readBoolean(process.env.NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED);
+}
+
+/**
+ * Experimental Pi-based classroom chat runtime. Default OFF. The same public
+ * flag selects the client runtime and gates the corresponding server route.
+ */
+export function isPiChatEnabled(): boolean {
+  return readBoolean(process.env.NEXT_PUBLIC_PI_CHAT_ENABLED);
+}
+
+/**
+ * Server-only gate for the Pi Director web-search tool. Default OFF. Enabling
+ * Pi chat alone must not implicitly grant the Director external network access.
+ */
+export function isPiWebSearchEnabled(): boolean {
+  return readBoolean(process.env.OPENMAIC_ENABLE_PI_WEB_SEARCH);
 }
 
 /**
@@ -193,4 +219,9 @@ export function isSceneEnabled(scene: Pick<Scene, 'type' | 'content'>): boolean 
 
 export function filterEnabledScenes<T extends Pick<Scene, 'type' | 'content'>>(scenes: T[]): T[] {
   return scenes.filter(isSceneEnabled);
+}
+
+/** Experimental PPTX import entry point. Default OFF. */
+export function isPptxImportEnabled(): boolean {
+  return readBoolean(process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT);
 }

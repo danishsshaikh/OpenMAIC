@@ -11,16 +11,15 @@
  * owned by the right-side submission/evaluation flow, not by chat.
  */
 
-import { streamText, tool, stepCountIs } from 'ai';
+import { tool, stepCountIs } from 'ai';
 import type { LanguageModel } from 'ai';
 
 import { createLogger } from '@/lib/logger';
-import { resolveThinkingProviderOptions } from '@/lib/ai/llm';
+import { streamLLM } from '@/lib/ai/llm';
 import { loadPBLV2Prompt } from '../prompts/loader';
 import type { ThinkingConfig } from '@/lib/types/provider';
 import { tierGuidanceBlock } from './tier-guidance';
 import { compressIfNeeded } from './instructor-memory';
-import { withThinkingDisabled } from './runtime-thinking';
 
 import type {
   PBLProjectV2,
@@ -32,26 +31,26 @@ import type {
   PBLProficiency,
 } from '../types';
 import type { PBLSSEEvent } from '../api/sse';
-import { RecordObservationArgs, AdjustDifficultyArgs } from '../operations/schemas';
+import { RecordObservationArgs, AdjustDifficultyArgs } from '../operations/runtime/schemas';
 import {
   recordEvent,
   microtaskEngagement,
   milestoneSynthesisSatisfied,
-} from '../operations/engagement';
+} from '../operations/kernel/engagement';
 import {
   currentMicrotask,
   advanceMicrotask as advanceMicrotaskOp,
   normalizeProjectRuntime,
-} from '../operations/progress';
-import { summarizeLatestSubmissionForMicrotask } from '../operations/submission';
+} from '../operations/kernel/progress';
+import { summarizeLatestSubmissionForMicrotask } from '../operations/runtime/submission';
 import {
   applyProficiencyDirective,
   tickTurnOnProject,
   trackObservation,
-} from '../operations/dynamic-signals';
-import { DEFAULT_TIER, proficiencyDirectiveFromTarget } from '../operations/proficiency';
-import { buildAdvanceProjectPatch } from '../operations/advance-patch';
-import { formatScenarioTranscript } from '../operations/eval-prompts';
+} from '../operations/runtime/dynamic-signals';
+import { DEFAULT_TIER, proficiencyDirectiveFromTarget } from '../operations/kernel/proficiency';
+import { buildAdvanceProjectPatch } from '../operations/runtime/advance-patch';
+import { formatScenarioTranscript } from '../operations/runtime/eval-prompts';
 
 const log = createLogger('PBL v2 Instructor');
 
@@ -1497,22 +1496,31 @@ export async function* runInstructorTurn(
     // speaking, leaving the learner with an empty chat. The instructing path
     // exposes only the two non-advance tools (record_observation /
     // adjust_difficulty).
-    const result = withThinkingDisabled(() =>
-      streamText({
+    const result = streamLLM(
+      {
         model: languageModel,
         system: systemPrompt,
         messages: finalMessages,
         // SCENARIO ONLY: prep-stage turns are pure Q&A — expose NO tools so the
         // model cannot record/advance; advancing the prep stage is the sidebar
         // "enter scenario" button's job.
+        // Never force a tool choice here. Measured against the live DeepSeek V4
+        // Pro API: thinking on + these `tools` + `stopWhen` streams fine, but
+        // thinking on + a FORCED `toolChoice` fails with 400 "Thinking mode does
+        // not support this tool_choice". A forced tool would also take the
+        // learner's turn away from the model, which the comment above is about.
         ...(phase === 'instructing' && !scenarioPrepStage
           ? { tools, stopWhen: stepCountIs(MAX_INSTRUCTOR_STEPS) }
           : {}),
-        ...(thinkingConfig
-          ? { providerOptions: resolveThinkingProviderOptions(languageModel, thinkingConfig) }
-          : {}),
         ...(signal ? { abortSignal: signal } : {}),
-      }),
+      },
+      'pbl-v2-instructor',
+      // Thinking is whatever the request / stage route asked for — the runtime
+      // holds no opinion of its own, same as every other call in the tree. If a
+      // deployment wants these turns cheap and snappy (on the same probe a
+      // thinking-by-default model pushed the first token from ~1.4 s to ~3.0 s),
+      // pin `thinking` off on the `pbl-v2-runtime` stage route.
+      thinkingConfig,
     );
 
     for await (const part of result.fullStream) {
@@ -1770,8 +1778,8 @@ async function* runSetupFollowup(args: SetupFollowupArgs): AsyncGenerator<PBLSSE
   const historyMessages = buildSetupHistoryMessages(instructorThread);
 
   try {
-    const result = withThinkingDisabled(() =>
-      streamText({
+    const result = streamLLM(
+      {
         model: languageModel,
         system: systemPrompt,
         messages: [
@@ -1781,11 +1789,10 @@ async function* runSetupFollowup(args: SetupFollowupArgs): AsyncGenerator<PBLSSE
             content: syntheticPlatformOpener('setup', project.language),
           },
         ],
-        ...(thinkingConfig
-          ? { providerOptions: resolveThinkingProviderOptions(languageModel, thinkingConfig) }
-          : {}),
         ...(signal ? { abortSignal: signal } : {}),
-      }),
+      },
+      'pbl-v2-instructor-setup-followup',
+      thinkingConfig,
     );
 
     let rawAssistantText = '';

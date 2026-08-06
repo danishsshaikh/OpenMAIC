@@ -7,12 +7,14 @@ import type {
 } from '@openmaic/dsl';
 import type { KVScope, KVStore, RuntimeSessionInit, RuntimeStore } from '@openmaic/storage';
 
-const { saveStageDataMock } = vi.hoisted(() => ({
+const { saveStageDataMock, saveStageDataIncrementalMock } = vi.hoisted(() => ({
   saveStageDataMock: vi.fn().mockResolvedValue(undefined),
+  saveStageDataIncrementalMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/utils/stage-storage', () => ({
   saveStageData: (...args: unknown[]) => saveStageDataMock(...args),
+  saveStageDataIncremental: (...args: unknown[]) => saveStageDataIncrementalMock(...args),
   loadStageData: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/lib/pbl/v2/runtime/document-persistence', () => ({
@@ -23,7 +25,7 @@ vi.mock('@/lib/utils/database', () => ({
 }));
 
 import type { PBLProjectConfig } from '@/lib/pbl/types';
-import { transitionProjectUiPhase } from '@/lib/pbl/v2/operations/runtime-events';
+import { transitionProjectUiPhase } from '@/lib/pbl/v2/operations/kernel/runtime-events';
 import { drainProjectRuntime } from '@/lib/pbl/v2/runtime/drain';
 import type { PBLProjectV2 } from '@/lib/pbl/v2/types';
 import {
@@ -176,6 +178,8 @@ function makeStage(id = STAGE_ID): Stage {
 beforeEach(() => {
   saveStageDataMock.mockClear();
   saveStageDataMock.mockResolvedValue(undefined);
+  saveStageDataIncrementalMock.mockClear();
+  saveStageDataIncrementalMock.mockResolvedValue(undefined);
   useStageStore.getState().clearStore();
 });
 
@@ -381,6 +385,7 @@ describe('classroom server fallback PBL hydration', () => {
 
     await vi.advanceTimersByTimeAsync(600);
     expect(saveStageDataMock).not.toHaveBeenCalled();
+    expect(saveStageDataIncrementalMock).not.toHaveBeenCalled();
     expect(useStageStore.getState().stage).toBeNull();
     expect(useStageStore.getState().scenes).toEqual([]);
 
@@ -388,14 +393,16 @@ describe('classroom server fallback PBL hydration', () => {
     await applying;
     await vi.advanceTimersByTimeAsync(600);
 
-    expect(saveStageDataMock).toHaveBeenCalledOnce();
-    expect(saveStageDataMock).toHaveBeenCalledWith(
+    expect(saveStageDataIncrementalMock).toHaveBeenCalledOnce();
+    expect(saveStageDataIncrementalMock).toHaveBeenCalledWith(
       STAGE_ID,
+      [{ kind: 'structure' }, { kind: 'stage' }],
       expect.objectContaining({
         stage,
         scenes: [serverScene],
         currentSceneId: SCENE_ID,
       }),
+      expect.any(Number),
     );
   });
 });

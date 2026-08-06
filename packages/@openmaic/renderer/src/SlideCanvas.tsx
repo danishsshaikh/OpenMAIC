@@ -34,16 +34,31 @@ export interface SlideCanvasProps {
    * (e.g. 1) to skip auto-fit and render at slide-native dimensions.
    */
   scale?: number;
+  /** Percent of the container to use when auto-fitting the slide. */
+  canvasPercentage?: number;
+  /** Called with the computed fit scale when `scale` is omitted. */
+  onScaleChange?: (scale: number) => void;
   /** Override `slide.background`. */
   background?: SlideBackground;
   /** Optional play-time effects, all default off. */
   effects?: SlideEffects;
   /** Replace default <img> rendering for image elements. */
-  renderImage?: (element: PPTImageElement, resolvedSrc: string) => ReactNode;
+  renderImage?: (
+    element: PPTImageElement,
+    resolvedSrc: string,
+    defaultContent: ReactNode,
+  ) => ReactNode;
   /** Replace default <video> rendering for video elements. */
   renderVideo?: (element: PPTVideoElement) => ReactNode;
+  /** Enable pointer interaction for video controls or custom video UI. */
+  videoInteractive?: boolean;
   /** Click handler invoked on any element. */
   onElementClick?: (element: PPTElement, event: React.MouseEvent) => void;
+  /**
+   * Prefix used for each element root DOM id. Hosts that layer DOM-measured
+   * overlays on top of the canvas can keep their existing id contract.
+   */
+  elementIdPrefix?: string;
   /** Class on the outer container. */
   className?: string;
   /** Inline style on the outer container. */
@@ -73,7 +88,9 @@ export function SlideCanvas(props: SlideCanvasProps) {
   const effects = props.effects ?? ctx?.effects;
   const renderImage = props.renderImage ?? ctx?.renderImage;
   const renderVideo = props.renderVideo ?? ctx?.renderVideo;
+  const videoInteractive = props.videoInteractive ?? ctx?.videoInteractive;
   const onElementClick = props.onElementClick ?? ctx?.onElementClick;
+  const elementIdPrefix = props.elementIdPrefix ?? 'slide-element-';
   const { className, style } = props;
   const chrome = props.chrome ?? true;
 
@@ -83,6 +100,8 @@ export function SlideCanvas(props: SlideCanvasProps) {
   const { viewportStyles, fitScale } = useViewportSize(canvasRef, {
     viewportSize: slide.viewportSize,
     viewportRatio: slide.viewportRatio,
+    canvasPercentage: props.canvasPercentage,
+    onScaleChange: scale === undefined ? props.onScaleChange : undefined,
   });
   const canvasScale = scale ?? fitScale;
   const slideFitTransform = computeSlideFitTransform(
@@ -97,7 +116,12 @@ export function SlideCanvas(props: SlideCanvasProps) {
   // Plain derivations: when this package is consumed in a React Compiler build
   // these are auto-memoized; otherwise the cost (O(elements) lookups) is trivial.
   const rawLaserGeometry: PercentageGeometry | null = effects?.laser
-    ? findElementGeometry(elements, effects.laser.elementId, slide.viewportSize)
+    ? findElementGeometry(
+        elements,
+        effects.laser.elementId,
+        slide.viewportSize,
+        slide.viewportRatio,
+      )
     : null;
   const laserGeometry = transformPercentageGeometry(
     rawLaserGeometry,
@@ -107,7 +131,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
   );
 
   const rawZoomGeometry: PercentageGeometry | null = effects?.zoom
-    ? findElementGeometry(elements, effects.zoom.elementId, slide.viewportSize)
+    ? findElementGeometry(elements, effects.zoom.elementId, slide.viewportSize, slide.viewportRatio)
     : null;
   const zoomGeometry = transformPercentageGeometry(
     rawZoomGeometry,
@@ -116,9 +140,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
     viewportStyles.height,
   );
 
-  const highlightElement = effects?.highlight
-    ? (elements.find((el) => el.id === effects.highlight!.elementId) ?? null)
-    : null;
+  const highlights = effects?.highlights ?? (effects?.highlight ? [effects.highlight] : []);
 
   return (
     <div
@@ -195,17 +217,26 @@ export function SlideCanvas(props: SlideCanvasProps) {
                 theme={slide.theme}
                 renderImage={renderImage}
                 renderVideo={renderVideo}
+                videoInteractive={videoInteractive}
                 onElementClick={onElementClick}
+                idPrefix={elementIdPrefix}
               />
             ))}
 
-            {highlightElement && (
-              <HighlightOverlay element={highlightElement} options={effects?.highlight} />
-            )}
+            {highlights.map((highlight) => {
+              const element = elements.find((el) => el.id === highlight.elementId);
+              return element ? (
+                <HighlightOverlay key={highlight.elementId} element={element} options={highlight} />
+              ) : null;
+            })}
           </div>
         </div>
 
-        <SpotlightOverlay options={effects?.spotlight} />
+        <SpotlightOverlay
+          options={effects?.spotlight}
+          elementIdPrefix={elementIdPrefix}
+          measurementKey={elements}
+        />
 
         <div
           style={{

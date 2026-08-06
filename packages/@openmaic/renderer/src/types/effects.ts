@@ -8,7 +8,10 @@ export interface LaserEffectOptions {
 
 export interface SpotlightEffectOptions {
   elementId: string;
+  /** Preferred current name for mask opacity. */
   dimOpacity?: number;
+  /** Backward-compatible upstream alias for mask opacity. */
+  dimness?: number;
   /** Render the final spotlight mask without transition animation. */
   static?: boolean;
 }
@@ -30,5 +33,6 @@ export interface SlideEffects {
   laser?: LaserEffectOptions;
   spotlight?: SpotlightEffectOptions;
   highlight?: HighlightEffectOptions;
+  highlights?: HighlightEffectOptions[];
   zoom?: ZoomEffectOptions;
 }

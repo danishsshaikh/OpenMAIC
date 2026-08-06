@@ -19,11 +19,14 @@ export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
   /** ID prefix the SlideElement uses on its root div. Default `slide-element-`. */
   elementIdPrefix?: string;
+  /** Remeasure when host element data changes without changing the target ID. */
+  measurementKey?: unknown;
 }
 
 export function SpotlightOverlay({
   options,
   elementIdPrefix = 'slide-element-',
+  measurementKey,
 }: SpotlightOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState<SpotlightRect | null>(null);
@@ -173,10 +176,35 @@ export function SpotlightOverlay({
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires effect
     measure();
-  }, [measure]);
+
+    const container = containerRef.current;
+    if (!container || !spotlightElementId) return;
+
+    const root = document.getElementById(`${elementIdPrefix}${spotlightElementId}`);
+    const target = root?.querySelector('.element-content') ?? root;
+    if (!target) return;
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(target);
+
+    const media = target.querySelectorAll('img, video');
+    media.forEach((element) => {
+      element.addEventListener('load', measure);
+      element.addEventListener('loadedmetadata', measure);
+    });
+
+    return () => {
+      observer.disconnect();
+      media.forEach((element) => {
+        element.removeEventListener('load', measure);
+        element.removeEventListener('loadedmetadata', measure);
+      });
+    };
+  }, [measure, measurementKey, spotlightElementId, elementIdPrefix]);
 
   const active = !!spotlightElementId && !!rect;
-  const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
+  const dimOpacity = clampOpacity(options?.dimOpacity ?? options?.dimness ?? 0.7);
   const isStaticSpotlight = Boolean(options?.static);
   const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect, viewport ?? undefined) : null;
   if (options?.static && rect && !staticFocusRect) {
