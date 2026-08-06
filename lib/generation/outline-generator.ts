@@ -23,6 +23,12 @@ import {
   isInteractiveScenesEnabled,
   isWorkspaceScenesEnabled,
 } from '@/lib/config/feature-flags';
+import {
+  buildInteractiveOutlineTrace,
+  classifyInteractiveOutline,
+  isAllowedDeterministicInteractiveOutline,
+  traceInteractiveCapability,
+} from '@/lib/interactive/capabilities';
 const log = createLogger('Generation');
 
 /**
@@ -194,9 +200,27 @@ export function applyOutlineFallbacks(
   hasLanguageModel: boolean,
   options: { allowProceduralSkill?: boolean } = {},
 ): SceneOutline {
-  if (outline.type === 'interactive' && !isInteractiveScenesEnabled()) {
-    log.warn(`Interactive outline "${outline.title}" is disabled, falling back to slide`);
-    return { ...outline, type: 'slide', widgetType: undefined, widgetOutline: undefined };
+  traceInteractiveCapability(
+    'interactiveNormalizationFlat',
+    buildInteractiveOutlineTrace(outline, 'generation-fallback-input'),
+  );
+
+  if (outline.widgetType === 'procedural-skill' && !options.allowProceduralSkill) {
+    log.warn(`Procedural-skill outline "${outline.title}" is not enabled, falling back to diagram`);
+    const fallback = sanitizeProceduralSkillOutline(outline);
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
+  }
+
+  if (outline.widgetType === 'procedural-skill' && options.allowProceduralSkill) {
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(outline, 'generation-fallback-output'),
+    );
+    return outline;
   }
 
   if (
@@ -206,33 +230,79 @@ export function applyOutlineFallbacks(
     !isFlowScenesEnabled()
   ) {
     log.warn(`Flow outline "${outline.title}" is disabled, falling back to slide`);
-    return { ...outline, type: 'slide', widgetType: undefined, widgetOutline: undefined };
+    const fallback = {
+      ...outline,
+      type: 'slide' as const,
+      widgetType: undefined,
+      widgetOutline: undefined,
+    };
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
+  }
+
+  if (
+    outline.type === 'interactive' &&
+    !isAllowedDeterministicInteractiveOutline(outline) &&
+    !isInteractiveScenesEnabled()
+  ) {
+    const capabilities = classifyInteractiveOutline(outline);
+    log.warn(
+      `Interactive outline "${outline.title}" is disabled (${capabilities.blockedReason ?? 'not allowed'}), falling back to slide`,
+    );
+    const fallback = {
+      ...outline,
+      type: 'slide' as const,
+      widgetType: undefined,
+      widgetOutline: undefined,
+    };
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
   }
 
   if (outline.type === 'pbl' && !isWorkspaceScenesEnabled()) {
     log.warn(`PBL outline "${outline.title}" is disabled, falling back to slide`);
-    return { ...outline, type: 'slide', pblConfig: undefined };
+    const fallback = { ...outline, type: 'slide' as const, pblConfig: undefined };
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
   }
 
   // Ultra Mode: interactive scenes with widgetType + widgetOutline are valid
   const hasWidgetConfig = outline.widgetType && outline.widgetOutline;
 
-  if (outline.widgetType === 'procedural-skill' && !options.allowProceduralSkill) {
-    log.warn(`Procedural-skill outline "${outline.title}" is not enabled, falling back to diagram`);
-    return sanitizeProceduralSkillOutline(outline);
-  }
-
   if (outline.type === 'interactive' && !outline.interactiveConfig && !hasWidgetConfig) {
     log.warn(
       `Interactive outline "${outline.title}" missing interactiveConfig and widget config, falling back to slide`,
     );
-    return { ...outline, type: 'slide' };
+    const fallback = { ...outline, type: 'slide' as const };
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
   }
   if (outline.type === 'pbl' && (!outline.pblConfig || !hasLanguageModel)) {
     log.warn(
       `PBL outline "${outline.title}" missing pblConfig or languageModel, falling back to slide`,
     );
-    return { ...outline, type: 'slide' };
+    const fallback = { ...outline, type: 'slide' as const };
+    traceInteractiveCapability(
+      'interactiveNormalizationFlat',
+      buildInteractiveOutlineTrace(fallback, 'generation-fallback-output'),
+    );
+    return fallback;
   }
+  traceInteractiveCapability(
+    'interactiveNormalizationFlat',
+    buildInteractiveOutlineTrace(outline, 'generation-fallback-output'),
+  );
   return outline;
 }

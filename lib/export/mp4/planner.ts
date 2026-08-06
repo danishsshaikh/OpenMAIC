@@ -239,6 +239,7 @@ export function buildLocalMp4SpeechSegmentVisualPlan({
       const effects = pendingEffectsToVisualEffects(pending);
       const frameKey = buildLocalMp4VisualFrameKey(frame.file, effects);
       const frameFile = getFrameFile({ frame, effects, frameKey });
+      logMp4SpotlightExportTrace(scene, frame, pending, speech, frameKey);
       const segment: LocalMp4SpeechSegmentVisual = {
         scene,
         frame,
@@ -406,6 +407,58 @@ function hashString(value: string): string {
 
 function countEffects(effects: LocalMp4VisualEffects | undefined): number {
   return (effects?.spotlight ? 1 : 0) + (effects?.laser ? 1 : 0);
+}
+
+function logMp4SpotlightExportTrace(
+  scene: Scene,
+  frame: VideoFrameEntry,
+  pending: PendingEffects,
+  speech: SpeechAction,
+  frameKey: string,
+) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  const spotlight = pending.spotlight;
+  if (!spotlight) return;
+  const element =
+    scene.content.type === 'slide'
+      ? scene.content.canvas.elements.find(
+          (candidate) => candidate.id === spotlight.effect.elementId,
+        )
+      : undefined;
+  const payload = {
+    sceneId: scene.id,
+    sceneTitle: scene.title,
+    actionId:
+      typeof scene.actions?.[spotlight.actionIndex]?.id === 'string'
+        ? scene.actions[spotlight.actionIndex].id
+        : undefined,
+    elementId: spotlight.effect.elementId,
+    narrationPreview: speech.text.slice(0, 80),
+  };
+  console.info('[SpotlightExportTrace]', {
+    checkpoint: 'saved-action-target',
+    ...payload,
+    actionType: 'spotlight',
+    savedElementType: element?.type,
+    savedActionTargetFlat: [
+      [
+        scene.id,
+        payload.actionId ?? '',
+        spotlight.effect.elementId,
+        element?.type ?? '',
+        speech.id ?? '',
+        payload.narrationPreview,
+      ].join(':'),
+    ],
+  });
+  console.info('[SpotlightExportTrace]', {
+    checkpoint: 'planner-effect-target',
+    sceneId: scene.id,
+    frameKey,
+    elementId: spotlight.effect.elementId,
+    plannerTargetFlat: [[scene.id, frame.index, frameKey, spotlight.effect.elementId].join(':')],
+  });
 }
 
 export function hasEffects(

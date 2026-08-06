@@ -66,6 +66,13 @@ export interface SlideToPngOptions {
    */
   debugVisibleMs?: number;
   /**
+   * Debug/test only — override the temporary container's CSS `left` value.
+   * Defaults to the established far-offscreen mount. Used by pixel tests to
+   * prove target lookup stays scoped to the snapshot tree regardless of page
+   * position.
+   */
+  debugMountLeft?: number;
+  /**
    * Optional play-time visual effects to bake into the static snapshot.
    * Uses the same contract as `<SlideCanvas effects={...}>`.
    */
@@ -106,9 +113,10 @@ export async function slideToPng(
   // skip paint for `position: fixed` elements outside the viewport, which
   // breaks the snapshot.
   const container = document.createElement('div');
+  const mountLeft = options.debugMountLeft ?? -99999;
   container.style.cssText = [
     'position: absolute',
-    'left: -99999px',
+    `left: ${mountLeft}px`,
     'top: 0',
     `width: ${width}px`,
     `height: ${height}px`,

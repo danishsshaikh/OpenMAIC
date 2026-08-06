@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Scene } from '@/lib/types/stage';
+import { makeScene, type Scene, type SceneContent } from '@/lib/types/stage';
+import type { WidgetConfig } from '@/lib/types/widgets';
+import type { PBLProjectConfig } from '@/lib/pbl/types';
 
 const FLAG_KEYS = [
   'NEXT_PUBLIC_MAIC_EDITOR_ENABLED',
   'OPENMAIC_ENABLE_VOCATIONAL',
   'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
   'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
+  'NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS',
+  'NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS',
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
   'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
+  'NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES',
   'NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES',
   'NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES',
   'NEXT_PUBLIC_FEATURE_FLOW_SCENES',
@@ -34,17 +39,63 @@ function resetFlagEnv() {
   }
 }
 
-function scene(overrides: Partial<Scene>): Scene {
+const emptySlideContent = {
+  type: 'slide',
+  canvas: {
+    id: 'slide-canvas',
+    viewportSize: 1000,
+    viewportRatio: 0.5625,
+    theme: {
+      backgroundColor: '#ffffff',
+      themeColors: ['#5b9bd5'],
+      fontColor: '#111111',
+      fontName: 'Arial',
+    },
+    elements: [],
+  },
+} satisfies Extract<Scene['content'], { type: 'slide' }>;
+
+const flowWidgetConfig = {
+  type: 'diagram',
+  diagramType: 'flowchart',
+  description: 'Simple flowchart',
+  nodes: [],
+  edges: [],
+} satisfies WidgetConfig;
+
+const projectConfig = {
+  projectInfo: { title: 'Project', description: 'Project workspace' },
+  agents: [],
+  issueboard: { agent_ids: [], issues: [], current_issue_id: null },
+  chat: { messages: [] },
+} satisfies PBLProjectConfig;
+
+function scene(
+  content: SceneContent,
+  overrides: Partial<Omit<Scene, 'type' | 'content'>> = {},
+): Scene {
+  return makeScene(
+    {
+      id: 'scene',
+      stageId: 'stage',
+      title: 'Scene',
+      order: 0,
+      actions: [],
+      ...overrides,
+    },
+    content,
+  );
+}
+
+function sceneCore(overrides: Partial<Omit<Scene, 'type' | 'content'>>) {
   return {
     id: 'scene',
     stageId: 'stage',
     title: 'Scene',
     order: 0,
-    type: 'slide',
-    content: { type: 'slide', elements: [] },
     actions: [],
     ...overrides,
-  } as Scene;
+  };
 }
 
 afterEach(() => {
@@ -95,15 +146,19 @@ describe('legacy feature flags', () => {
   it('keeps vocational test UI and video export default off', async () => {
     delete process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI;
     delete process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT;
+    delete process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS;
     let flags = await loadFlags();
     expect(flags.shouldShowVocationalTestUi()).toBe(false);
     expect(flags.isVideoExportEnabled()).toBe(false);
+    expect(flags.isVideoExportBurnedInCaptionsEnabled()).toBe(false);
 
     process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI = 'yes';
     process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT = '1';
+    process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS = 'true';
     flags = await loadFlags();
     expect(flags.shouldShowVocationalTestUi()).toBe(true);
     expect(flags.isVideoExportEnabled()).toBe(true);
+    expect(flags.isVideoExportBurnedInCaptionsEnabled()).toBe(true);
   });
 });
 
@@ -113,15 +168,26 @@ describe('classroom feature flags', () => {
 
     expect(flags.FEATURE_FLAGS).toEqual({
       companionSelector: false,
+      generatedClassroomAgents: false,
       classroomChat: false,
       interactiveScenes: false,
+      deterministicInteractives: true,
       discussionScenes: false,
       workspaceScenes: false,
       flowScenes: false,
     });
   });
 
-  it('enables subordinate scene flags only when the interactive master is on', async () => {
+  it('keeps generated classroom agents opt-in for the standard teacher-only flow', async () => {
+    let flags = await loadFlags();
+    expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS = 'true';
+    flags = await loadFlags();
+    expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(true);
+  });
+
+  it('enables runtime AI and flow scene flags only behind their precise gates', async () => {
     process.env.NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES = 'true';
     process.env.NEXT_PUBLIC_FEATURE_WORKSPACE_SCENES = 'true';
     process.env.NEXT_PUBLIC_FEATURE_FLOW_SCENES = 'true';
@@ -141,34 +207,71 @@ describe('classroom feature flags', () => {
     expect(flags.isFlowScenesEnabled()).toBe(true);
   });
 
-  it('filters disabled interactive, workspace, and flow scenes from playback navigation', async () => {
-    const slide = scene({ id: 'slide-1', type: 'slide', content: { type: 'slide', elements: [] } });
-    const quiz = scene({ id: 'quiz-1', type: 'quiz', content: { type: 'quiz', questions: [] } });
-    const interactive = scene({
-      id: 'interactive-1',
-      type: 'interactive',
-      content: { type: 'interactive', html: '<button />', widgetType: 'custom' },
-    });
-    const workspace = scene({
-      id: 'pbl-1',
-      type: 'pbl',
-      content: { type: 'pbl', projectConfig: { title: 'Project', tasks: [] } },
-    });
-    const flow = scene({
-      id: 'flow-1',
-      type: 'interactive',
-      content: {
+  it('keeps deterministic interactives separate from broad flow enablement', async () => {
+    const simulation = scene(
+      {
         type: 'interactive',
+        url: 'about:blank',
+        html: '<button />',
+        widgetType: 'simulation',
+      },
+      sceneCore({ id: 'simulation-1' }),
+    );
+    const flow = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
         html: '<div />',
         widgetType: 'diagram',
-        widgetConfig: { type: 'diagram', diagramType: 'flowchart', nodes: [], edges: [] },
+        widgetConfig: flowWidgetConfig,
       },
-    });
+      sceneCore({ id: 'flow-1' }),
+    );
+
+    let flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(true);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';
+    flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(true);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES = 'false';
+    flags = await loadFlags();
+    expect(flags.isSceneEnabled(simulation)).toBe(false);
+    expect(flags.isSceneEnabled(flow)).toBe(false);
+  });
+
+  it('filters disabled interactive, workspace, and flow scenes from playback navigation', async () => {
+    const slide = scene(emptySlideContent, sceneCore({ id: 'slide-1' }));
+    const quiz = scene({ type: 'quiz', questions: [] }, sceneCore({ id: 'quiz-1' }));
+    const interactive = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
+        html: '<button />',
+        widgetType: 'simulation',
+      },
+      sceneCore({ id: 'interactive-1' }),
+    );
+    const workspace = scene({ type: 'pbl', projectConfig }, sceneCore({ id: 'pbl-1' }));
+    const flow = scene(
+      {
+        type: 'interactive',
+        url: 'about:blank',
+        html: '<div />',
+        widgetType: 'diagram',
+        widgetConfig: flowWidgetConfig,
+      },
+      sceneCore({ id: 'flow-1' }),
+    );
 
     let flags = await loadFlags();
     expect(flags.filterEnabledScenes([slide, quiz, interactive, workspace, flow])).toEqual([
       slide,
       quiz,
+      interactive,
     ]);
 
     process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES = 'true';

@@ -1,14 +1,19 @@
 'use client';
 
-import { useRef, useState, useLayoutEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SpotlightEffectOptions } from '../types/effects';
 import {
   getRelativeSpotlightRect,
-  getStaticSpotlightDimRects,
   getStaticSpotlightFocusRect,
+  getStaticSpotlightPixelRect,
   type SpotlightRect,
+  type SpotlightFocusRect,
+  type SpotlightViewportSize,
 } from './spotlightGeometry';
+
+const SPOTLIGHT_TRACE_PREFIX = '[SpotlightTargetTrace]';
+const SPOTLIGHT_EXPORT_TRACE_PREFIX = '[SpotlightExportTrace]';
 
 export interface SpotlightOverlayProps {
   options?: SpotlightEffectOptions;
@@ -22,6 +27,7 @@ export function SpotlightOverlay({
 }: SpotlightOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState<SpotlightRect | null>(null);
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
 
   const spotlightElementId = options?.elementId;
 
@@ -43,12 +49,51 @@ export function SpotlightOverlay({
       return;
     }
 
-    const contentEl = domElement.querySelector('.element-content');
-    const targetEl = contentEl ?? domElement;
+    const resolution = resolveSpotlightMeasurementNode({
+      snapshotRoot: lookupRoot,
+      targetElement: domElement,
+      elementId: spotlightElementId,
+    });
+    const targetEl = resolution.measurementElement;
 
     const containerRect = containerRef.current.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
     const normalizedRect = getRelativeSpotlightRect(targetRect, containerRect);
+    setViewport({ width: containerRect.width, height: containerRect.height });
+    logSpotlightExportTrace(
+      { static: true },
+      {
+        checkpoint: 'snapshot-target-resolution',
+        elementId: spotlightElementId,
+        selectorUsed: resolution.selectorUsed,
+        resolutionReason: resolution.resolutionReason,
+        resolvedNodeId: targetEl.id,
+        resolvedDataElementId: targetEl.dataset.elementId,
+        resolvedNodeTag: targetEl.tagName,
+        resolvedNodeClass: targetEl.className,
+        resolvedParentDataElementId: targetEl.parentElement?.dataset.elementId,
+        snapshotResolvedTargetFlat: [
+          [
+            spotlightElementId,
+            resolution.selectorUsed,
+            targetEl.id,
+            targetEl.dataset.elementId ?? '',
+            targetEl.tagName,
+            String(targetEl.className || '').slice(0, 80),
+            targetEl.parentElement?.dataset.elementId ?? '',
+          ].join(':'),
+        ],
+      },
+    );
+    logSpotlightExportTrace(
+      { static: true },
+      {
+        checkpoint: 'snapshot-raw-geometry',
+        elementId: spotlightElementId,
+        targetRect: rectForLog(targetRect),
+        containerRect: rectForLog(containerRect),
+      },
+    );
 
     if (containerRect.width === 0 || containerRect.height === 0) {
       warnStaticSpotlightDiagnostic(options, 'container-zero-size', {
@@ -85,7 +130,43 @@ export function SpotlightOverlay({
       setRect(null);
       return;
     }
+    if (options?.static && staticSpotlightRectLooksOversized(normalizedRect)) {
+      warnStaticSpotlightDiagnostic(options, 'oversized-focus-geometry', {
+        elementId: spotlightElementId,
+        targetDomId,
+        targetTagName: targetEl.tagName,
+        targetClassName: targetEl.className,
+        targetRect: rectForLog(targetRect),
+        containerRect: rectForLog(containerRect),
+        normalizedRect: roundFocusRectForData(normalizedRect),
+      });
+      setRect(null);
+      return;
+    }
 
+    const localRect = localRectForLog(targetRect, containerRect);
+    logSpotlightExportTrace(
+      { static: true },
+      {
+        checkpoint: 'snapshot-relative-geometry',
+        elementId: spotlightElementId,
+        localRect,
+        normalizedRect: roundFocusRectForData(normalizedRect),
+        snapshotRelativeRectFlat: [
+          [
+            spotlightElementId,
+            localRect.x,
+            localRect.y,
+            localRect.width,
+            localRect.height,
+            roundRectNumber(normalizedRect.x),
+            roundRectNumber(normalizedRect.y),
+            roundRectNumber(normalizedRect.w),
+            roundRectNumber(normalizedRect.h),
+          ].join(':'),
+        ],
+      },
+    );
     setRect(normalizedRect);
   }, [spotlightElementId, elementIdPrefix, options]);
 
@@ -96,16 +177,80 @@ export function SpotlightOverlay({
 
   const active = !!spotlightElementId && !!rect;
   const dimOpacity = clampOpacity(options?.dimOpacity ?? 0.7);
-  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect) : null;
-  const staticDimRects = getStaticSpotlightDimRects(staticFocusRect);
-  if (options?.static && rect && (!staticFocusRect || staticDimRects.length === 0)) {
+  const isStaticSpotlight = Boolean(options?.static);
+  const staticFocusRect = rect ? getStaticSpotlightFocusRect(rect, viewport ?? undefined) : null;
+  if (options?.static && rect && !staticFocusRect) {
     warnStaticSpotlightDiagnostic(options, 'invalid-focus-geometry', {
       elementId: spotlightElementId,
       rect,
       focusRect: staticFocusRect,
-      staticRectCount: staticDimRects.length,
     });
   }
+
+  useEffect(() => {
+    if (!isStaticSpotlight || !spotlightElementId || !rect || !staticFocusRect || !viewport) {
+      return;
+    }
+    const pixelRect = getStaticSpotlightPixelRect(staticFocusRect, viewport);
+    const targetWidthRatio = pixelRect ? pixelRect.width / viewport.width : undefined;
+    const targetHeightRatio = pixelRect ? pixelRect.height / viewport.height : undefined;
+    const targetAreaRatio = pixelRect
+      ? (pixelRect.width * pixelRect.height) / (viewport.width * viewport.height)
+      : undefined;
+    logSpotlightExportTrace(
+      { static: true },
+      {
+        checkpoint: 'snapshot-pixel-geometry',
+        elementId: spotlightElementId,
+        outputWidth: Math.round(viewport.width),
+        outputHeight: Math.round(viewport.height),
+        pixelRect,
+        targetWidthRatio,
+        targetHeightRatio,
+        targetAreaRatio,
+        snapshotPixelRectFlat: [
+          [
+            spotlightElementId,
+            Math.round(viewport.width),
+            Math.round(viewport.height),
+            pixelRect?.left ?? '',
+            pixelRect?.top ?? '',
+            pixelRect?.right ?? '',
+            pixelRect?.bottom ?? '',
+            targetAreaRatio == null ? '' : roundRectNumber(targetAreaRatio),
+          ].join(':'),
+        ],
+      },
+    );
+    logSpotlightTargetTrace({
+      checkpoint: 'snapshotResolvedTargetsFlat',
+      targetElementId: spotlightElementId,
+      order: [
+        [
+          spotlightElementId,
+          roundRectNumber(rect.x),
+          roundRectNumber(rect.y),
+          roundRectNumber(rect.w),
+          roundRectNumber(rect.h),
+          `${Math.round(viewport.width)}x${Math.round(viewport.height)}`,
+        ].join(':'),
+      ],
+    });
+    logSpotlightTargetTrace({
+      checkpoint: 'snapshotFocusRectsFlat',
+      targetElementId: spotlightElementId,
+      order: [
+        [
+          spotlightElementId,
+          roundRectNumber(staticFocusRect.x),
+          roundRectNumber(staticFocusRect.y),
+          roundRectNumber(staticFocusRect.w),
+          roundRectNumber(staticFocusRect.h),
+          roundRectNumber(staticFocusRect.rx),
+        ].join(':'),
+      ],
+    });
+  }, [isStaticSpotlight, rect, spotlightElementId, staticFocusRect, viewport]);
 
   return (
     <div
@@ -119,25 +264,20 @@ export function SpotlightOverlay({
       }}
     >
       <AnimatePresence mode="wait">
-        {active && staticFocusRect && staticDimRects.length > 0 && options?.static ? (
-          <div data-openmaic-static-spotlight="true" style={{ position: 'absolute', inset: 0 }}>
-            {/* html2canvas-pro does not reliably preserve SVG masks or oversized
-               shadows. Static export uses ordinary dim rectangles so the
-               original target content remains uncovered in the rasterized PNG. */}
-            {staticDimRects.map((dimRect) => (
-              <div
-                key={dimRect.key}
-                data-openmaic-static-spotlight-dim={dimRect.key}
-                style={{
-                  position: 'absolute',
-                  left: `${dimRect.x}%`,
-                  top: `${dimRect.y}%`,
-                  width: `${dimRect.w}%`,
-                  height: `${dimRect.h}%`,
-                  backgroundColor: `rgba(0,0,0,${dimOpacity})`,
-                }}
-              />
-            ))}
+        {active && staticFocusRect && viewport && options?.static ? (
+          <div
+            data-openmaic-static-spotlight="true"
+            data-openmaic-static-spotlight-target={spotlightElementId}
+            data-openmaic-static-spotlight-focus={
+              staticFocusRect ? JSON.stringify(roundFocusRectForData(staticFocusRect)) : undefined
+            }
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <StaticSpotlightCanvas
+              focusRect={staticFocusRect}
+              viewport={viewport}
+              dimOpacity={dimOpacity}
+            />
             <div
               data-openmaic-static-spotlight-focus="true"
               style={{
@@ -228,6 +368,70 @@ export function SpotlightOverlay({
   );
 }
 
+function StaticSpotlightCanvas({
+  focusRect,
+  viewport,
+  dimOpacity,
+}: {
+  focusRect: SpotlightFocusRect;
+  viewport: SpotlightViewportSize;
+  dimOpacity: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const width = Math.max(1, Math.round(viewport.width));
+  const height = Math.max(1, Math.round(viewport.height));
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pixelRect = getStaticSpotlightPixelRect(focusRect, { width, height });
+    ctx.setTransform?.(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    if (!pixelRect) return;
+    const holeAreaRatio = (pixelRect.width * pixelRect.height) / (width * height);
+    logSpotlightExportTrace(
+      { static: true },
+      {
+        checkpoint: 'snapshot-compositor',
+        pixelRect,
+        canvasWidth: width,
+        canvasHeight: height,
+        holeAreaRatio,
+        strategy: 'single-canvas-evenodd',
+        snapshotCompositorFlat: [
+          [
+            pixelRect.left,
+            pixelRect.top,
+            pixelRect.right,
+            pixelRect.bottom,
+            width,
+            height,
+            roundRectNumber(holeAreaRatio),
+            'single-canvas-evenodd',
+          ].join(':'),
+        ],
+      },
+    );
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.rect(pixelRect.left, pixelRect.top, pixelRect.width, pixelRect.height);
+    ctx.fillStyle = `rgba(0,0,0,${dimOpacity})`;
+    ctx.fill('evenodd');
+  }, [dimOpacity, focusRect, height, width]);
+
+  return (
+    <canvas
+      data-openmaic-static-spotlight-layer="canvas"
+      ref={canvasRef}
+      width={width}
+      height={height}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+    />
+  );
+}
+
 function clampOpacity(value: number): number {
   if (!Number.isFinite(value)) return 0.7;
   return Math.max(0, Math.min(1, value));
@@ -248,6 +452,59 @@ function findElementInRoot(
   return null;
 }
 
+export function resolveSpotlightMeasurementNode({
+  snapshotRoot,
+  targetElement,
+  elementId,
+}: {
+  snapshotRoot: Element | null;
+  targetElement: HTMLElement;
+  elementId: string;
+}): {
+  targetElement: HTMLElement;
+  measurementElement: HTMLElement;
+  selectorUsed: string;
+  resolutionReason: string;
+} {
+  if (snapshotRoot && !snapshotRoot.contains(targetElement)) {
+    return {
+      targetElement,
+      measurementElement: targetElement,
+      selectorUsed: 'target-outside-snapshot-root',
+      resolutionReason: 'target-outside-snapshot-root',
+    };
+  }
+
+  const contentElement = targetElement.querySelector<HTMLElement>('.element-content');
+  const contentRect = contentElement?.getBoundingClientRect();
+  if (contentElement && hasUsableDomRect(contentRect)) {
+    return {
+      targetElement,
+      measurementElement: contentElement,
+      selectorUsed: '.element-content',
+      resolutionReason: 'element-content',
+    };
+  }
+
+  const textElement = targetElement.querySelector<HTMLElement>('.ProseMirror-static, .text');
+  const textRect = textElement?.getBoundingClientRect();
+  if (textElement && hasUsableDomRect(textRect)) {
+    return {
+      targetElement,
+      measurementElement: textElement,
+      selectorUsed: '.ProseMirror-static,.text',
+      resolutionReason: 'text-descendant',
+    };
+  }
+
+  return {
+    targetElement,
+    measurementElement: targetElement,
+    selectorUsed: `#slide-element-${elementId}`,
+    resolutionReason: 'target-wrapper-fallback',
+  };
+}
+
 function warnStaticSpotlightDiagnostic(
   options: SpotlightEffectOptions | undefined,
   reason: string,
@@ -258,6 +515,39 @@ function warnStaticSpotlightDiagnostic(
     reason,
     ...details,
   });
+}
+
+function logSpotlightTargetTrace(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(SPOTLIGHT_TRACE_PREFIX, payload);
+}
+
+function logSpotlightExportTrace(
+  options: Pick<SpotlightEffectOptions, 'static'> | undefined,
+  payload: Record<string, unknown>,
+) {
+  if (!options?.static) return;
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(SPOTLIGHT_EXPORT_TRACE_PREFIX, payload);
+}
+
+function hasUsableDomRect(rect: DOMRect | undefined): boolean {
+  return Boolean(
+    rect &&
+    Number.isFinite(rect.left) &&
+    Number.isFinite(rect.top) &&
+    Number.isFinite(rect.width) &&
+    Number.isFinite(rect.height) &&
+    rect.width > 0 &&
+    rect.height > 0,
+  );
+}
+
+function staticSpotlightRectLooksOversized(rect: SpotlightRect): boolean {
+  const areaRatio = (rect.w * rect.h) / 10000;
+  return rect.w >= 92 || rect.h >= 92 || areaRatio >= 0.72;
 }
 
 function rectForLog(rect: DOMRect): Record<string, number> {
@@ -288,4 +578,13 @@ function localRectForLog(targetRect: DOMRect, containerRect: DOMRect): Record<st
 
 function roundRectNumber(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function roundFocusRectForData(rect: SpotlightRect): SpotlightRect {
+  return {
+    x: roundRectNumber(rect.x),
+    y: roundRectNumber(rect.y),
+    w: roundRectNumber(rect.w),
+    h: roundRectNumber(rect.h),
+  };
 }

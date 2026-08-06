@@ -44,6 +44,8 @@ import { useStageStore } from '@/lib/store/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
+import { fetchSceneActions } from '@/lib/hooks/use-scene-generator';
+import { createLogger } from '@/lib/logger';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import {
   Select,
@@ -53,7 +55,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Action, DiscussionAction } from '@/lib/types/action';
-import type { SceneType } from '@/lib/types/stage';
+import type { Scene, SceneType } from '@/lib/types/stage';
 import { ELEMENT_BOUND, cueLabel, cueMeta, elementLabel } from './cue-meta';
 import { applyCuePreview, clearCuePreview, cuePreviewFor } from './cue-preview';
 import {
@@ -69,21 +71,64 @@ import {
   setDiscussionAgentById,
   setDiscussionPromptById,
   setDiscussionTopicById,
-  setSpeechTextClearAudioById,
+  setSpeechTextById,
 } from './actions-edit';
 import { ActionPicker } from './ActionPicker';
 import type { PickerType } from './picker-options';
 import {
   audioExists,
   audioObjectUrl,
-  discardSpeechAudio,
   regenerateSpeechAudio,
   resolveSpeechAudioId,
   speechAudioId,
 } from '@/lib/audio/regenerate-speech-tts';
+import {
+  buildNarrationSourceFromScene,
+  getVisibleElementText,
+  getAudioSourceFingerprint,
+  getNarrationSyncState,
+  normalizeNarrationText,
+  resolveNarrationSyncDecision,
+  stableStringify,
+  staleAudioMetadata,
+  syncedNarrationMetadata,
+  type NarrationSyncDecision,
+  type NarrationSyncState,
+  type NarrationVisualBlock,
+} from '@/lib/audio/narration-sync';
+import type { PPTElement } from '@openmaic/dsl';
+import type {
+  GeneratedInteractiveContent,
+  GeneratedPBLContent,
+  GeneratedQuizContent,
+  GeneratedSlideContent,
+  SceneOutline,
+} from '@/lib/types/generation';
 
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
+const log = createLogger('NarrationSync');
+const ORDER_LOG_PREFIX = '[NarrationSyncOrder]';
+const SPOTLIGHT_TRACE_PREFIX = '[SpotlightTargetTrace]';
+type NarrationGenerationSlideContent = GeneratedSlideContent & {
+  narrationSource?: {
+    text: string;
+    elementCount: number;
+    fingerprint: string;
+    blocks: Array<{
+      blockId: string;
+      elementIds: string[];
+      targetElementId: string;
+      text: string;
+      orderIndex: number;
+    }>;
+  };
+  choreography?: Array<{
+    targetElementId: string;
+    targetText: string;
+    orderIndex: number;
+  }>;
+};
 // Stable empty set for the "no lines regenerating" state (avoids re-allocating
 // on every reset and keeps a constant identity between batch runs).
 const NO_IDS: ReadonlySet<string> = new Set();
@@ -181,6 +226,780 @@ function setBlankDragImage(e: React.DragEvent) {
   } catch {
     /* not supported — fall back to the default ghost */
   }
+}
+
+function outlineForScene(scene: Scene, outlines: readonly SceneOutline[]): SceneOutline {
+  const matched =
+    (scene.outlineId ? outlines.find((outline) => outline.id === scene.outlineId) : undefined) ??
+    outlines.find((outline) => outline.order === scene.order);
+  if (matched) return matched;
+  return {
+    id: scene.outlineId ?? scene.id,
+    type: scene.type,
+    title: scene.title,
+    description: scene.title,
+    keyPoints: [scene.title],
+    order: scene.order,
+  };
+}
+
+function speechTextsForScene(scene: Scene): string[] {
+  return (scene.actions ?? [])
+    .filter((action) => action.type === 'speech')
+    .map((action) => ((action as { text?: string }).text ?? '').trim())
+    .filter(Boolean);
+}
+
+function toGenerationContent(
+  content: Scene['content'],
+  narrationSource?: ReturnType<typeof buildNarrationSourceFromScene>,
+  choreographyBlocks?: readonly NarrationGenerationBlock[],
+):
+  | NarrationGenerationSlideContent
+  | GeneratedQuizContent
+  | GeneratedInteractiveContent
+  | GeneratedPBLContent {
+  if (content.type === 'slide') {
+    const blocks = choreographyBlocks ?? narrationSource?.visualBlocks ?? [];
+    return {
+      elements: content.canvas.elements ?? [],
+      background: content.canvas.background,
+      ...(narrationSource
+        ? {
+            narrationSource: {
+              text: narrationSource.text,
+              elementCount: narrationSource.elementCount,
+              fingerprint: narrationSource.fingerprint,
+              blocks: blocks.map((block) => ({
+                blockId: block.blockId,
+                elementIds: block.elementIds,
+                targetElementId: block.targetElementId,
+                text: block.text,
+                orderIndex: block.orderIndex,
+              })),
+            },
+            choreography: blocks.map((block) => ({
+              targetElementId: block.targetElementId,
+              targetText: block.text,
+              orderIndex: block.orderIndex,
+            })),
+          }
+        : {}),
+    } satisfies NarrationGenerationSlideContent;
+  }
+  return content as GeneratedQuizContent | GeneratedInteractiveContent | GeneratedPBLContent;
+}
+
+type NarrationGenerationBlock = NarrationVisualBlock & { targetElementId: string };
+
+interface TargetResolution {
+  elementId: string;
+}
+
+function preserveSpeechAudioByPosition(
+  previous: readonly Action[],
+  generated: readonly Action[],
+): Action[] {
+  const previousSpeech = previous.filter((action) => action.type === 'speech') as Array<
+    Action & { id?: string; audioId?: string; audioUrl?: string }
+  >;
+  const previousSpeechById = new Map(
+    previousSpeech
+      .filter((action) => action.id)
+      .map((action) => [action.id as string, action] as const),
+  );
+  let speechIndex = 0;
+  return generated.map((action) => {
+    if (action.type !== 'speech') return action;
+    const prior =
+      (action.id ? previousSpeechById.get(action.id) : undefined) ?? previousSpeech[speechIndex++];
+    if (!prior?.audioId && !prior?.audioUrl) return action;
+    return {
+      ...action,
+      ...(prior.audioId ? { audioId: prior.audioId } : {}),
+      ...(prior.audioUrl ? { audioUrl: prior.audioUrl } : {}),
+    } as Action;
+  });
+}
+
+function preserveActionPairIdsByVisualBlock(
+  previous: readonly Action[],
+  generated: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+) {
+  const previousPairs = spotlightSpeechPairsByVisualBlock(previous, blocks);
+  const generatedTargetCounts = new Map<string, number>();
+  let pendingTargetId: string | null = null;
+
+  return generated.map((action) => {
+    if (isElementTargetAction(action)) {
+      const block = visualBlockForTargetId(blocks, action.elementId);
+      pendingTargetId = block?.blockId ?? action.elementId;
+      const index = generatedTargetCounts.get(pendingTargetId) ?? 0;
+      generatedTargetCounts.set(pendingTargetId, index + 1);
+      const pair = previousPairs.get(pendingTargetId)?.[index];
+      return pair?.effectId ? ({ ...action, id: pair.effectId } as Action) : action;
+    }
+
+    if (action.type === 'speech' && pendingTargetId) {
+      const index = (generatedTargetCounts.get(pendingTargetId) ?? 1) - 1;
+      const pair = previousPairs.get(pendingTargetId)?.[index];
+      pendingTargetId = null;
+      return pair?.speechId ? ({ ...action, id: pair.speechId } as Action) : action;
+    }
+
+    return action;
+  });
+}
+
+function reorderTargetPairsByVisualBlocks(
+  generated: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+  elements: readonly PPTElement[],
+  previous: readonly Action[] = [],
+): Action[] {
+  if (!blocks.length) return [...generated] as Action[];
+  const previousTargetByBlock = previousTargetIdByVisualBlock(previous, blocks);
+  const targetChunks: Array<{ blockId: string; originalIndex: number; actions: Action[] }> = [];
+  const unknownTargetChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
+  const otherChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
+
+  for (let index = 0; index < generated.length; index += 1) {
+    const action = generated[index];
+    if (!action) continue;
+    if (isElementTargetAction(action)) {
+      const block = visualBlockForTargetId(blocks, action.elementId);
+      const next = generated[index + 1];
+      const speechText =
+        next?.type === 'speech' ? ((next as { text?: string }).text ?? '') : undefined;
+      const resolved = block
+        ? resolveSpotlightEffectTarget({
+            generatedTargetId: action.elementId,
+            previousTargetId: previousTargetByBlock.get(block.blockId),
+            block,
+            elements,
+            narrationText: speechText,
+          })
+        : undefined;
+      const normalizedAction = resolved
+        ? ({ ...action, elementId: resolved.elementId } as Action)
+        : action;
+      const actions: Action[] = [normalizedAction];
+      if (next?.type === 'speech') {
+        actions.push(next);
+        index += 1;
+      }
+      if (block) {
+        targetChunks.push({ blockId: block.blockId, originalIndex: index, actions });
+      } else {
+        unknownTargetChunks.push({ originalIndex: index, actions });
+      }
+    } else {
+      otherChunks.push({ originalIndex: index, actions: [action] });
+    }
+  }
+  if (!targetChunks.length) return [...generated] as Action[];
+
+  const chunksByBlock = new Map<string, Array<{ originalIndex: number; actions: Action[] }>>();
+  for (const chunk of targetChunks) {
+    const chunks = chunksByBlock.get(chunk.blockId) ?? [];
+    chunks.push(chunk);
+    chunksByBlock.set(chunk.blockId, chunks);
+  }
+  const orderedTargets = blocks.flatMap((block) =>
+    (chunksByBlock.get(block.blockId) ?? [])
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .map((chunk) => chunk.actions),
+  );
+  const firstTargetIndex = Math.min(...targetChunks.map((chunk) => chunk.originalIndex));
+  const lastTargetIndex = Math.max(...targetChunks.map((chunk) => chunk.originalIndex));
+  const leadingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex < firstTargetIndex);
+  const middleOtherChunks = otherChunks.filter(
+    (chunk) => chunk.originalIndex >= firstTargetIndex && chunk.originalIndex <= lastTargetIndex,
+  );
+  const trailingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex > lastTargetIndex);
+
+  return [
+    ...leadingOtherChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
+    ...orderedTargets.flat(),
+    ...middleOtherChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
+    ...unknownTargetChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
+    ...trailingOtherChunks
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .flatMap((chunk) => chunk.actions),
+  ] as Action[];
+}
+
+function previousTargetIdByVisualBlock(
+  actions: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+) {
+  const targets = new Map<string, string>();
+  for (const action of actions) {
+    if (!isElementTargetAction(action)) continue;
+    const block = visualBlockForTargetId(blocks, action.elementId);
+    if (block && !targets.has(block.blockId)) targets.set(block.blockId, action.elementId);
+  }
+  return targets;
+}
+
+function resolveSpotlightEffectTarget(args: {
+  generatedTargetId: string;
+  previousTargetId?: string;
+  block: NarrationGenerationBlock;
+  elements: readonly PPTElement[];
+  narrationText?: string;
+}): TargetResolution {
+  const generated = targetCandidate(args.generatedTargetId, args.elements, args.block);
+  const generatedIsOrderingBlock =
+    generated.valid &&
+    (args.generatedTargetId === args.block.blockId ||
+      args.generatedTargetId === args.block.targetElementId) &&
+    !args.block.elementIds.includes(args.generatedTargetId) &&
+    Boolean(bestDescendantTarget(args.block, args.elements, args.narrationText));
+
+  if (generated.valid && !generated.oversized && !generatedIsOrderingBlock) {
+    return {
+      elementId: args.generatedTargetId,
+    };
+  }
+
+  const previous = args.previousTargetId
+    ? targetCandidate(args.previousTargetId, args.elements, args.block)
+    : undefined;
+  if (
+    previous?.valid &&
+    !previous.oversized &&
+    args.previousTargetId &&
+    args.block.elementIds.includes(args.previousTargetId)
+  ) {
+    return {
+      elementId: args.previousTargetId,
+    };
+  }
+
+  const descendant = bestDescendantTarget(args.block, args.elements, args.narrationText);
+  if (descendant) {
+    return {
+      elementId: descendant,
+    };
+  }
+
+  const blockTarget = targetCandidate(args.block.targetElementId, args.elements, args.block);
+  return {
+    elementId: blockTarget.valid ? args.block.targetElementId : args.generatedTargetId,
+  };
+}
+
+function targetCandidate(
+  targetId: string,
+  elements: readonly PPTElement[],
+  block: NarrationGenerationBlock,
+) {
+  const element = elementById(elements, targetId);
+  const bounds = element ? boundsForElement(element) : undefined;
+  const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
+  const valid =
+    Boolean(element) &&
+    Boolean(bounds) &&
+    Boolean(bounds && bounds.width > 0 && bounds.height > 0) &&
+    targetBelongsToBlock(targetId, block, elements);
+  const oversized = Boolean(valid && areaRatio != null && areaRatio > 0.68);
+  return { valid, areaRatio, oversized };
+}
+
+function bestDescendantTarget(
+  block: NarrationGenerationBlock,
+  elements: readonly PPTElement[],
+  narrationText?: string,
+): string | undefined {
+  const tokens = new Set(significantTokens(narrationText ?? block.text));
+  const candidates = block.elementIds
+    .map((id) => elementById(elements, id))
+    .filter((element): element is PPTElement => Boolean(element))
+    .filter((element) => {
+      const bounds = boundsForElement(element);
+      return Boolean(bounds.width > 0 && bounds.height > 0 && getVisibleElementText(element));
+    });
+  if (!candidates.length) return undefined;
+
+  return candidates
+    .map((element, index) => {
+      const elementTokens = significantTokens(getVisibleElementText(element));
+      const overlap = elementTokens.filter((token) => tokens.has(token)).length;
+      return { id: element.id, score: overlap * 100 + elementTokens.length, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index || a.id.localeCompare(b.id))[0]?.id;
+}
+
+function targetBelongsToBlock(
+  targetId: string,
+  block: NarrationGenerationBlock,
+  elements: readonly PPTElement[],
+): boolean {
+  if (
+    targetId === block.blockId ||
+    targetId === block.targetElementId ||
+    block.elementIds.includes(targetId)
+  ) {
+    return true;
+  }
+  const element = elementById(elements, targetId);
+  const bounds = element ? boundsForElement(element) : undefined;
+  if (!bounds) return false;
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  return (
+    centerX >= block.bounds.left &&
+    centerX <= block.bounds.left + block.bounds.width &&
+    centerY >= block.bounds.top &&
+    centerY <= block.bounds.top + block.bounds.height
+  );
+}
+
+function elementById(elements: readonly PPTElement[], targetId: string): PPTElement | undefined {
+  return elements.find((element) => element.id === targetId);
+}
+
+function boundsForElement(element: PPTElement): NarrationVisualBlock['bounds'] {
+  const record = element as unknown as Record<string, unknown>;
+  return {
+    left: finiteNumber(record.left),
+    top: finiteNumber(record.top),
+    width: finiteNumber(record.width),
+    height: finiteNumber(record.height),
+  };
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function spotlightTargetAreaRatio(
+  bounds: NarrationVisualBlock['bounds'],
+  elements: readonly PPTElement[],
+): number | undefined {
+  const slideWidth = Math.max(
+    ...elements.map((element) => {
+      const elementBounds = boundsForElement(element);
+      return elementBounds.left + elementBounds.width;
+    }),
+    0,
+  );
+  const slideHeight = Math.max(
+    ...elements.map((element) => {
+      const elementBounds = boundsForElement(element);
+      return elementBounds.top + elementBounds.height;
+    }),
+    0,
+  );
+  if (slideWidth <= 0 || slideHeight <= 0) return undefined;
+  return (bounds.width * bounds.height) / (slideWidth * slideHeight);
+}
+
+function targetIdsFromActions(actions: readonly Action[]): string[] {
+  const seen = new Set<string>();
+  return actions.filter(isElementTargetAction).flatMap((action) => {
+    if (seen.has(action.elementId)) return [];
+    seen.add(action.elementId);
+    return [action.elementId];
+  });
+}
+
+function targetableVisualBlocks(
+  source: ReturnType<typeof buildNarrationSourceFromScene>,
+  actions: readonly Action[],
+  sceneTitle: string,
+): NarrationGenerationBlock[] {
+  const titleText = normalizeNarrationText(sceneTitle);
+  const targetIds = targetIdsFromActions(actions);
+  if (!targetIds.length) {
+    return source.visualBlocks.filter((block) => block.text !== titleText);
+  }
+  return source.visualBlocks.flatMap((block) => {
+    if (block.text === titleText) return [];
+    const targetElementId =
+      targetIds.find((id) => id === block.targetElementId || block.elementIds.includes(id)) ??
+      undefined;
+    if (!targetElementId) return [];
+    return [{ ...block, targetElementId }];
+  });
+}
+
+function spotlightSpeechPairsByVisualBlock(
+  actions: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+) {
+  const pairs = new Map<string, Array<{ effectId?: string; speechId?: string }>>();
+  let pending: { blockId: string; effectId?: string } | null = null;
+  for (const action of actions) {
+    if (isElementTargetAction(action)) {
+      const block = visualBlockForTargetId(blocks, action.elementId);
+      pending = { blockId: block?.blockId ?? action.elementId, effectId: action.id };
+      continue;
+    }
+    if (action.type === 'speech' && pending) {
+      const list = pairs.get(pending.blockId) ?? [];
+      list.push({ effectId: pending.effectId, speechId: action.id });
+      pairs.set(pending.blockId, list);
+      pending = null;
+    }
+  }
+  return pairs;
+}
+
+function visualBlockForTargetId(
+  blocks: readonly NarrationGenerationBlock[],
+  targetId: string,
+): NarrationGenerationBlock | undefined {
+  return blocks.find(
+    (block) =>
+      block.targetElementId === targetId ||
+      block.blockId === targetId ||
+      block.elementIds.includes(targetId),
+  );
+}
+
+function isElementTargetAction(action: Action): action is Action & { elementId: string } {
+  return (
+    (action.type === 'spotlight' || action.type === 'laser') &&
+    typeof (action as { elementId?: unknown }).elementId === 'string' &&
+    Boolean((action as { elementId?: string }).elementId)
+  );
+}
+
+function targetActionsForDiagnostics(actions: readonly Action[]) {
+  return actions
+    .filter(isElementTargetAction)
+    .map((action) => ({ actionId: action.id, targetElementId: action.elementId }));
+}
+
+function speechIdsForDiagnostics(actions: readonly Action[]) {
+  return actions
+    .filter((action) => action.type === 'speech')
+    .map((action) => action.id)
+    .filter(Boolean) as string[];
+}
+
+function orderTextPreview(value: unknown, max = 80): string {
+  return normalizeNarrationText(
+    typeof value === 'string' ? value.replace(/<[^>]+>/g, ' ') : '',
+  ).slice(0, max);
+}
+
+function elementArrayOrderForDiagnostics(scene: Scene | undefined) {
+  if (!scene || scene.content.type !== 'slide') return [];
+  return (scene.content.canvas.elements ?? []).map((element) => {
+    const record = element as unknown as Record<string, unknown>;
+    return {
+      elementId: element.id,
+      type: element.type,
+      x: typeof record.left === 'number' ? record.left : undefined,
+      y: typeof record.top === 'number' ? record.top : undefined,
+      textPreview: getVisibleElementText(element).slice(0, 80),
+    };
+  });
+}
+
+function elementArrayOrderFlatForDiagnostics(scene: Scene | undefined) {
+  return elementArrayOrderForDiagnostics(scene).map((element, index) =>
+    `${index}:${element.elementId}:${element.x ?? ''}:${element.y ?? ''}:${element.textPreview}`.slice(
+      0,
+      120,
+    ),
+  );
+}
+
+function editedElementTextFlatForDiagnostics(scene: Scene | undefined) {
+  if (!scene || scene.content.type !== 'slide') return [];
+  return (scene.content.canvas.elements ?? [])
+    .map((element, index) =>
+      `${index}:${element.id}:${getVisibleElementText(element)}`.slice(0, 120),
+    )
+    .filter((item) => item.replace(/^[^:]+:[^:]+:/, '').trim());
+}
+
+function visualBlockOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block) => ({
+    blockId: block.blockId,
+    targetElementId: block.targetElementId,
+    x: block.bounds.left,
+    y: block.bounds.top,
+    textPreview: block.text.slice(0, 80),
+  }));
+}
+
+function visualBlockOrderFlatForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block) =>
+    `${block.orderIndex}:${block.blockId}:${block.targetElementId}:${block.text}`.slice(0, 120),
+  );
+}
+
+function generationInputOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block) => ({
+    blockId: block.blockId,
+    targetElementId: block.targetElementId,
+    textPreview: block.text.slice(0, 80),
+  }));
+}
+
+function generationInputOrderFlatForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
+  return blocks.map((block, index) =>
+    `${index}:${block.blockId}:${block.targetElementId}:${block.text}`.slice(0, 120),
+  );
+}
+
+function actionOrderForDiagnostics(actions: readonly Action[]) {
+  return actions.map((action) => ({
+    type: action.type,
+    actionId: action.id,
+    targetElementId: isElementTargetAction(action) ? action.elementId : undefined,
+    speechPreview:
+      action.type === 'speech' ? orderTextPreview((action as { text?: string }).text) : undefined,
+  }));
+}
+
+function actionOrderFlatForDiagnostics(actions: readonly Action[]) {
+  return actions.map((action, index) => {
+    const target = isElementTargetAction(action) ? action.elementId : '';
+    const speech =
+      action.type === 'speech' ? orderTextPreview((action as { text?: string }).text, 120) : '';
+    return `${index}:${action.type}:${action.id ?? ''}:${target}:${speech}`.slice(0, 120);
+  });
+}
+
+function narrationSourceTextFlatForDiagnostics(
+  source: ReturnType<typeof buildNarrationSourceFromScene>,
+) {
+  return source.text
+    .split('\n')
+    .map((line, index) => `${index}:${line}`.slice(0, 120))
+    .filter((line) => line.replace(/^\d+:/, '').trim());
+}
+
+function logNarrationOrderCheckpoint(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(ORDER_LOG_PREFIX, payload);
+}
+
+function logSpotlightTargetCheckpoint(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info(SPOTLIGHT_TRACE_PREFIX, payload);
+}
+
+function spotlightTargetFlatForDiagnostics(
+  actions: readonly Action[],
+  blocks: readonly NarrationGenerationBlock[],
+  elements: readonly PPTElement[],
+) {
+  return actions.filter(isElementTargetAction).map((action, index) => {
+    const block = visualBlockForTargetId(blocks, action.elementId);
+    const element = elementById(elements, action.elementId);
+    const bounds = element ? boundsForElement(element) : undefined;
+    const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
+    return [
+      index,
+      action.id ?? '',
+      action.elementId,
+      block?.blockId ?? '',
+      block?.targetElementId ?? '',
+      areaRatio == null ? '' : areaRatio.toFixed(4),
+      areaRatio != null && areaRatio > 0.68 ? 'oversized' : 'ok',
+    ].join(':');
+  });
+}
+
+function canonicalSpotlightBlocksFlatForDiagnostics(blocks: readonly NarrationGenerationBlock[]) {
+  return blocks.map((block) =>
+    [
+      block.orderIndex,
+      block.blockId,
+      block.targetElementId,
+      block.elementIds.join(','),
+      `${Math.round(block.bounds.width)}x${Math.round(block.bounds.height)}`,
+      block.text,
+    ]
+      .join(':')
+      .slice(0, 180),
+  );
+}
+
+function logSyncDecision(sceneId: string, decision: NarrationSyncDecision) {
+  logNarrationOrderCheckpoint({
+    checkpoint: 'sync-decision',
+    sceneId,
+    currentNarrationSourceFingerprint: fingerprintHash(decision.currentNarrationSourceFingerprint),
+    storedNarrationSourceFingerprint: fingerprintHash(decision.storedNarrationSourceFingerprint),
+    narrationSourceChanged: decision.narrationSourceChanged,
+    currentAudioFingerprint: fingerprintHash(decision.currentAudioFingerprint),
+    storedAudioFingerprint: fingerprintHash(decision.storedAudioFingerprint),
+    audioChanged: decision.audioChanged,
+    resolvedStaleState: decision.resolvedStaleState,
+    chosenOperation: decision.operation,
+    hasExistingNarration: decision.hasExistingNarration,
+    hasExistingAudio: decision.hasExistingAudio,
+    isLegacyWithoutNarrationFingerprint: decision.isLegacyWithoutNarrationFingerprint,
+    isLegacyWithoutAudioFingerprint: decision.isLegacyWithoutAudioFingerprint,
+  });
+  logNarrationOrderCheckpoint({
+    checkpoint: 'syncDecisionFlat',
+    sceneId,
+    order: [
+      `narrationSourceChanged:${decision.narrationSourceChanged}`,
+      `audioChanged:${decision.audioChanged}`,
+      `state:${decision.resolvedStaleState}`,
+      `operation:${decision.operation}`,
+      `hasNarration:${decision.hasExistingNarration}`,
+      `hasAudio:${decision.hasExistingAudio}`,
+    ],
+  });
+}
+
+function logSyncCompleted(sceneId: string) {
+  logNarrationOrderCheckpoint({
+    checkpoint: 'sync-completed',
+    sceneId,
+  });
+}
+
+function logSyncFailed(sceneId: string, stage: string, error: unknown) {
+  logNarrationOrderCheckpoint({
+    checkpoint: 'sync-failed',
+    sceneId,
+    stage,
+    errorName: error instanceof Error ? error.name : typeof error,
+  });
+}
+
+function withStampedAudioIds(
+  actions: readonly Action[],
+  okIds: ReadonlySet<string>,
+  sceneOrder: number,
+): Action[] {
+  let next = [...actions] as Action[];
+  for (const action of actions) {
+    if (action.type === 'speech' && action.id && okIds.has(action.id)) {
+      next = setAudioIdById(next, action.id, speechAudioId(sceneOrder, action.id));
+    }
+  }
+  return next;
+}
+
+function fingerprintText(value: string): string {
+  return stableStringify(value);
+}
+
+function significantTokens(value: string): string[] {
+  const stop = new Set([
+    'about',
+    'after',
+    'again',
+    'also',
+    'and',
+    'are',
+    'because',
+    'been',
+    'before',
+    'being',
+    'can',
+    'for',
+    'from',
+    'has',
+    'have',
+    'into',
+    'its',
+    'our',
+    'the',
+    'their',
+    'this',
+    'through',
+    'to',
+    'with',
+  ]);
+  return normalizeNarrationText(value)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 3 && !stop.has(token));
+}
+
+function unchangedNarrationStillLooksStale(
+  currentSourceText: string,
+  previousNarration: string,
+  generatedNarration: string,
+): boolean {
+  if (
+    !previousNarration.trim() ||
+    fingerprintText(previousNarration) !== fingerprintText(generatedNarration)
+  ) {
+    return false;
+  }
+  const sourceTokens = new Set(significantTokens(currentSourceText));
+  const previousTokens = significantTokens(previousNarration);
+  if (previousTokens.length < 5) return false;
+  const missing = previousTokens.filter((token) => !sourceTokens.has(token));
+  return missing.length >= Math.max(3, Math.ceil(previousTokens.length * 0.4));
+}
+
+function fingerprintHash(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function syncDiagnostic(args: {
+  sceneId: string;
+  operation: 'narration-and-audio' | 'audio-only';
+  currentSceneFingerprint: string;
+  storedNarrationSourceFingerprint?: string;
+  narrationSourceCharacterCount: number;
+  narrationSourceElementCount: number;
+  previousNarrationFingerprint?: string;
+  generatedNarrationFingerprint?: string;
+  ttsInputFingerprint?: string;
+  savedNarrationFingerprint?: string;
+  savedAudioFingerprint?: string;
+  staleStateBefore?: NarrationSyncState['status'];
+  staleStateAfter?: NarrationSyncState['status'];
+  preview?: string;
+  visualBlocks?: readonly NarrationVisualBlock[];
+  narrationActionTargets?: Array<{ actionId?: string; targetElementId?: string }>;
+  generatedNarrationActionIds?: string[];
+}) {
+  log.debug('sync operation', {
+    sceneId: args.sceneId,
+    operation: args.operation,
+    currentSceneFingerprint: fingerprintHash(args.currentSceneFingerprint),
+    storedNarrationSourceFingerprint: fingerprintHash(args.storedNarrationSourceFingerprint),
+    narrationSourceCharacterCount: args.narrationSourceCharacterCount,
+    narrationSourceElementCount: args.narrationSourceElementCount,
+    previousNarrationFingerprint: fingerprintHash(args.previousNarrationFingerprint),
+    generatedNarrationFingerprint: fingerprintHash(args.generatedNarrationFingerprint),
+    ttsInputFingerprint: fingerprintHash(args.ttsInputFingerprint),
+    savedNarrationFingerprint: fingerprintHash(args.savedNarrationFingerprint),
+    savedAudioFingerprint: fingerprintHash(args.savedAudioFingerprint),
+    staleStateBefore: args.staleStateBefore,
+    staleStateAfter: args.staleStateAfter,
+    preview: args.preview,
+    visualBlockOrder: args.visualBlocks?.map((block) => ({
+      blockId: block.blockId,
+      elementIds: block.elementIds,
+      boundedTextPreview: block.text.slice(0, 80),
+    })),
+    narrationActionTargets: args.narrationActionTargets,
+    generatedNarrationActionIds: args.generatedNarrationActionIds,
+  });
 }
 
 /** Shared delete button — prominent, top-right of a card. */
@@ -945,6 +1764,25 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   const ttsActive = useSettingsStore(
     (s) => s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts',
   );
+  const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
+  const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
+  const ttsVoice = useSettingsStore((s) => s.ttsVoice);
+  const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
+  const ttsModelId = useSettingsStore((s) => s.ttsProvidersConfig?.[s.ttsProviderId]?.modelId);
+  const ttsFingerprintSettings = useMemo(
+    () => ({
+      language,
+      ttsEnabled,
+      ttsProviderId,
+      ttsVoice,
+      ttsSpeed,
+      ttsModelId,
+    }),
+    [language, ttsEnabled, ttsProviderId, ttsVoice, ttsSpeed, ttsModelId],
+  );
+  const stage = useStageStore((s) => s.stage);
+  const allOutlines = useStageStore((s) => s.outlines);
+  const allScenes = useStageStore((s) => s.scenes);
 
   // Agents a discussion can be initiated by — sourced from the user's currently
   // SELECTED agents, the exact set the playback engine gates on: it skips (and
@@ -955,6 +1793,14 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   // which is correct since an unset `agentId` is never skipped.
   const agentsRecord = useAgentRegistry((s) => s.agents);
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
+  const selectedAgentsForGeneration = useMemo(
+    () =>
+      selectedAgentIds
+        .map((id) => agentsRecord[id])
+        .filter(Boolean)
+        .map((a) => ({ id: a.id, name: a.name, role: a.role, persona: a.persona })),
+    [selectedAgentIds, agentsRecord],
+  );
   const discussionAgents = useMemo(
     () =>
       selectedAgentIds
@@ -974,8 +1820,36 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   // line's status row shows 生成中 for the duration of the batch.
   const [regeneratingIds, setRegeneratingIds] = useState<ReadonlySet<string>>(NO_IDS);
   const [ttsRefresh, setTtsRefresh] = useState(0); // bump → speech clips re-check audio status
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const reduce = useReducedMotion();
   const dragRef = useRef<DragPayload | null>(null);
+  const syncingRef = useRef(false);
+
+  const syncState = useMemo(
+    () => (scene ? getNarrationSyncState(scene, ttsFingerprintSettings) : null),
+    [scene, ttsFingerprintSettings],
+  );
+
+  useEffect(() => {
+    if (!scene || !ttsActive || !syncState) return;
+    if (
+      syncState.status === 'unknown-legacy' ||
+      syncState.status === 'syncing' ||
+      syncState.status === 'narration-stale'
+    ) {
+      return;
+    }
+    if (!syncState.hasSpeechAudio) return;
+    const stamped = scene.sync?.audioSourceFingerprint;
+    if (stamped && stamped !== getAudioSourceFingerprint(scene, ttsFingerprintSettings)) {
+      useStageStore.getState().updateScene(scene.id, {
+        sync: staleAudioMetadata(scene, ttsFingerprintSettings, {
+          narrationSourceFingerprint: scene.sync?.narrationSourceFingerprint,
+        }),
+      });
+    }
+  }, [scene, syncState, ttsActive, ttsFingerprintSettings]);
 
   // Apply an edit to the LATEST actions from the store (not the render-time
   // snapshot), so a concurrent agent/TTS update isn't reverted by a later UI
@@ -988,57 +1862,534 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     [sceneId],
   );
 
+  const synthesizeAudioForActions = useCallback(
+    async (targetScene: Scene, actionsForTts: readonly Action[]): Promise<Action[]> => {
+      const speeches = actionsForTts.filter(
+        (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
+      );
+      if (!speeches.length) return [...actionsForTts] as Action[];
+
+      const ids = speeches.map((a) => a.id).filter(Boolean) as string[];
+      logNarrationOrderCheckpoint({
+        checkpoint: 'tts-input-order',
+        sceneId: targetScene.id,
+        speechActionIds: ids,
+        speechPreviews: speeches.map((action) =>
+          orderTextPreview((action as { text?: string }).text),
+        ),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'ttsInputOrderFlat',
+        sceneId: targetScene.id,
+        order: speeches.map((action, index) =>
+          `${index}:${action.id ?? ''}:${orderTextPreview((action as { text?: string }).text, 120)}`.slice(
+            0,
+            120,
+          ),
+        ),
+      });
+      setRegeneratingIds(new Set(ids));
+      const okIds = new Set<string>();
+      try {
+        for (const action of speeches) {
+          if (!action.id) continue;
+          const text = (action as { text?: string }).text ?? '';
+          const id = await regenerateSpeechAudio(
+            targetScene.order,
+            { id: action.id, text },
+            language,
+          );
+          if (id) okIds.add(action.id);
+        }
+      } finally {
+        setRegeneratingIds(NO_IDS);
+        setTtsRefresh((n) => n + 1);
+      }
+
+      if (okIds.size !== ids.length) {
+        throw new Error(t('edit.timeline.syncFailed'));
+      }
+
+      return withStampedAudioIds(actionsForTts, okIds, targetScene.order);
+    },
+    [language, t],
+  );
+
   // Regenerate TTS for every speech line in the scene, then stamp audioIds.
   // Reads the latest actions from the store at each step so a concurrent edit
   // isn't clobbered, and stamps by id (index-stale-safe).
   const regenerateAllAudio = useCallback(async () => {
-    if (regenAll) return;
-    const latest = () => useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    const speeches = (latest()?.actions ?? []).filter(
-      (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
-    );
-    if (!speeches.length) return;
-    const order = latest()?.order ?? 0;
+    if (regenAll || syncingRef.current) return;
+    const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+    if (!latest) return;
+    const source = buildNarrationSourceFromScene(latest);
+    const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
+    const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
     setRegenAll(true);
-    // Light up every queued line's status row up front (they're all about to be
-    // synthesized), cleared together in the finally once the batch settles.
-    setRegeneratingIds(new Set(speeches.map((a) => a.id).filter(Boolean) as string[]));
-    // Stamp audioId only for lines that actually synthesized — a skipped/failed
-    // line must not get an id pointing at a blob that was never written.
-    const okIds = new Set<string>();
     try {
-      for (const a of speeches) {
-        if (!a.id) continue;
-        try {
-          const id = await regenerateSpeechAudio(
-            order,
-            { id: a.id, text: (a as { text?: string }).text ?? '' },
-            language,
-          );
-          if (id) okIds.add(a.id);
-        } catch {
-          /* skip a failed line, keep going */
-        }
-      }
-      if (okIds.size > 0) {
-        commit((cur) => {
-          let next = cur;
-          for (const a of cur) {
-            if (a.type === 'speech' && a.id && okIds.has(a.id))
-              next = setAudioIdById(next, a.id, speechAudioId(order, a.id));
-          }
-          return next;
+      const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
+      const latestAfterTts = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (!latestAfterTts) return;
+      const syncedScene = { ...latestAfterTts, actions: actionsWithAudio } as Scene;
+      const sync = syncedNarrationMetadata(syncedScene, ttsFingerprintSettings);
+      useStageStore.getState().updateScene(sceneId, { actions: actionsWithAudio, sync });
+      syncDiagnostic({
+        sceneId,
+        operation: 'audio-only',
+        currentSceneFingerprint: source.fingerprint,
+        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+        narrationSourceCharacterCount: source.text.length,
+        narrationSourceElementCount: source.elementCount,
+        previousNarrationFingerprint,
+        ttsInputFingerprint: previousNarrationFingerprint,
+        savedNarrationFingerprint: previousNarrationFingerprint,
+        savedAudioFingerprint: sync.audioSourceFingerprint,
+        staleStateBefore: beforeState.status,
+        staleStateAfter: 'synced',
+        preview: source.preview,
+        visualBlocks: source.visualBlocks,
+        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+      setSyncError(message);
+      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (current) {
+        useStageStore.getState().updateScene(sceneId, {
+          sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
         });
       }
     } finally {
       setRegenAll(false);
-      setRegeneratingIds(NO_IDS);
-      // Always re-check every line's audio at batch end — even when nothing
-      // synthesized — so each SpeechTtsBar resolves its status (and clears its
-      // batchPending flag) instead of getting stuck in 生成中.
-      setTtsRefresh((n) => n + 1);
     }
-  }, [regenAll, sceneId, language, commit]);
+  }, [regenAll, sceneId, synthesizeAudioForActions, t, ttsFingerprintSettings]);
+
+  const syncSceneById = useCallback(
+    async (targetSceneId: string) => {
+      const latest = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'current-scene',
+        sceneId: targetSceneId,
+        sceneFound: Boolean(latest),
+        elementArrayOrder: elementArrayOrderForDiagnostics(latest),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'elementArrayOrderFlat',
+        sceneId: targetSceneId,
+        order: elementArrayOrderFlatForDiagnostics(latest),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'editedElementTextFlat',
+        sceneId: targetSceneId,
+        order: editedElementTextFlatForDiagnostics(latest),
+      });
+      if (!latest || !stage) return;
+      const source = buildNarrationSourceFromScene(latest);
+      const decision = resolveNarrationSyncDecision(latest, ttsFingerprintSettings, source);
+      logSyncDecision(targetSceneId, decision);
+      if (decision.operation !== 'narration-and-audio' && decision.operation !== 'audio-only') {
+        return;
+      }
+      const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'visual-block-order',
+        sceneId: targetSceneId,
+        blocks: visualBlockOrderForDiagnostics(source.visualBlocks),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'visualBlockOrderFlat',
+        sceneId: targetSceneId,
+        order: visualBlockOrderFlatForDiagnostics(source.visualBlocks),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'narrationSourceTextFlat',
+        sceneId: targetSceneId,
+        order: narrationSourceTextFlatForDiagnostics(source),
+      });
+      const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
+
+      if (decision.operation === 'audio-only') {
+        const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
+        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        if (!current) return;
+        const currentSource = buildNarrationSourceFromScene(current);
+        const syncedScene = { ...current, actions: actionsWithAudio } as Scene;
+        const sync =
+          currentSource.fingerprint === source.fingerprint
+            ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
+            : current.sync;
+        logNarrationOrderCheckpoint({
+          checkpoint: 'final-action-order',
+          sceneId: targetSceneId,
+          actions: actionOrderForDiagnostics(actionsWithAudio),
+        });
+        logNarrationOrderCheckpoint({
+          checkpoint: 'finalActionOrderFlat',
+          sceneId: targetSceneId,
+          order: actionOrderFlatForDiagnostics(actionsWithAudio),
+        });
+        useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
+        const saved = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        logNarrationOrderCheckpoint({
+          checkpoint: 'saved-action-order',
+          sceneId: targetSceneId,
+          actions: actionOrderForDiagnostics(saved?.actions ?? []),
+        });
+        logNarrationOrderCheckpoint({
+          checkpoint: 'savedActionOrderFlat',
+          sceneId: targetSceneId,
+          order: actionOrderFlatForDiagnostics(saved?.actions ?? []),
+        });
+        syncDiagnostic({
+          sceneId: targetSceneId,
+          operation: 'audio-only',
+          currentSceneFingerprint: source.fingerprint,
+          storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+          narrationSourceCharacterCount: source.text.length,
+          narrationSourceElementCount: source.elementCount,
+          previousNarrationFingerprint,
+          ttsInputFingerprint: previousNarrationFingerprint,
+          savedNarrationFingerprint: previousNarrationFingerprint,
+          savedAudioFingerprint: sync?.audioSourceFingerprint,
+          staleStateBefore: beforeState.status,
+          staleStateAfter: sync
+            ? getNarrationSyncState(
+                { ...current, actions: actionsWithAudio, sync },
+                ttsFingerprintSettings,
+              ).status
+            : undefined,
+          preview: source.preview,
+          visualBlocks: source.visualBlocks,
+          narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+          generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
+        });
+        return;
+      }
+
+      useStageStore.getState().updateScene(targetSceneId, {
+        sync: { ...(latest.sync ?? {}), status: 'syncing', updatedAt: Date.now() },
+      });
+
+      const outline = outlineForScene(latest, allOutlines);
+      const choreographyBlocks = targetableVisualBlocks(source, latest.actions ?? [], latest.title);
+      const slideElements =
+        latest.content.type === 'slide' ? (latest.content.canvas.elements ?? []) : [];
+      const generationContent = toGenerationContent(latest.content, source, choreographyBlocks);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generation-input-order',
+        sceneId: targetSceneId,
+        targets: generationInputOrderForDiagnostics(choreographyBlocks),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generationInputOrderFlat',
+        sceneId: targetSceneId,
+        order: generationInputOrderFlatForDiagnostics(choreographyBlocks),
+      });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'canonicalSpotlightBlocksFlat',
+        sceneId: targetSceneId,
+        order: canonicalSpotlightBlocksFlatForDiagnostics(choreographyBlocks),
+      });
+      let result: Awaited<ReturnType<typeof fetchSceneActions>>;
+      try {
+        result = await fetchSceneActions({
+          outline,
+          allOutlines: allOutlines.length ? allOutlines : [outline],
+          content: generationContent,
+          stageId: stage.id,
+          agents: selectedAgentsForGeneration,
+          previousSpeeches: [],
+          languageDirective: stage.languageDirective,
+        });
+      } catch (error) {
+        logSyncFailed(targetSceneId, 'generation', error);
+        throw error;
+      }
+      if (!result.success || !result.scene) {
+        const error = new Error(result.error || 'Narration sync failed');
+        logSyncFailed(targetSceneId, 'generation', error);
+        throw error;
+      }
+
+      const rawGeneratedActions = result.scene.actions ?? [];
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generated-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(rawGeneratedActions),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'generatedActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(rawGeneratedActions),
+      });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'generatedSpotlightTargetsFlat',
+        sceneId: targetSceneId,
+        order: spotlightTargetFlatForDiagnostics(
+          rawGeneratedActions,
+          choreographyBlocks,
+          slideElements,
+        ),
+      });
+      const visuallyOrderedActions = reorderTargetPairsByVisualBlocks(
+        rawGeneratedActions,
+        choreographyBlocks,
+        slideElements,
+        latest.actions ?? [],
+      );
+      const generatedActions = preserveActionPairIdsByVisualBlock(
+        latest.actions ?? [],
+        visuallyOrderedActions,
+        choreographyBlocks,
+      );
+      logNarrationOrderCheckpoint({
+        checkpoint: 'final-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(generatedActions),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'finalActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(generatedActions),
+      });
+      logSpotlightTargetCheckpoint({
+        checkpoint: 'finalSavedSpotlightTargetsFlat',
+        sceneId: targetSceneId,
+        order: spotlightTargetFlatForDiagnostics(
+          generatedActions,
+          choreographyBlocks,
+          slideElements,
+        ),
+      });
+      const generatedNarration = generatedActions
+        .filter((action) => action.type === 'speech')
+        .map((action) => ((action as { text?: string }).text ?? '').trim())
+        .filter(Boolean)
+        .join('\n');
+      if (!generatedNarration) {
+        const error = new Error(result.error || 'Narration sync produced no narration');
+        logSyncFailed(targetSceneId, 'generation-result', error);
+        throw error;
+      }
+      if (
+        unchangedNarrationStillLooksStale(
+          source.text,
+          speechTextsForScene(latest).join('\n'),
+          generatedNarration,
+        )
+      ) {
+        const message = 'Narration sync returned unchanged narration for changed slide content';
+        useStageStore.getState().updateScene(targetSceneId, {
+          sync: {
+            ...(latest.sync ?? {
+              narrationSourceFingerprint: beforeState.narrationSourceFingerprint,
+              audioSourceFingerprint: beforeState.audioSourceFingerprint,
+            }),
+            status: 'narration-stale',
+            error: message,
+            updatedAt: Date.now(),
+          },
+        });
+        const error = new Error(message);
+        logSyncFailed(targetSceneId, 'generation-validation', error);
+        throw error;
+      }
+
+      const currentBeforeSave = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      if (!currentBeforeSave) return;
+      const currentSource = buildNarrationSourceFromScene(currentBeforeSave);
+      if (currentSource.fingerprint !== source.fingerprint) {
+        const message = 'Scene changed while narration sync was running';
+        useStageStore.getState().updateScene(targetSceneId, {
+          sync: {
+            ...(currentBeforeSave.sync ?? {}),
+            status: 'narration-stale',
+            narrationSourceFingerprint:
+              decision.storedNarrationSourceFingerprint ?? source.fingerprint,
+            audioSourceFingerprint:
+              decision.storedAudioFingerprint ?? beforeState.audioSourceFingerprint,
+            error: message,
+            updatedAt: Date.now(),
+          },
+        });
+        const error = new Error(message);
+        logSyncFailed(targetSceneId, 'pre-save-source-check', error);
+        throw error;
+      }
+
+      const generatedNarrationFingerprint = fingerprintText(generatedNarration);
+      const actionsWithPriorAudio = preserveSpeechAudioByPosition(
+        currentBeforeSave.actions ?? [],
+        generatedActions,
+      );
+      useStageStore.getState().updateScene(targetSceneId, {
+        actions: actionsWithPriorAudio,
+        sync: {
+          status: 'audio-stale',
+          narrationSourceFingerprint: source.fingerprint,
+          audioSourceFingerprint: getAudioSourceFingerprint(
+            currentBeforeSave,
+            ttsFingerprintSettings,
+          ),
+          updatedAt: Date.now(),
+        },
+      });
+      const savedBeforeTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'saved-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(savedBeforeTts?.actions ?? []),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'savedActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(savedBeforeTts?.actions ?? []),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'timelineActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(savedBeforeTts?.actions ?? []),
+      });
+
+      let actionsWithAudio: Action[];
+      try {
+        actionsWithAudio = await synthesizeAudioForActions(
+          currentBeforeSave,
+          actionsWithPriorAudio,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+        if (current) {
+          useStageStore.getState().updateScene(targetSceneId, {
+            sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
+          });
+        }
+        logSyncFailed(targetSceneId, 'tts', error);
+        throw error;
+      }
+
+      const currentAfterTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      if (!currentAfterTts) return;
+      const latestSource = buildNarrationSourceFromScene(currentAfterTts);
+      const syncedScene = { ...currentAfterTts, actions: actionsWithAudio } as Scene;
+      const sync =
+        latestSource.fingerprint === source.fingerprint
+          ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
+          : currentAfterTts.sync;
+      useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
+      const savedAfterTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'saved-action-order',
+        sceneId: targetSceneId,
+        actions: actionOrderForDiagnostics(savedAfterTts?.actions ?? []),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'savedActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(savedAfterTts?.actions ?? []),
+      });
+      logNarrationOrderCheckpoint({
+        checkpoint: 'timelineActionOrderFlat',
+        sceneId: targetSceneId,
+        order: actionOrderFlatForDiagnostics(savedAfterTts?.actions ?? []),
+      });
+      syncDiagnostic({
+        sceneId: targetSceneId,
+        operation: 'narration-and-audio',
+        currentSceneFingerprint: source.fingerprint,
+        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
+        narrationSourceCharacterCount: source.text.length,
+        narrationSourceElementCount: source.elementCount,
+        previousNarrationFingerprint,
+        generatedNarrationFingerprint,
+        ttsInputFingerprint: generatedNarrationFingerprint,
+        savedNarrationFingerprint: fingerprintText(speechTextsForScene(syncedScene).join('\n')),
+        savedAudioFingerprint: sync?.audioSourceFingerprint,
+        staleStateBefore: beforeState.status,
+        staleStateAfter: sync
+          ? getNarrationSyncState(
+              { ...currentAfterTts, actions: actionsWithAudio, sync },
+              ttsFingerprintSettings,
+            ).status
+          : undefined,
+        preview: source.preview,
+        visualBlocks: source.visualBlocks,
+        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
+        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
+      });
+      logSyncCompleted(targetSceneId);
+    },
+    [
+      allOutlines,
+      selectedAgentsForGeneration,
+      stage,
+      synthesizeAudioForActions,
+      t,
+      ttsFingerprintSettings,
+    ],
+  );
+
+  const syncCurrentScene = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      await syncSceneById(sceneId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
+      setSyncError(message);
+      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
+      if (current) {
+        const fallbackSync =
+          current.sync?.status === 'syncing'
+            ? ({ ...current.sync, status: 'error', error: message, updatedAt: Date.now() } as const)
+            : {
+                ...(current.sync ?? staleAudioMetadata(current, ttsFingerprintSettings)),
+                error: message,
+                updatedAt: Date.now(),
+              };
+        useStageStore.getState().updateScene(sceneId, {
+          sync: fallbackSync,
+        });
+      }
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [sceneId, syncSceneById, t, ttsFingerprintSettings]);
+
+  const syncAllStaleScenes = useCallback(async () => {
+    if (!stage || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const staleSceneIds = useStageStore
+        .getState()
+        .scenes.filter((s) => {
+          const state = getNarrationSyncState(s, ttsFingerprintSettings);
+          return state.status === 'narration-stale' || state.status === 'audio-stale';
+        })
+        .map((s) => s.id);
+      logNarrationOrderCheckpoint({
+        checkpoint: 'bulk-queue',
+        sceneIds: staleSceneIds,
+      });
+
+      for (const staleSceneId of staleSceneIds) {
+        await syncSceneById(staleSceneId);
+      }
+      setTtsRefresh((n) => n + 1);
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : t('edit.timeline.syncFailed'));
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [stage, syncSceneById, t, ttsFingerprintSettings]);
 
   // Height drag-resize (top edge).
   const sectionRef = useRef<HTMLElement>(null);
@@ -1174,6 +2525,74 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
             {t('edit.timeline.addAction')}
             <ChevronDown className="size-3 opacity-70" />
           </button>
+        )}
+
+        {!lineMode && ttsActive && (
+          <>
+            {syncState &&
+              (syncState.status === 'narration-stale' ||
+                syncState.status === 'audio-stale' ||
+                syncState.status === 'syncing' ||
+                syncState.status === 'error') && (
+                <span
+                  className={cn(
+                    'ml-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                    syncState.status === 'error'
+                      ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300'
+                      : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300',
+                  )}
+                  title={syncError ?? scene?.sync?.error}
+                >
+                  {syncState.status === 'narration-stale'
+                    ? t('edit.timeline.narrationStale')
+                    : syncState.status === 'audio-stale'
+                      ? t('edit.timeline.audioStale')
+                      : syncState.status === 'syncing'
+                        ? t('edit.timeline.syncing')
+                        : t('edit.timeline.syncFailed')}
+                </span>
+              )}
+            {syncState &&
+              (syncState.status === 'narration-stale' || syncState.status === 'audio-stale') && (
+                <button
+                  type="button"
+                  onClick={syncCurrentScene}
+                  disabled={syncing}
+                  title={
+                    syncState.status === 'narration-stale'
+                      ? t('edit.timeline.syncNarrationAudio')
+                      : t('edit.timeline.regenSlideAudio')
+                  }
+                  aria-label={
+                    syncState.status === 'narration-stale'
+                      ? t('edit.timeline.syncNarrationAudio')
+                      : t('edit.timeline.regenSlideAudio')
+                  }
+                  className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+                >
+                  <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
+                  {syncState.status === 'narration-stale'
+                    ? t('edit.timeline.syncNow')
+                    : t('edit.timeline.regenAudio')}
+                </button>
+              )}
+            {allScenes.some((s) => {
+              const state = getNarrationSyncState(s, ttsFingerprintSettings);
+              return state.status === 'narration-stale' || state.status === 'audio-stale';
+            }) && (
+              <button
+                type="button"
+                onClick={syncAllStaleScenes}
+                disabled={syncing}
+                title={t('edit.timeline.syncAllStale')}
+                aria-label={t('edit.timeline.syncAllStale')}
+                className="ml-1 inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
+                {t('edit.timeline.syncAll')}
+              </button>
+            )}
+          </>
         )}
 
         {!lineMode && ttsActive && (
@@ -1314,19 +2733,8 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
                               autoFocus={key === focusId}
                               onFocused={() => setFocusId(null)}
                               onCommit={(text) => {
-                                // Editing the text invalidates any cached audio
-                                // (the blob is keyed by order+id, not text), so
-                                // drop the stamped fields and delete the blob —
-                                // the line then reads as un-voiced until regen.
-                                const prevAudioId = (action as { audioId?: string }).audioId;
-                                commit((cur) => setSpeechTextClearAudioById(cur, key, text));
-                                // Re-check status only AFTER the blob is gone, so
-                                // the status row can't race the async delete and
-                                // briefly still read "voiced".
-                                void discardSpeechAudio(sceneOrder, {
-                                  id: key,
-                                  audioId: prevAudioId,
-                                }).finally(() => setTtsRefresh((n) => n + 1));
+                                commit((cur) => setSpeechTextById(cur, key, text));
+                                setTtsRefresh((n) => n + 1);
                               }}
                               onGenerated={() =>
                                 commit((cur) =>

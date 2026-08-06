@@ -38,6 +38,12 @@ import {
   type ParsedDocumentPart,
 } from '@/lib/document/bundle';
 import { buildVideoManifestFromOutlines } from '@/lib/media/video-manifest';
+import {
+  shouldGenerateClassroomAgents,
+  teacherOnlyAgentIds,
+  teacherOnlyAgentInfo,
+} from '@/lib/generation/agent-mode';
+import { isGeneratedClassroomAgentsEnabled } from '@/lib/config/feature-flags';
 import { nanoid } from 'nanoid';
 import type { Stage } from '@/lib/types/stage';
 import type {
@@ -772,7 +778,7 @@ function GenerationPreviewContent() {
         persona?: string;
       }> = [];
 
-      if (settings.agentMode === 'auto') {
+      if (shouldGenerateClassroomAgents(settings.agentMode)) {
         const agentStepIdx = activeSteps.findIndex((s) => s.id === 'agent-generation');
         if (agentStepIdx >= 0) setCurrentStepIndex(agentStepIdx);
 
@@ -910,7 +916,7 @@ function GenerationPreviewContent() {
             }));
           stage.agentIds = fallbackIds;
         }
-      } else {
+      } else if (isGeneratedClassroomAgentsEnabled()) {
         // Preset mode — use selected agents (include persona)
         // Filter out stale generated agent IDs that may linger in settings
         const registry = useAgentRegistry.getState();
@@ -928,6 +934,14 @@ function GenerationPreviewContent() {
             persona: a!.persona,
           }));
         stage.agentIds = presetAgentIds;
+      } else {
+        const teacherIds = teacherOnlyAgentIds();
+        const registry = useAgentRegistry.getState();
+        agents = teacherOnlyAgentInfo(registry.getAgent);
+        settings.setAgentMode('preset');
+        settings.setSelectedAgentIds(teacherIds);
+        settings.setAgentSelectionIsUserSet(false);
+        stage.agentIds = teacherIds;
       }
 
       // Move to scene generation step

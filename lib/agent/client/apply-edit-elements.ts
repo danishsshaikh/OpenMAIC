@@ -218,7 +218,7 @@ export function applyEditElementsIntents(
   if (session.sceneId !== sceneId || !session.history) {
     return {
       ok: false,
-      reason: 'no open edit session for this scene; open Pro mode on the target slide first',
+      reason: 'no open edit session for this scene; open Edit mode on the target slide first',
     };
   }
   if (session.gestureActive) {

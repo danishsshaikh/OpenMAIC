@@ -1,5 +1,6 @@
 import { ScanLine, Search, Bot, FileText, LayoutPanelLeft, Clapperboard } from 'lucide-react';
 import { useSettingsStore } from '@/lib/store/settings';
+import { shouldGenerateClassroomAgents } from '@/lib/generation/agent-mode';
 import type {
   SceneOutline,
   UserRequirements,
@@ -141,7 +142,9 @@ export const getActiveSteps = (session: GenerationSessionState | null) => {
       );
     }
     if (step.id === 'web-search') return !!session?.requirements?.webSearch;
-    if (step.id === 'agent-generation') return useSettingsStore.getState().agentMode === 'auto';
+    if (step.id === 'agent-generation') {
+      return shouldGenerateClassroomAgents(useSettingsStore.getState().agentMode);
+    }
     return true;
   });
 };

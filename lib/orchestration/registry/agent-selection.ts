@@ -22,7 +22,7 @@ export interface RestoredAgentSelection {
  *
  * The fallback reproduces the previous unconditional behavior: auto with all
  * generated agents when the stage has them, else the stage's preset agents,
- * else the default trio.
+ * else the default teacher.
  */
 export function restoreAgentSelection(params: {
   persisted: AgentSelection;
@@ -51,7 +51,7 @@ export function restoreAgentSelection(params: {
   return {
     selection: {
       mode: 'preset',
-      selectedAgentIds: cleanIds.length > 0 ? cleanIds : ['default-1', 'default-2', 'default-3'],
+      selectedAgentIds: cleanIds.length > 0 ? cleanIds : ['default-1'],
     },
     isUserSet: false,
   };

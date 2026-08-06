@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Action } from '@/lib/types/action';
 import {
   buildActionNavigationTargets,
+  buildNarrationCueItems,
   canJumpWithinReconstructablePrefix,
   getActionLineProgress,
 } from '@/lib/playback/action-navigation';
@@ -38,6 +39,41 @@ describe('local action navigation helpers', () => {
 
     expect(getActionLineProgress(actions, 0)).toEqual({ currentLine: 1, totalLines: 2 });
     expect(getActionLineProgress(actions, 2)).toEqual({ currentLine: 2, totalLines: 2 });
+  });
+
+  it('builds transcript cues from the saved narration action order', () => {
+    const actions = [
+      speech('bcast', 'Bcast narration'),
+      speech('allreduce', 'Allreduce narration'),
+    ];
+
+    expect(buildNarrationCueItems(actions, 1)).toMatchObject([
+      { actionIndex: 0, actionId: 'bcast', lineNumber: 1, text: 'Bcast narration', active: false },
+      {
+        actionIndex: 1,
+        actionId: 'allreduce',
+        lineNumber: 2,
+        text: 'Allreduce narration',
+        active: true,
+      },
+    ]);
+  });
+
+  it('uses regenerated narration text without changing cue order', () => {
+    const before = [speech('intro', 'Old narration'), speech('detail', 'Detail narration')];
+    const after = [
+      speech('intro', 'New regenerated narration'),
+      speech('detail', 'Detail narration'),
+    ];
+
+    expect(buildNarrationCueItems(before, 0).map((cue) => cue.text)).toEqual([
+      'Old narration',
+      'Detail narration',
+    ]);
+    expect(buildNarrationCueItems(after, 0).map((cue) => [cue.actionId, cue.text])).toEqual([
+      ['intro', 'New regenerated narration'],
+      ['detail', 'Detail narration'],
+    ]);
   });
 
   it('restores valid action-level resume positions and ignores stale ones', () => {

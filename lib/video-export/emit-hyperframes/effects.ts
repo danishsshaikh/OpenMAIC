@@ -83,16 +83,33 @@ function n(value: number): string {
  * animated mask cutout, plus a settling border. Mirrors `SpotlightOverlay` and
  * the `spotlight.v1` cutout/border/dim tracks (all in 0–100 percentage space).
  */
-function emitSpotlight(seg: EffectSegment, g: PercentageGeometry, id: string): EmittedEffect {
+function emitSpotlight(
+  seg: EffectSegment,
+  g: PercentageGeometry,
+  id: string,
+  dims: FrameDims,
+): EmittedEffect {
   const dimness = typeof seg.params.dimness === 'number' ? seg.params.dimness : 0.5;
   const start = sec(seg.startMs);
   const exit = Math.max(start, sec(seg.startMs + seg.durationMs) - 0.3);
   const maskId = `${id}-mask`;
   const cut = `#${id}-cut`;
   const border = `#${id}-border`;
+  const focus = {
+    x: g.x - 0.4,
+    y: g.y - 0.6,
+    w: g.w + 0.8,
+    h: g.h + 1.2,
+  };
+  const output = {
+    x: (focus.x / 100) * dims.width,
+    y: (focus.y / 100) * dims.height,
+    w: (focus.w / 100) * dims.width,
+    h: (focus.h / 100) * dims.height,
+  };
 
   const html = [
-    `<div id="${id}" class="fx fx-spotlight" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">`,
+    `<div id="${id}" class="fx fx-spotlight" data-openmaic-spotlight-target="${escapeHtml(seg.elementId)}" data-openmaic-spotlight-normalized="${escapeHtml(stableGeometryData(g))}" data-openmaic-spotlight-focus="${escapeHtml(stableGeometryData(focus))}" data-openmaic-spotlight-output="${escapeHtml(stableGeometryData(output))}" style="position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;visibility:hidden;opacity:0">`,
     `  <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0">`,
     `    <defs><mask id="${maskId}">`,
     `      <rect x="0" y="0" width="100" height="100" fill="white"/>`,
@@ -104,7 +121,7 @@ function emitSpotlight(seg: EffectSegment, g: PercentageGeometry, id: string): E
     `</div>`,
   ].join('\n');
 
-  const cutTo = `{x:${n(g.x - 0.4)},y:${n(g.y - 0.6)},width:${n(g.w + 0.8)},height:${n(g.h + 1.2)},rx:1}`;
+  const cutTo = `{x:${n(focus.x)},y:${n(focus.y)},width:${n(focus.w)},height:${n(focus.h)},rx:1}`;
   const end = sec(seg.startMs + seg.durationMs);
   const statements = [
     `tl.fromTo('#${id}',{autoAlpha:0},{autoAlpha:1,duration:0.3,ease:'none'},${n(start)});`,
@@ -186,7 +203,11 @@ function emitLaser(
  */
 export function emitEffect(seg: EffectSegment, id: string, dims: FrameDims): EmittedEffect {
   if (seg.degraded || !seg.geometry) return { html: '', statements: [] };
-  if (seg.type === 'spotlight') return emitSpotlight(seg, seg.geometry, id);
+  if (seg.type === 'spotlight') return emitSpotlight(seg, seg.geometry, id, dims);
   if (seg.type === 'laser') return emitLaser(seg, seg.geometry, id, dims);
   return { html: '', statements: [] };
+}
+
+function stableGeometryData(g: Pick<PercentageGeometry, 'x' | 'y' | 'w' | 'h'>): string {
+  return JSON.stringify({ x: n(g.x), y: n(g.y), w: n(g.w), h: n(g.h) });
 }

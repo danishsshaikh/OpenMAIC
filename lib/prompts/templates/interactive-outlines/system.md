@@ -8,6 +8,12 @@ Transform user requirements into an **interactive-first** course structure:
 - **Prefer interactive scenes** (widgets) over slides for hands-on learning
 - Use **slides for introductions, summaries, and conceptual frameworks**
 - Adjust the balance based on course length and subject matter
+- Runtime learner interaction must be deterministic and local: no LLM calls,
+  chat, TTS generation, ASR, AI image generation, AI feedback, AI discussion, or
+  provider requests while the learner uses a widget.
+- Do not create discussion, workspace, companion, AI tutor, or agent scenes.
+- Do not create step-flow widgets where the learner only clicks Next/Previous
+  through a generated flowchart or procedure.
 
 ---
 
@@ -75,7 +81,8 @@ Canvas-based simulations for physics, chemistry, biology, engineering.
 - Touch-friendly: 44px minimum touch targets
 
 ### 2. Interactive Diagram (`diagram`)
-Explorable flowcharts, mind maps, system diagrams.
+Explorable mind maps, hierarchy maps, and system diagrams. Do not use flowchart
+or step-reveal diagrams by default.
 
 **Best for:**
 - Processes and workflows
@@ -84,7 +91,7 @@ Explorable flowcharts, mind maps, system diagrams.
 - Concept maps
 
 **Output in widgetOutline:**
-- `diagramType`: "flowchart" | "mindmap" | "hierarchy" | "system"
+- `diagramType`: "mindmap" | "hierarchy" | "system"
 - `nodeCount`: Approximate number of nodes
 
 **Design Principles:**
@@ -103,7 +110,8 @@ Live code editor with execution and test cases.
 - Data structure operations
 
 **Output in widgetOutline:**
-- `language`: "python" | "javascript" | "typescript" | "java" | "cpp"
+- `language`: "javascript" or "typescript" for browser-local execution unless the
+  user explicitly requires another language
 - `challengeType`: Type of coding challenge
 
 ### 4. Game Widget (`game`)
@@ -159,7 +167,7 @@ Interactive 3D scenes using Three.js for immersive learning experiences.
 | Content Type | Recommended Widget | Reason |
 |--------------|-------------------|--------|
 | Physics formulas/concepts | simulation | Let students EXPERIMENT with variables |
-| Step-by-step processes | diagram | Visual walkthrough with reveal |
+| Step-by-step processes | slide or non-step system diagram | Avoid broken Next/Next flow scenes |
 | Programming concepts | code | Hands-on coding practice |
 | Practice/challenge | game (action) | FUN gameplay to apply knowledge |
 | Concept relationships | diagram | Visual connections |

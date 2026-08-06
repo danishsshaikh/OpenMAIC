@@ -99,7 +99,22 @@ describe('restoreAgentSelection', () => {
     });
   });
 
-  it('falls back to the default preset trio when nothing else is valid', () => {
+  it('preserves existing saved multi-agent preset classrooms', () => {
+    expect(
+      restoreAgentSelection({
+        persisted: { mode: 'preset', selectedAgentIds: ['default-1'] },
+        persistedIsUserSet: false,
+        generatedAgentIds: [],
+        stageAgentIds: ['default-1', 'default-2', 'default-3'],
+        isPresetAgent,
+      }),
+    ).toEqual({
+      selection: { mode: 'preset', selectedAgentIds: ['default-1', 'default-2', 'default-3'] },
+      isUserSet: false,
+    });
+  });
+
+  it('falls back to the default teacher when nothing else is valid', () => {
     expect(
       restoreAgentSelection({
         persisted: { mode: 'preset', selectedAgentIds: [] },
@@ -108,7 +123,7 @@ describe('restoreAgentSelection', () => {
         isPresetAgent,
       }),
     ).toEqual({
-      selection: { mode: 'preset', selectedAgentIds: ['default-1', 'default-2', 'default-3'] },
+      selection: { mode: 'preset', selectedAgentIds: ['default-1'] },
       isUserSet: false,
     });
   });

@@ -101,6 +101,19 @@ export interface SceneActionsOptions {
   languageDirective?: string;
 }
 
+interface NarrationSourcePayload {
+  text?: string;
+  elementCount?: number;
+  fingerprint?: string;
+  blocks?: Array<{
+    blockId?: string;
+    elementIds?: string[];
+    targetElementId?: string;
+    text?: string;
+    orderIndex?: number;
+  }>;
+}
+
 // ==================== Backward Compatibility Helpers ====================
 
 /**
@@ -1521,11 +1534,20 @@ export async function generateSceneActions(
   if (outline.type === 'slide' && 'elements' in content) {
     // Format element list for AI to select from
     const elementsText = formatElementsForPrompt(content.elements);
+    const narrationSource = (content as { narrationSource?: NarrationSourcePayload })
+      .narrationSource;
+    const narrationSourceText =
+      typeof narrationSource?.text === 'string' && narrationSource.text.trim()
+        ? narrationSource.text.trim()
+        : elementsText;
+    const choreographyText = formatNarrationChoreography(narrationSource);
 
     const prompts = buildPrompt(PROMPT_IDS.SLIDE_ACTIONS, {
       title: outline.title,
       keyPoints: (outline.keyPoints || []).map((p, i) => `${i + 1}. ${p}`).join('\n'),
       description: outline.description,
+      narrationSource: narrationSourceText,
+      narrationChoreography: choreographyText,
       elements: elementsText,
       courseContext: buildCourseContext(ctx),
       agents: agentsText,
@@ -1689,6 +1711,18 @@ function formatElementsForPrompt(elements: PPTElement[]): string {
         summary = `${el.type} element`;
       }
       return `- id: "${el.id}", type: "${el.type}", ${summary}`;
+    })
+    .join('\n');
+}
+
+function formatNarrationChoreography(source?: NarrationSourcePayload): string {
+  const blocks = source?.blocks ?? [];
+  if (!blocks.length) return '(no explicit visual block choreography provided)';
+  return blocks
+    .map((block, index) => {
+      const target = block.targetElementId || block.elementIds?.[0] || block.blockId || 'unknown';
+      const text = (block.text || '').replace(/\s+/g, ' ').trim();
+      return `${index + 1}. targetElementId: "${target}" | targetText: "${text}"`;
     })
     .join('\n');
 }

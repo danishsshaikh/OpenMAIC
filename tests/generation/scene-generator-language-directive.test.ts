@@ -120,6 +120,60 @@ describe('scene-generator language directive threading (issue #472)', () => {
       expect(lastUser()).not.toContain('{{languageDirective}}');
     });
 
+    it('uses narrationSource as the authoritative slide actions speech source', async () => {
+      const { aiCall, lastUser } = makeCapturingAiCall('[]');
+      const content: GeneratedSlideContent & {
+        narrationSource: {
+          text: string;
+          elementCount: number;
+          fingerprint: string;
+          blocks: Array<{ targetElementId: string; text: string; orderIndex: number }>;
+        };
+      } = {
+        elements: [
+          {
+            id: 'text_1',
+            type: 'text',
+            left: 0,
+            top: 0,
+            width: 100,
+            height: 40,
+            content: '<p>Maximizing Efficiency</p>',
+            defaultFontName: '',
+            defaultColor: '#000',
+            rotate: 0,
+          },
+        ],
+        background: undefined,
+        remark: '',
+        narrationSource: {
+          text: 'Introduction to Parallel Models\nCore Principles\nMinimizing Efficiency',
+          elementCount: 2,
+          fingerprint: 'source-fingerprint',
+          blocks: [
+            {
+              targetElementId: 'task-card',
+              text: 'Task Parallelism',
+              orderIndex: 0,
+            },
+            {
+              targetElementId: 'data-card',
+              text: 'Data Parallelism',
+              orderIndex: 1,
+            },
+          ],
+        },
+      };
+
+      await generateSceneActions(baseOutline({ type: 'slide' }), content, aiCall);
+
+      expect(lastUser()).toContain('Narration Source');
+      expect(lastUser()).toContain('Minimizing Efficiency');
+      expect(lastUser()).toContain('Narration/Spotlight Choreography');
+      expect(lastUser()).toMatch(/targetElementId: "task-card"[\s\S]*targetElementId: "data-card"/);
+      expect(lastUser()).toContain('Element Targets');
+    });
+
     it('threads languageDirective into quiz actions prompt', async () => {
       const { aiCall, lastUser } = makeCapturingAiCall('[]');
       const content: GeneratedQuizContent = {

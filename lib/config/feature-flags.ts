@@ -8,11 +8,14 @@
  */
 
 import type { Scene, SceneType } from '@/lib/types/stage';
+import { isAllowedDeterministicInteractiveScene } from '@/lib/interactive/capabilities';
 
 export type FeatureFlag =
+  | 'generatedClassroomAgents'
   | 'companionSelector'
   | 'classroomChat'
   | 'interactiveScenes'
+  | 'deterministicInteractives'
   | 'discussionScenes'
   | 'workspaceScenes'
   | 'flowScenes';
@@ -24,7 +27,7 @@ export function readFeatureFlagBoolean(envValue: string | undefined): boolean {
 }
 
 /**
- * MAIC Editor (Pro mode) gate. Default OFF — gates only the Pro toggle
+ * MAIC Editor (edit mode) gate. Default OFF — gates only the edit toggle
  * affordance in `Header`. The `StageMode` type union is unaffected so
  * existing code paths typecheck identically with the flag in either
  * state.
@@ -66,10 +69,26 @@ export function isVideoExportEnabled(): boolean {
   return readFeatureFlagBoolean(process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT);
 }
 
+/**
+ * Optional burned-in captions for MP4/Hyperframes export. Default OFF so the
+ * exported video does not cover slide content unless explicitly requested.
+ * Sidecar subtitles (`subtitles.srt` / `subtitles.vtt`) are still emitted.
+ */
+export function isVideoExportBurnedInCaptionsEnabled(): boolean {
+  return readFeatureFlagBoolean(process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS);
+}
+
 const featureFlags = {
+  generatedClassroomAgents: readFeatureFlagBoolean(
+    process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS,
+  ),
   companionSelector: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR),
   classroomChat: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT),
   interactiveScenes: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES),
+  deterministicInteractives:
+    process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES == null
+      ? true
+      : readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES),
   discussionScenes:
     readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES) &&
     readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES),
@@ -91,12 +110,24 @@ export function isCompanionSelectorEnabled(): boolean {
   return isFeatureEnabled('companionSelector');
 }
 
+export function isGeneratedClassroomAgentsEnabled(): boolean {
+  return isFeatureEnabled('generatedClassroomAgents');
+}
+
 export function isClassroomChatEnabled(): boolean {
   return isFeatureEnabled('classroomChat');
 }
 
 export function isInteractiveScenesEnabled(): boolean {
   return isFeatureEnabled('interactiveScenes');
+}
+
+export function isDeterministicInteractivesEnabled(): boolean {
+  return isFeatureEnabled('deterministicInteractives');
+}
+
+export function shouldMountInteractiveIframeHost(): boolean {
+  return isInteractiveScenesEnabled() || isDeterministicInteractivesEnabled();
 }
 
 export function isDiscussionScenesEnabled(): boolean {
@@ -114,7 +145,7 @@ export function isFlowScenesEnabled(): boolean {
 export function isSceneTypeEnabled(sceneType: SceneType): boolean {
   switch (sceneType) {
     case 'interactive':
-      return isInteractiveScenesEnabled();
+      return isInteractiveScenesEnabled() || isDeterministicInteractivesEnabled();
     case 'pbl':
       return isWorkspaceScenesEnabled();
     case 'slide':
@@ -133,7 +164,28 @@ function isFlowScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
   return false;
 }
 
+export function isDeterministicInteractiveScene(scene: Pick<Scene, 'type' | 'content'>): boolean {
+  return isAllowedDeterministicInteractiveScene({
+    id: '',
+    title: '',
+    ...scene,
+  } as Pick<Scene, 'id' | 'title' | 'type' | 'content'>);
+}
+
 export function isSceneEnabled(scene: Pick<Scene, 'type' | 'content'>): boolean {
+  if (scene.type === 'interactive') {
+    if (
+      isAllowedDeterministicInteractiveScene({
+        id: '',
+        title: '',
+        ...scene,
+      } as Pick<Scene, 'id' | 'title' | 'type' | 'content'>)
+    ) {
+      return isDeterministicInteractivesEnabled();
+    }
+    if (isFlowScene(scene)) return isFlowScenesEnabled();
+    return isFeatureEnabled('interactiveScenes');
+  }
   if (!isSceneTypeEnabled(scene.type)) return false;
   if (isFlowScene(scene) && !isFlowScenesEnabled()) return false;
   return true;
