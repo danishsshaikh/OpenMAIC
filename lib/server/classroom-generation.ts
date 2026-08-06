@@ -363,18 +363,19 @@ export async function generateClassroom(
 
   // Resolve agents based on agentMode — now AFTER outlines so we can use languageDirective
   let agents: AgentInfo[];
-  const agentMode = input.agentMode || 'default';
+  let agentMode = input.agentMode || 'default';
   if (agentMode === 'generate') {
     log.info('Generating custom agent profiles via LLM...');
     try {
       agents = await generateAgentProfiles(requirement, languageDirective, aiCall);
       log.info(`Generated ${agents.length} agent profiles`);
     } catch (e) {
-      log.warn('Agent profile generation failed, falling back to defaults:', e);
-      agents = getDefaultAgents();
+      log.warn('Agent profile generation failed, falling back to the standard teacher:', e);
+      agents = getDefaultAgents().filter((agent) => agent.id === 'default-1');
+      agentMode = 'default';
     }
   } else {
-    agents = getDefaultAgents();
+    agents = getDefaultAgents().filter((agent) => agent.id === 'default-1');
   }
 
   const stageId = nanoid(10);

@@ -9,6 +9,7 @@ const FLAG_KEYS = [
   'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
   'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
   'NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS',
+  'NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS',
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
   'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
@@ -167,6 +168,7 @@ describe('classroom feature flags', () => {
 
     expect(flags.FEATURE_FLAGS).toEqual({
       companionSelector: false,
+      generatedClassroomAgents: false,
       classroomChat: false,
       interactiveScenes: false,
       deterministicInteractives: true,
@@ -174,6 +176,15 @@ describe('classroom feature flags', () => {
       workspaceScenes: false,
       flowScenes: false,
     });
+  });
+
+  it('keeps generated classroom agents opt-in for the standard teacher-only flow', async () => {
+    let flags = await loadFlags();
+    expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS = 'true';
+    flags = await loadFlags();
+    expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(true);
   });
 
   it('enables runtime AI and flow scene flags only behind their precise gates', async () => {

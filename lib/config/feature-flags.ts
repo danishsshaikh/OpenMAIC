@@ -11,6 +11,7 @@ import type { Scene, SceneType } from '@/lib/types/stage';
 import { isAllowedDeterministicInteractiveScene } from '@/lib/interactive/capabilities';
 
 export type FeatureFlag =
+  | 'generatedClassroomAgents'
   | 'companionSelector'
   | 'classroomChat'
   | 'interactiveScenes'
@@ -78,6 +79,9 @@ export function isVideoExportBurnedInCaptionsEnabled(): boolean {
 }
 
 const featureFlags = {
+  generatedClassroomAgents: readFeatureFlagBoolean(
+    process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS,
+  ),
   companionSelector: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR),
   classroomChat: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT),
   interactiveScenes: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES),
@@ -104,6 +108,10 @@ export function isFeatureEnabled(flag: FeatureFlag): boolean {
 
 export function isCompanionSelectorEnabled(): boolean {
   return isFeatureEnabled('companionSelector');
+}
+
+export function isGeneratedClassroomAgentsEnabled(): boolean {
+  return isFeatureEnabled('generatedClassroomAgents');
 }
 
 export function isClassroomChatEnabled(): boolean {

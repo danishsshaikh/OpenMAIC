@@ -971,7 +971,7 @@
     "sceneTitlePlaceholder": "Scene title",
     "sceneTypeSlide": "Slide",
     "sceneTypeQuiz": "Quiz",
-    "sceneTypeInteractive": "Interactive",
+    "sceneTypeInteractive": "Simulation",
     "sceneTypePbl": "PBL",
     "sceneDescriptionPlaceholder": "Briefly describe the purpose and content of this scene",
     "quizQuestionCount": "Question count",

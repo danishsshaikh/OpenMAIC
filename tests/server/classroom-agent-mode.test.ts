@@ -32,6 +32,7 @@ describe('#353: generatedAgentConfigs conditional on agentMode', () => {
     agentMode: 'default' | 'generate',
     agents: Array<{ id: string; name: string; role: string; persona?: string }>,
   ): DefaultModeFields | GenerateModeFields {
+    const defaultAgents = agents.filter((agent) => agent.id === 'default-1');
     return agentMode === 'generate'
       ? {
           generatedAgentConfigs: agents.map((a, i) => ({
@@ -45,24 +46,17 @@ describe('#353: generatedAgentConfigs conditional on agentMode', () => {
           })),
         }
       : {
-          agentIds: agents.map((a) => a.id),
+          agentIds: defaultAgents.map((a) => a.id),
         };
   }
 
-  test('default mode should set agentIds, NOT generatedAgentConfigs', () => {
+  test('default mode should set only the AI Teacher agentId, NOT generatedAgentConfigs', () => {
     const agents = getDefaultAgents();
     const fields = buildStageAgentFields('default', agents);
 
     // Should have agentIds
     expect(fields).toHaveProperty('agentIds');
-    expect((fields as DefaultModeFields).agentIds).toEqual([
-      'default-1',
-      'default-2',
-      'default-3',
-      'default-4',
-      'default-5',
-      'default-6',
-    ]);
+    expect((fields as DefaultModeFields).agentIds).toEqual(['default-1']);
 
     // Should NOT have generatedAgentConfigs
     expect(fields).not.toHaveProperty('generatedAgentConfigs');
@@ -100,16 +94,9 @@ describe('#353: generatedAgentConfigs conditional on agentMode', () => {
 
     const fields = buildStageAgentFields(agentMode, agents);
 
-    // Should behave exactly like default mode
+    // Should behave exactly like teacher-only default mode
     expect(fields).toHaveProperty('agentIds');
     expect(fields).not.toHaveProperty('generatedAgentConfigs');
-    expect((fields as DefaultModeFields).agentIds).toEqual([
-      'default-1',
-      'default-2',
-      'default-3',
-      'default-4',
-      'default-5',
-      'default-6',
-    ]);
+    expect((fields as DefaultModeFields).agentIds).toEqual(['default-1']);
   });
 });
