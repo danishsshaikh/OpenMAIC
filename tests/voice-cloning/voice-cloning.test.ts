@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFeatureFlagBoolean } from '@/lib/config/feature-flags';
-import { toPublicVoiceProfile, type VoiceProfile } from '@/lib/voice-cloning/types';
+import {
+  toPublicVoiceProfile,
+  VoiceProviderProfileNotFoundError,
+  type VoiceProfile,
+} from '@/lib/voice-cloning/types';
 
 describe('voice cloning feature flag', () => {
   it('defaults false for unset or non-truthy values', () => {
@@ -146,10 +150,18 @@ describe('explicit cloned voice TTS routing', () => {
 
 describe('faculty voice synthesis language resolution', () => {
   const synthesize = vi.fn();
+  const createProfile = vi.fn();
+  const referenceAudioExists = vi.fn();
+  const writeVoiceProfile = vi.fn();
 
   beforeEach(() => {
     vi.resetModules();
     synthesize.mockReset();
+    createProfile.mockReset();
+    referenceAudioExists.mockReset();
+    writeVoiceProfile.mockReset();
+    referenceAudioExists.mockResolvedValue(true);
+    writeVoiceProfile.mockResolvedValue(undefined);
     vi.doUnmock('@/lib/voice-cloning/synthesis');
     vi.doMock('@/lib/voice-cloning/config', () => ({
       FACULTY_VOICE_OWNER_ID: 'local-faculty',
@@ -168,12 +180,16 @@ describe('faculty voice synthesis language resolution', () => {
         updatedAt: '2026-08-11T00:00:00.000Z',
         consentTimestamp: '2026-08-11T00:00:00.000Z',
         consentVersion: 'faculty-self-voice-v1',
+        referenceAudioKey: '/private/reference.wav',
         providerReferenceId: 'ref-1',
         profileVersion: 1,
       })),
+      referenceAudioExists,
+      writeVoiceProfile,
     }));
     vi.doMock('@/lib/voice-cloning/provider', () => ({
       getVoiceCloningProvider: () => ({
+        createProfile,
         synthesize,
       }),
     }));
@@ -194,5 +210,55 @@ describe('faculty voice synthesis language resolution', () => {
       text: 'Hello class',
       language: 'hi',
     });
+  });
+
+  it('re-registers a persisted profile after provider restart and retries synthesis once', async () => {
+    synthesize
+      .mockRejectedValueOnce(new VoiceProviderProfileNotFoundError('voice profile not found'))
+      .mockResolvedValueOnce({ audio: new Uint8Array([1]), format: 'wav' });
+    createProfile.mockResolvedValue({ providerReferenceId: 'ref-1' });
+    const { synthesizeFacultyVoice } = await import('@/lib/voice-cloning/synthesis');
+
+    const result = await synthesizeFacultyVoice({
+      profileId: 'vcp_ready',
+      text: 'Hello class',
+      language: 'en-US',
+    });
+
+    expect(result).toMatchObject({ format: 'wav' });
+    expect(referenceAudioExists).toHaveBeenCalledWith('/private/reference.wav');
+    expect(createProfile).toHaveBeenCalledTimes(1);
+    expect(createProfile).toHaveBeenCalledWith({
+      profileId: 'vcp_ready',
+      referenceAudioKey: '/private/reference.wav',
+      language: 'hi',
+    });
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(synthesize).toHaveBeenNthCalledWith(1, {
+      providerReferenceId: 'ref-1',
+      text: 'Hello class',
+      language: 'en',
+    });
+    expect(synthesize).toHaveBeenNthCalledWith(2, {
+      providerReferenceId: 'ref-1',
+      text: 'Hello class',
+      language: 'en',
+    });
+  });
+
+  it('does not re-register when the persisted private reference audio is missing', async () => {
+    referenceAudioExists.mockResolvedValue(false);
+    const { synthesizeFacultyVoice } = await import('@/lib/voice-cloning/synthesis');
+
+    await expect(
+      synthesizeFacultyVoice({
+        profileId: 'vcp_ready',
+        text: 'Hello class',
+        language: 'en',
+      }),
+    ).rejects.toThrow('Voice profile reference audio not found');
+
+    expect(createProfile).not.toHaveBeenCalled();
+    expect(synthesize).not.toHaveBeenCalled();
   });
 });

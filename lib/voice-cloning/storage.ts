@@ -52,6 +52,19 @@ export async function readVoiceProfile(profileId: string): Promise<VoiceProfile 
   }
 }
 
+export async function referenceAudioExists(
+  referenceAudioKey: string | undefined,
+): Promise<boolean> {
+  if (!referenceAudioKey) return false;
+  try {
+    const stat = await fs.stat(referenceAudioKey);
+    return stat.isFile();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 export async function findCurrentVoiceProfile(ownerId: string): Promise<VoiceProfile | null> {
   const root = getVoiceCloningStorageDir();
   let entries: string[];

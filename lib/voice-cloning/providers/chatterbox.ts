@@ -1,5 +1,8 @@
 import { getVoiceCloningBaseUrl, getVoiceCloningTimeoutMs } from '@/lib/voice-cloning/config';
-import type { VoiceCloningProvider } from '@/lib/voice-cloning/types';
+import {
+  VoiceProviderProfileNotFoundError,
+  type VoiceCloningProvider,
+} from '@/lib/voice-cloning/types';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
@@ -21,6 +24,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 async function fetchAudio(
   url: string,
   init: RequestInit,
+  options: { providerReferenceId?: string } = {},
 ): Promise<{ audio: Uint8Array; format: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getVoiceCloningTimeoutMs());
@@ -28,6 +32,12 @@ async function fetchAudio(
     const response = await fetch(url, { ...init, signal: controller.signal });
     if (!response.ok) {
       const detail = await response.text().catch(() => response.statusText);
+      if (response.status === 404 && detail.toLowerCase().includes('voice profile not found')) {
+        throw new VoiceProviderProfileNotFoundError(
+          `Voice cloning provider profile not found: ${options.providerReferenceId ?? 'unknown'}`,
+          { providerReferenceId: options.providerReferenceId },
+        );
+      }
       throw new Error(
         `Voice cloning service error ${response.status}: ${detail || response.statusText}`,
       );
@@ -87,15 +97,19 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     text: string;
     language: string;
   }): Promise<{ audio: Uint8Array; format: string }> {
-    return fetchAudio(`${this.baseUrl()}/synthesize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        profileId: input.providerReferenceId,
-        text: input.text,
-        language: input.language,
-      }),
-    });
+    return fetchAudio(
+      `${this.baseUrl()}/synthesize`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          profileId: input.providerReferenceId,
+          text: input.text,
+          language: input.language,
+        }),
+      },
+      { providerReferenceId: input.providerReferenceId },
+    );
   }
 
   async deleteProfile(input: { providerReferenceId: string }): Promise<void> {

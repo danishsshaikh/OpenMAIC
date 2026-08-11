@@ -62,6 +62,27 @@ export interface VoiceCloningProvider {
   deleteProfile(input: { providerReferenceId: string }): Promise<void>;
 }
 
+export class VoiceProviderProfileNotFoundError extends Error {
+  readonly providerReferenceId?: string;
+
+  constructor(message: string, options: { providerReferenceId?: string; cause?: unknown } = {}) {
+    super(message, { cause: options.cause });
+    this.name = 'VoiceProviderProfileNotFoundError';
+    this.providerReferenceId = options.providerReferenceId;
+  }
+}
+
+export function isVoiceProviderProfileNotFoundError(
+  error: unknown,
+): error is VoiceProviderProfileNotFoundError {
+  return (
+    error instanceof VoiceProviderProfileNotFoundError ||
+    (typeof error === 'object' &&
+      error !== null &&
+      (error as { name?: string }).name === 'VoiceProviderProfileNotFoundError')
+  );
+}
+
 export function toPublicVoiceProfile(profile: VoiceProfile | null): PublicVoiceProfile | null {
   if (!profile || profile.status === 'deleted') return null;
   return {
