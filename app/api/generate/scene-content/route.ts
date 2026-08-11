@@ -32,6 +32,7 @@ const log = createLogger('Scene Content API');
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   let outlineTitle: string | undefined;
   let resolvedModelString: string | undefined;
   try {
@@ -183,7 +184,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!content) {
-      log.error(`Failed to generate content for: "${effectiveOutline.title}"`);
+      log.error(
+        `Failed to generate content for: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
+      );
 
       return apiError(
         'GENERATION_FAILED',
@@ -192,12 +195,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    log.info(`Content generated successfully: "${effectiveOutline.title}"`);
+    log.info(
+      `Content generated successfully: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
+    );
 
     return apiSuccess({ content, effectiveOutline });
   } catch (error) {
     log.error(
-      `Scene content generation failed [scene="${outlineTitle ?? 'unknown'}", model=${resolvedModelString ?? 'unknown'}]:`,
+      `Scene content generation failed [scene="${outlineTitle ?? 'unknown'}", model=${resolvedModelString ?? 'unknown'}, durationMs=${Date.now() - startedAt}]:`,
       error,
     );
     return llmApiError(error);

@@ -1,6 +1,7 @@
 import { FACULTY_VOICE_OWNER_ID, isVoiceCloningServerEnabled } from '@/lib/voice-cloning/config';
 import { getVoiceCloningProvider } from '@/lib/voice-cloning/provider';
 import { readVoiceProfile } from '@/lib/voice-cloning/storage';
+import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
 
 export async function synthesizeFacultyVoice(input: {
   profileId: string;
@@ -17,9 +18,10 @@ export async function synthesizeFacultyVoice(input: {
   if (profile.status !== 'ready' || !profile.providerReferenceId) {
     throw new Error('Voice profile is not ready');
   }
+  const language = resolveTTSLanguageCode(input.language, { fallbackLanguage: profile.language });
   return getVoiceCloningProvider().synthesize({
     providerReferenceId: profile.providerReferenceId,
     text: input.text,
-    language: input.language || profile.language,
+    language,
   });
 }

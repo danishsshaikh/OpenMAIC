@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   pickNarratorAgent: vi.fn(),
   resolveAgentVoiceOptions: vi.fn(),
   listAgents: vi.fn(),
+  stageState: vi.fn(),
 }));
 
 vi.mock('@/lib/utils/model-config', () => ({
@@ -18,6 +19,12 @@ vi.mock('@/lib/utils/model-config', () => ({
 vi.mock('@/lib/store/settings', () => ({
   useSettingsStore: {
     getState: mocks.settingsState,
+  },
+}));
+
+vi.mock('@/lib/store/stage', () => ({
+  useStageStore: {
+    getState: mocks.stageState,
   },
 }));
 
@@ -99,6 +106,7 @@ describe('browser scene generation retry wrappers', () => {
     mocks.pickNarratorAgent.mockReturnValue(undefined);
     mocks.resolveAgentVoiceOptions.mockResolvedValue({});
     mocks.listAgents.mockReturnValue([]);
+    mocks.stageState.mockReturnValue({ stage: { id: 'stage-1' } });
   });
 
   it('retries transient scene content HTTP failures before returning success', async () => {
@@ -260,5 +268,61 @@ describe('browser scene generation retry wrappers', () => {
         format: 'wav',
       }),
     );
+  });
+
+  it('sends a canonical cloned-voice language code instead of raw language directives', async () => {
+    mocks.stageState.mockReturnValue({
+      stage: { id: 'stage-1', teacherVoiceProfileId: 'vcp_ready' },
+    });
+    const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
+    mockFetch.mockResolvedValue(
+      jsonResponse(200, {
+        success: true,
+        base64: btoa('audio-data'),
+        format: 'wav',
+      }),
+    );
+
+    await generateAndStoreTTS(
+      'tts_s2_action_1',
+      'Hello class',
+      'Deliver the entire course in English. Use clear wording.',
+      undefined,
+      retryOptions,
+    );
+
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({
+      teacherVoiceProfileId: 'vcp_ready',
+      ttsLanguageCode: 'en',
+    });
+    expect(body.language).toBeUndefined();
+  });
+
+  it('keeps scene content requests independent from selected faculty voice profiles', async () => {
+    mocks.stageState.mockReturnValue({
+      stage: { id: 'stage-1', teacherVoiceProfileId: 'vcp_ready' },
+    });
+    const { fetchSceneContent } = await import('@/lib/hooks/use-scene-generator');
+    mockFetch.mockResolvedValue(jsonResponse(200, { success: true, content: { elements: [] } }));
+
+    await fetchSceneContent(
+      {
+        outline,
+        allOutlines: [outline],
+        stageId: 'stage-1',
+        stageInfo: { name: 'Retry Course' },
+        languageDirective: 'Deliver the entire course in English.',
+      },
+      undefined,
+      retryOptions,
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/generate/scene-content',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const body = JSON.parse(String(mockFetch.mock.calls[0][1]?.body));
+    expect(body.teacherVoiceProfileId).toBeUndefined();
   });
 });

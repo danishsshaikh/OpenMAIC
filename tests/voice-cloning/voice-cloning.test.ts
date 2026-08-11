@@ -143,3 +143,56 @@ describe('explicit cloned voice TTS routing', () => {
     expect(generateTTS).not.toHaveBeenCalled();
   });
 });
+
+describe('faculty voice synthesis language resolution', () => {
+  const synthesize = vi.fn();
+
+  beforeEach(() => {
+    vi.resetModules();
+    synthesize.mockReset();
+    vi.doUnmock('@/lib/voice-cloning/synthesis');
+    vi.doMock('@/lib/voice-cloning/config', () => ({
+      FACULTY_VOICE_OWNER_ID: 'local-faculty',
+      isVoiceCloningServerEnabled: () => true,
+      getVoiceCloningProviderId: () => 'chatterbox',
+    }));
+    vi.doMock('@/lib/voice-cloning/storage', () => ({
+      readVoiceProfile: vi.fn(async () => ({
+        id: 'vcp_ready',
+        ownerId: 'local-faculty',
+        displayName: 'Faculty Voice',
+        provider: 'chatterbox',
+        language: 'hi',
+        status: 'ready',
+        createdAt: '2026-08-11T00:00:00.000Z',
+        updatedAt: '2026-08-11T00:00:00.000Z',
+        consentTimestamp: '2026-08-11T00:00:00.000Z',
+        consentVersion: 'faculty-self-voice-v1',
+        providerReferenceId: 'ref-1',
+        profileVersion: 1,
+      })),
+    }));
+    vi.doMock('@/lib/voice-cloning/provider', () => ({
+      getVoiceCloningProvider: () => ({
+        synthesize,
+      }),
+    }));
+  });
+
+  it('never forwards arbitrary generation prose as a provider language id', async () => {
+    synthesize.mockResolvedValue({ audio: new Uint8Array([1]), format: 'wav' });
+    const { synthesizeFacultyVoice } = await import('@/lib/voice-cloning/synthesis');
+
+    await synthesizeFacultyVoice({
+      profileId: 'vcp_ready',
+      text: 'Hello class',
+      language: 'Use clear beginner-friendly wording throughout.',
+    });
+
+    expect(synthesize).toHaveBeenCalledWith({
+      providerReferenceId: 'ref-1',
+      text: 'Hello class',
+      language: 'hi',
+    });
+  });
+});

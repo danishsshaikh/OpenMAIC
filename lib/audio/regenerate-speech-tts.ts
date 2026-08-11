@@ -8,6 +8,7 @@
  */
 import { db } from '@/lib/utils/database';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useStageStore } from '@/lib/store/stage';
 import { generateAndStoreTTS } from '@/lib/hooks/use-scene-generator';
 
 /** Canonical audio cache key — matches the generation pipeline. */
@@ -30,7 +31,10 @@ export function resolveSpeechAudioId(
 /** Managed (server) TTS is on — browser-native TTS has no cached file to manage. */
 export function isManagedTtsActive(): boolean {
   const s = useSettingsStore.getState();
-  return s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts';
+  return (
+    Boolean(useStageStore.getState().stage?.teacherVoiceProfileId) ||
+    (s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts')
+  );
 }
 
 /** True if an audio blob is cached under this exact audioId. */

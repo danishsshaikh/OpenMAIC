@@ -16,6 +16,7 @@ import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import type { Scene } from '@/lib/types/stage';
 import type { SpeechAction } from '@/lib/types/action';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
+import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
 import { measureAudioDuration } from '@/lib/audio/audio-duration';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
 import { resolveAgentVoiceOptions, pickNarratorAgent } from '@/lib/audio/agent-voice';
@@ -246,6 +247,7 @@ export async function generateAndStoreTTS(
 ): Promise<void> {
   const settings = useSettingsStore.getState();
   const teacherVoiceProfileId = useStageStore.getState().stage?.teacherVoiceProfileId;
+  const ttsLanguageCode = teacherVoiceProfileId ? resolveTTSLanguageCode(language) : undefined;
   if (!teacherVoiceProfileId && settings.ttsProviderId === 'browser-native-tts') return;
   // Don't server-generate against a disabled/unconfigured provider (#665).
   if (
@@ -286,7 +288,7 @@ export async function generateAndStoreTTS(
             ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl || undefined,
           ttsProviderOptions: providerOptions,
           teacherVoiceProfileId,
-          language,
+          ttsLanguageCode,
         }),
         signal,
       });

@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       ttsBaseUrl?: string;
       ttsProviderOptions?: Record<string, unknown>;
       teacherVoiceProfileId?: string;
+      ttsLanguageCode?: string;
       language?: string;
     };
     ttsProviderId = body.ttsProviderId;
@@ -52,7 +53,12 @@ export async function POST(req: NextRequest) {
     audioId = body.audioId;
     const teacherVoiceProfileId =
       typeof body.teacherVoiceProfileId === 'string' ? body.teacherVoiceProfileId.trim() : '';
-    const language = typeof body.language === 'string' ? body.language : undefined;
+    const ttsLanguageCode =
+      typeof body.ttsLanguageCode === 'string'
+        ? body.ttsLanguageCode
+        : typeof body.language === 'string'
+          ? body.language
+          : undefined;
 
     // Validate required fields
     if (!text || !audioId || !ttsProviderId || !ttsVoice) {
@@ -67,7 +73,7 @@ export async function POST(req: NextRequest) {
       const { audio, format } = await synthesizeFacultyVoice({
         profileId: teacherVoiceProfileId,
         text,
-        language,
+        language: ttsLanguageCode,
       });
       const base64 = Buffer.from(audio).toString('base64');
       return apiSuccess({ audioId, base64, format });

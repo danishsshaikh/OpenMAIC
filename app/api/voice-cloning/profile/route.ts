@@ -21,6 +21,7 @@ import {
 } from '@/lib/voice-cloning/audio-validation';
 import { getVoiceCloningProvider } from '@/lib/voice-cloning/provider';
 import { createLogger } from '@/lib/logger';
+import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
 
 const log = createLogger('VoiceCloningProfileAPI');
 
@@ -63,10 +64,12 @@ export async function POST(req: NextRequest) {
       typeof formData.get('displayName') === 'string'
         ? String(formData.get('displayName')).trim().slice(0, 80)
         : '';
-    const language =
+    const language = resolveTTSLanguageCode(
       typeof formData.get('language') === 'string'
         ? String(formData.get('language')).trim() || getVoiceCloningDefaultLanguage()
-        : getVoiceCloningDefaultLanguage();
+        : getVoiceCloningDefaultLanguage(),
+      { defaultLanguage: getVoiceCloningDefaultLanguage() },
+    );
     const clips = await Promise.all([
       readClip(formData, 'clip0'),
       readClip(formData, 'clip1'),
