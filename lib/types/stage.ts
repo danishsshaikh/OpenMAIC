@@ -10,7 +10,11 @@
 // `Scene` is re-exported as an alias of the app's fully-instantiated
 // `Scene<Action, AppSceneContent>`, so existing `import { Scene }` callers keep
 // the same semantics (actions are `Action[]`, content spans all four kinds).
-import type { Scene as DslScene, SceneContent as DslSceneContent } from '@openmaic/dsl';
+import type {
+  Scene as DslScene,
+  SceneContent as DslSceneContent,
+  Stage as DslStage,
+} from '@openmaic/dsl';
 import type { Action } from '@/lib/types/action';
 import type { WidgetType, WidgetConfig } from '@/lib/types/widgets';
 import type { PBLProjectConfig } from '@/lib/pbl/types';
@@ -25,7 +29,6 @@ export type {
   VideoManifest,
   GeneratedAgentConfig,
   MultiAgentConfig,
-  Stage,
   SlideContent,
   QuizOption,
   QuizQuestion,
@@ -51,6 +54,14 @@ export type { SceneContent as SceneContentBase } from '@openmaic/dsl';
 // The raw, generic contract Scene is reachable under a distinct name for
 // callers (e.g. read-only renderers) that want the feature-free skeleton.
 export type { Scene as SceneShape } from '@openmaic/dsl';
+
+export type Stage = DslStage & {
+  /**
+   * Opaque faculty voice profile selected for AI Teacher narration.
+   * Absence means the default configured TTS voice is used.
+   */
+  teacherVoiceProfileId?: string;
+};
 
 /**
  * Interactive content - Interactive web page (iframe).

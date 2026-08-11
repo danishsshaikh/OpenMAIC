@@ -14,6 +14,7 @@ export type FeatureFlag =
   | 'generatedClassroomAgents'
   | 'companionSelector'
   | 'classroomChat'
+  | 'voiceCloning'
   | 'interactiveScenes'
   | 'deterministicInteractives'
   | 'discussionScenes'
@@ -110,6 +111,7 @@ const featureFlags = {
   ),
   companionSelector: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR),
   classroomChat: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT),
+  voiceCloning: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_VOICE_CLONING),
   interactiveScenes: readFeatureFlagBoolean(process.env.NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES),
   deterministicInteractives:
     process.env.NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES == null
@@ -142,6 +144,10 @@ export function isGeneratedClassroomAgentsEnabled(): boolean {
 
 export function isClassroomChatEnabled(): boolean {
   return isFeatureEnabled('classroomChat');
+}
+
+export function isVoiceCloningEnabled(): boolean {
+  return isFeatureEnabled('voiceCloning');
 }
 
 export function isInteractiveScenesEnabled(): boolean {

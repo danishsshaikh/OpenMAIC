@@ -23,6 +23,7 @@ export interface NarrationAudioSettingsFingerprint {
   ttsVoice?: string;
   ttsSpeed?: number;
   ttsModelId?: string;
+  teacherVoiceProfileId?: string;
 }
 
 export interface NarrationSyncMetadata {

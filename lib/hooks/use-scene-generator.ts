@@ -245,9 +245,11 @@ export async function generateAndStoreTTS(
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
 ): Promise<void> {
   const settings = useSettingsStore.getState();
-  if (settings.ttsProviderId === 'browser-native-tts') return;
+  const teacherVoiceProfileId = useStageStore.getState().stage?.teacherVoiceProfileId;
+  if (!teacherVoiceProfileId && settings.ttsProviderId === 'browser-native-tts') return;
   // Don't server-generate against a disabled/unconfigured provider (#665).
   if (
+    !teacherVoiceProfileId &&
     !isTTSProviderEnabled(
       settings.ttsProviderId,
       settings.ttsProvidersConfig?.[settings.ttsProviderId],
@@ -283,6 +285,8 @@ export async function generateAndStoreTTS(
           ttsBaseUrl:
             ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl || undefined,
           ttsProviderOptions: providerOptions,
+          teacherVoiceProfileId,
+          language,
         }),
         signal,
       });
@@ -334,6 +338,7 @@ async function generateTTSForScene(
   signal?: AbortSignal,
 ): Promise<{ success: boolean; failedCount: number; error?: string }> {
   const providerId = useSettingsStore.getState().ttsProviderId;
+  const teacherVoiceProfileId = useStageStore.getState().stage?.teacherVoiceProfileId;
   scene.actions = splitLongSpeechActions(scene.actions || [], providerId);
   const speechActions = scene.actions.filter(
     (a): a is SpeechAction => a.type === 'speech' && !!a.text,
@@ -361,7 +366,7 @@ async function generateTTSForScene(
       failedCount++;
       lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
       log.warn('TTS generation failed:', {
-        providerId,
+        providerId: teacherVoiceProfileId ? 'faculty-voice-cloning' : providerId,
         actionId: action.id,
         sceneOrder,
         audioId,
@@ -620,15 +625,17 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           if (actionsResult.success && actionsResult.scene) {
             const scene = actionsResult.scene;
             const settings = useSettingsStore.getState();
+            const teacherVoiceProfileId = store.getState().stage?.teacherVoiceProfileId;
 
             // TTS generation — failure means the whole scene fails
             if (
-              settings.ttsEnabled &&
-              settings.ttsProviderId !== 'browser-native-tts' &&
-              isTTSProviderEnabled(
-                settings.ttsProviderId,
-                settings.ttsProvidersConfig?.[settings.ttsProviderId],
-              )
+              teacherVoiceProfileId ||
+              (settings.ttsEnabled &&
+                settings.ttsProviderId !== 'browser-native-tts' &&
+                isTTSProviderEnabled(
+                  settings.ttsProviderId,
+                  settings.ttsProvidersConfig?.[settings.ttsProviderId],
+                ))
             ) {
               const ttsResult = await generateTTSForScene(
                 scene,
@@ -803,13 +810,15 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
 
         // Step 3: TTS
         const settings = useSettingsStore.getState();
+        const teacherVoiceProfileId = state.stage.teacherVoiceProfileId;
         if (
-          settings.ttsEnabled &&
-          settings.ttsProviderId !== 'browser-native-tts' &&
-          isTTSProviderEnabled(
-            settings.ttsProviderId,
-            settings.ttsProvidersConfig?.[settings.ttsProviderId],
-          )
+          teacherVoiceProfileId ||
+          (settings.ttsEnabled &&
+            settings.ttsProviderId !== 'browser-native-tts' &&
+            isTTSProviderEnabled(
+              settings.ttsProviderId,
+              settings.ttsProvidersConfig?.[settings.ttsProviderId],
+            ))
         ) {
           const ttsResult = await generateTTSForScene(
             actionsResult.scene,

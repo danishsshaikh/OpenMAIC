@@ -41,6 +41,8 @@ export interface GenerationSessionState {
   courseTitle?: string;
   // Server-effective vocational mode from the outline generation done event.
   taskEngineMode?: boolean;
+  // Opaque faculty voice profile selected for AI Teacher narration.
+  teacherVoiceProfileId?: string;
 }
 
 export type GenerationStep = {

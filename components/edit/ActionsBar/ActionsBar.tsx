@@ -1760,9 +1760,11 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         | undefined
     )?.canvas?.elements ?? EMPTY_ELEMENTS;
   const language = useStageStore((s) => s.stage?.languageDirective);
+  const teacherVoiceProfileId = useStageStore((s) => s.stage?.teacherVoiceProfileId);
   // Managed TTS on → speech clips show audio status + 试听 / 重新生成.
   const ttsActive = useSettingsStore(
-    (s) => s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts',
+    (s) =>
+      Boolean(teacherVoiceProfileId) || (s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts'),
   );
   const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
   const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
@@ -1777,8 +1779,9 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
       ttsVoice,
       ttsSpeed,
       ttsModelId,
+      teacherVoiceProfileId,
     }),
-    [language, ttsEnabled, ttsProviderId, ttsVoice, ttsSpeed, ttsModelId],
+    [language, ttsEnabled, ttsProviderId, ttsVoice, ttsSpeed, ttsModelId, teacherVoiceProfileId],
   );
   const stage = useStageStore((s) => s.stage);
   const allOutlines = useStageStore((s) => s.outlines);

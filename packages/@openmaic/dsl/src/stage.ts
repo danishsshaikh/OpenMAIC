@@ -151,6 +151,11 @@ export interface Stage {
   // Agent IDs selected when this classroom was created
   agentIds?: string[];
   /**
+   * Opaque faculty voice profile selected for AI Teacher narration.
+   * Absence means the default configured TTS voice is used.
+   */
+  teacherVoiceProfileId?: string;
+  /**
    * Server-generated agent configurations. See {@link GeneratedAgentConfig}.
    */
   generatedAgentConfigs?: GeneratedAgentConfig[];

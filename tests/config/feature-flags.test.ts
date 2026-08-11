@@ -198,6 +198,7 @@ describe('classroom feature flags', () => {
       companionSelector: false,
       generatedClassroomAgents: false,
       classroomChat: false,
+      voiceCloning: false,
       interactiveScenes: false,
       deterministicInteractives: true,
       discussionScenes: false,
@@ -213,6 +214,15 @@ describe('classroom feature flags', () => {
     process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS = 'true';
     flags = await loadFlags();
     expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(true);
+  });
+
+  it('keeps faculty voice cloning opt-in', async () => {
+    let flags = await loadFlags();
+    expect(flags.isVoiceCloningEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_VOICE_CLONING = 'true';
+    flags = await loadFlags();
+    expect(flags.isVoiceCloningEnabled()).toBe(true);
   });
 
   it('enables runtime AI and flow scene flags only behind their precise gates', async () => {

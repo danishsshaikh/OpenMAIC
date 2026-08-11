@@ -22,6 +22,7 @@ import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
+import { synthesizeFacultyVoice } from '@/lib/voice-cloning/synthesis';
 
 const log = createLogger('TTS API');
 
@@ -43,10 +44,15 @@ export async function POST(req: NextRequest) {
       ttsApiKey?: string;
       ttsBaseUrl?: string;
       ttsProviderOptions?: Record<string, unknown>;
+      teacherVoiceProfileId?: string;
+      language?: string;
     };
     ttsProviderId = body.ttsProviderId;
     ttsVoice = body.ttsVoice;
     audioId = body.audioId;
+    const teacherVoiceProfileId =
+      typeof body.teacherVoiceProfileId === 'string' ? body.teacherVoiceProfileId.trim() : '';
+    const language = typeof body.language === 'string' ? body.language : undefined;
 
     // Validate required fields
     if (!text || !audioId || !ttsProviderId || !ttsVoice) {
@@ -55,6 +61,16 @@ export async function POST(req: NextRequest) {
         400,
         'Missing required fields: text, audioId, ttsProviderId, ttsVoice',
       );
+    }
+
+    if (teacherVoiceProfileId) {
+      const { audio, format } = await synthesizeFacultyVoice({
+        profileId: teacherVoiceProfileId,
+        text,
+        language,
+      });
+      const base64 = Buffer.from(audio).toString('base64');
+      return apiSuccess({ audioId, base64, format });
     }
 
     // Reject browser-native TTS — must be handled client-side
