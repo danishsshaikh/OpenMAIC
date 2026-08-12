@@ -28,6 +28,32 @@ export type TTSLanguageCode = (typeof CHATTERBOX_SUPPORTED_LANGUAGE_IDS)[number]
 
 const SUPPORTED_LANGUAGE_IDS = new Set<string>(CHATTERBOX_SUPPORTED_LANGUAGE_IDS);
 
+export const CHATTERBOX_LANGUAGE_LABELS: Record<TTSLanguageCode, string> = {
+  ar: 'Arabic',
+  da: 'Danish',
+  de: 'German',
+  el: 'Greek',
+  en: 'English',
+  es: 'Spanish',
+  fi: 'Finnish',
+  fr: 'French',
+  he: 'Hebrew',
+  hi: 'Hindi',
+  it: 'Italian',
+  ja: 'Japanese',
+  ko: 'Korean',
+  ms: 'Malay',
+  nl: 'Dutch',
+  no: 'Norwegian',
+  pl: 'Polish',
+  pt: 'Portuguese',
+  ru: 'Russian',
+  sv: 'Swedish',
+  sw: 'Swahili',
+  tr: 'Turkish',
+  zh: 'Chinese',
+};
+
 const LANGUAGE_ALIASES: Record<string, TTSLanguageCode> = {
   arabic: 'ar',
   danish: 'da',
@@ -86,6 +112,20 @@ function resolveLanguageAlias(value: string): TTSLanguageCode | null {
   return null;
 }
 
+export function tryResolveTTSLanguageCode(
+  languageDirectiveOrLocale?: string | null,
+): TTSLanguageCode | null {
+  const input = languageDirectiveOrLocale?.trim();
+  if (!input) return null;
+  const direct = normalizeDirectLanguageCode(input);
+  if (direct) return direct;
+  return resolveLanguageAlias(input);
+}
+
+export function isTTSLanguageCode(value: unknown): value is TTSLanguageCode {
+  return typeof value === 'string' && SUPPORTED_LANGUAGE_IDS.has(value);
+}
+
 /**
  * Resolve OpenMAIC's human language directive/locale input into the provider
  * language_id expected by speech engines such as Chatterbox.
@@ -98,29 +138,14 @@ export function resolveTTSLanguageCode(
   languageDirectiveOrLocale?: string | null,
   options: { fallbackLanguage?: string | null; defaultLanguage?: string | null } = {},
 ): TTSLanguageCode {
-  const input = languageDirectiveOrLocale?.trim();
-  if (input) {
-    const direct = normalizeDirectLanguageCode(input);
-    if (direct) return direct;
-    const alias = resolveLanguageAlias(input);
-    if (alias) return alias;
-  }
+  const resolvedInput = tryResolveTTSLanguageCode(languageDirectiveOrLocale);
+  if (resolvedInput) return resolvedInput;
 
-  const fallback = options.fallbackLanguage?.trim();
-  if (fallback) {
-    const direct = normalizeDirectLanguageCode(fallback);
-    if (direct) return direct;
-    const alias = resolveLanguageAlias(fallback);
-    if (alias) return alias;
-  }
+  const resolvedFallback = tryResolveTTSLanguageCode(options.fallbackLanguage);
+  if (resolvedFallback) return resolvedFallback;
 
-  const defaultLanguage = options.defaultLanguage?.trim();
-  if (defaultLanguage) {
-    const direct = normalizeDirectLanguageCode(defaultLanguage);
-    if (direct) return direct;
-    const alias = resolveLanguageAlias(defaultLanguage);
-    if (alias) return alias;
-  }
+  const resolvedDefault = tryResolveTTSLanguageCode(options.defaultLanguage);
+  if (resolvedDefault) return resolvedDefault;
 
   return 'en';
 }

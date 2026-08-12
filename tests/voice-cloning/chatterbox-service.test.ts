@@ -64,4 +64,18 @@ describe('Chatterbox service scaffold', () => {
     expect(source).toContain('variant = normalize_model_variant(req.modelVariant)');
     expect(source).toContain('active_model = get_model(variant)');
   });
+
+  it('accepts validated per-request generation settings without changing model lifecycle', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('class GenerationSettings(BaseModel)');
+    expect(source).toContain('generationSettings: GenerationSettings | None = None');
+    expect(source).toContain(
+      'generation_settings = resolve_generation_settings(req.generationSettings)',
+    );
+    expect(source).toContain('exaggeration=generation_settings["exaggeration"]');
+    expect(source).toContain('cfg_weight=generation_settings["cfgWeight"]');
+    expect(source).toContain('top_p=generation_settings["topP"]');
+    expect(source).toContain('repetition_penalty=generation_settings["repetitionPenalty"]');
+    expect(source).not.toContain('get_model(variant, generation_settings)');
+  });
 });

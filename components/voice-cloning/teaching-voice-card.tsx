@@ -1,9 +1,25 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CircleAlert, Mic, Play, RotateCcw, Trash2, Volume2, X } from 'lucide-react';
+import {
+  Check,
+  CircleAlert,
+  Mic,
+  Play,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+  Volume2,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  CHATTERBOX_LANGUAGE_LABELS,
+  CHATTERBOX_SUPPORTED_LANGUAGE_IDS,
+  isTTSLanguageCode,
+  type TTSLanguageCode,
+} from '@/lib/audio/tts-language';
 import { getVoiceEnrollmentPhrases } from '@/lib/voice-cloning/phrases';
 import {
   MAX_RECORDING_DURATION_SECONDS,
@@ -11,8 +27,15 @@ import {
 } from '@/lib/voice-cloning/limits';
 import {
   DEFAULT_CHATTERBOX_MODEL_VARIANT,
+  RECOMMENDED_VOICE_GENERATION_SETTINGS,
+  VOICE_GENERATION_SETTING_RANGES,
+  VOICE_SETTINGS_PRESETS,
+  voiceGenerationPresetForSettings,
   type ChatterboxModelVariant,
   type PublicVoiceProfile,
+  type VoiceConfiguration,
+  type VoiceGenerationSettings,
+  type VoiceSettingsPreset,
 } from '@/lib/voice-cloning/types';
 
 interface TeachingVoiceCardProps {
@@ -43,6 +66,85 @@ const MODEL_OPTIONS: Array<{
   { value: 'v2', label: 'V2 — Legacy', description: 'Previous voice model' },
 ];
 
+const PRESET_OPTIONS: Array<{
+  value: VoiceSettingsPreset;
+  label: string;
+  description: string;
+}> = [
+  { value: 'natural', label: 'Natural', description: 'Recommended balanced settings' },
+  { value: 'accent-test', label: 'Accent Test', description: 'Lower guidance for A/B testing' },
+  { value: 'expressive', label: 'Expressive', description: 'More emphasis in delivery' },
+  { value: 'custom', label: 'Custom', description: 'Manual slider values' },
+];
+
+const SETTING_LABELS: Record<keyof VoiceGenerationSettings, { label: string; helper: string }> = {
+  exaggeration: {
+    label: 'Voice Variation',
+    helper: 'Controls emphasis and expressiveness in the generated line.',
+  },
+  cfgWeight: {
+    label: 'Voice Guidance',
+    helper: 'Lower values leave more room for the reference voice during A/B testing.',
+  },
+  temperature: {
+    label: 'Speech Randomness',
+    helper: 'Controls how much variation Chatterbox can use while speaking.',
+  },
+  topP: {
+    label: 'Speech Variation',
+    helper: 'Expert sampling control for the range of likely next sounds.',
+  },
+  minP: {
+    label: 'Low-Probability Filtering',
+    helper: 'Expert sampling control for filtering unlikely sounds.',
+  },
+  repetitionPenalty: {
+    label: 'Repeat Control',
+    helper: 'Expert control that discourages repeated words or phrases.',
+  },
+};
+
+const BASIC_SETTING_KEYS: Array<keyof VoiceGenerationSettings> = [
+  'exaggeration',
+  'cfgWeight',
+  'temperature',
+];
+
+const EXPERT_SETTING_KEYS: Array<keyof VoiceGenerationSettings> = [
+  'topP',
+  'minP',
+  'repetitionPenalty',
+];
+
+function cloneRecommendedSettings(): VoiceGenerationSettings {
+  return { ...RECOMMENDED_VOICE_GENERATION_SETTINGS };
+}
+
+function normalizeProfileLanguageId(profile: PublicVoiceProfile | null): TTSLanguageCode {
+  return isTTSLanguageCode(profile?.languageId) ? profile.languageId : 'en';
+}
+
+function profileConfiguration(profile: PublicVoiceProfile): VoiceConfiguration {
+  return {
+    modelVariant: profile.modelVariant,
+    languageId: normalizeProfileLanguageId(profile),
+    generationSettings: profile.generationSettings ?? cloneRecommendedSettings(),
+  };
+}
+
+function voiceConfigurationsEqual(left: VoiceConfiguration, right: VoiceConfiguration): boolean {
+  return (
+    left.modelVariant === right.modelVariant &&
+    left.languageId === right.languageId &&
+    Object.keys(RECOMMENDED_VOICE_GENERATION_SETTINGS).every((key) => {
+      const typedKey = key as keyof VoiceGenerationSettings;
+      return (
+        Math.abs(left.generationSettings[typedKey] - right.generationSettings[typedKey]) < 0.000001
+      );
+    })
+  );
+}
+
 function chooseMimeType(): string {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
@@ -64,9 +166,14 @@ export function TeachingVoiceCard({
   const [activeIndex, setActiveIndex] = useState(0);
   const [clips, setClips] = useState<ClipState[]>(phrases.map(() => ({})));
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
-  const [modelVariant, setModelVariant] = useState<ChatterboxModelVariant>(
+  const [draftModelVariant, setDraftModelVariant] = useState<ChatterboxModelVariant>(
     DEFAULT_CHATTERBOX_MODEL_VARIANT,
   );
+  const [draftLanguageId, setDraftLanguageId] = useState<TTSLanguageCode>('en');
+  const [draftGenerationSettings, setDraftGenerationSettings] =
+    useState<VoiceGenerationSettings>(cloneRecommendedSettings);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [expertOpen, setExpertOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -75,9 +182,22 @@ export function TeachingVoiceCard({
   const onSelectedProfileIdChangeRef = useRef(onSelectedProfileIdChange);
 
   const readyProfile = profile?.status === 'ready' ? profile : null;
+  const draftConfiguration: VoiceConfiguration = {
+    modelVariant: draftModelVariant,
+    languageId: draftLanguageId,
+    generationSettings: draftGenerationSettings,
+  };
+  const draftPreset = voiceGenerationPresetForSettings(draftGenerationSettings);
+  const acceptedConfiguration = readyProfile ? profileConfiguration(readyProfile) : null;
+  const draftMatchesAccepted =
+    acceptedConfiguration && voiceConfigurationsEqual(draftConfiguration, acceptedConfiguration);
   const selectedPreview =
-    profile?.previewVariants?.[modelVariant] ??
-    (profile?.modelVariant === modelVariant ? profile.preview : undefined);
+    profile?.draftPreview &&
+    voiceConfigurationsEqual(profile.draftPreview.config, draftConfiguration)
+      ? profile.draftPreview.preview
+      : draftMatchesAccepted
+        ? readyProfile?.preview
+        : undefined;
   const allClipsReady = clips.every(
     (clip) =>
       clip.blob &&
@@ -99,7 +219,20 @@ export function TeachingVoiceCard({
         if (cancelled) return;
         const next = data?.profile ?? null;
         setProfile(next);
-        if (next?.modelVariant) setModelVariant(next.modelVariant);
+        if (next?.draftPreview) {
+          setDraftModelVariant(next.draftPreview.config.modelVariant);
+          setDraftLanguageId(
+            isTTSLanguageCode(next.draftPreview.config.languageId)
+              ? next.draftPreview.config.languageId
+              : 'en',
+          );
+          setDraftGenerationSettings(next.draftPreview.config.generationSettings);
+        } else if (next) {
+          const config = profileConfiguration(next);
+          setDraftModelVariant(config.modelVariant);
+          setDraftLanguageId(config.languageId as TTSLanguageCode);
+          setDraftGenerationSettings(config.generationSettings);
+        }
         if (next?.status === 'ready' && !selectedProfileIdRef.current) {
           onSelectedProfileIdChangeRef.current(next.id);
         }
@@ -132,37 +265,182 @@ export function TeachingVoiceCard({
     );
   };
 
-  const renderModelSelector = () => (
-    <div className="space-y-2">
-      <div className="text-xs font-medium text-foreground">Voice Model</div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {MODEL_OPTIONS.map((option) => {
-          const selected = modelVariant === option.value;
-          return (
-            <label
-              key={option.value}
-              className={cn(
-                'flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-xs transition-colors',
-                selected
-                  ? 'border-primary bg-primary/5 text-foreground'
-                  : 'border-border/70 text-muted-foreground hover:bg-muted/40',
+  const updateGenerationSetting = (key: keyof VoiceGenerationSettings, value: number) => {
+    setDraftGenerationSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const applyPreset = (preset: VoiceSettingsPreset) => {
+    if (preset === 'custom') return;
+    setDraftGenerationSettings({ ...VOICE_SETTINGS_PRESETS[preset] });
+  };
+
+  const resetRecommendedDraft = () => {
+    setDraftModelVariant(DEFAULT_CHATTERBOX_MODEL_VARIANT);
+    setDraftLanguageId(
+      isTTSLanguageCode(acceptedConfiguration?.languageId)
+        ? acceptedConfiguration.languageId
+        : draftLanguageId,
+    );
+    setDraftGenerationSettings(cloneRecommendedSettings());
+  };
+
+  const renderSettingSlider = (key: keyof VoiceGenerationSettings) => {
+    const range = VOICE_GENERATION_SETTING_RANGES[key];
+    const metadata = SETTING_LABELS[key];
+    const value = draftGenerationSettings[key];
+    return (
+      <div key={key} className="space-y-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor={`voice-setting-${key}`} className="text-xs font-medium text-foreground">
+            {metadata.label}
+          </label>
+          <span className="text-xs tabular-nums text-muted-foreground">{value.toFixed(2)}</span>
+        </div>
+        <input
+          id={`voice-setting-${key}`}
+          type="range"
+          min={range.min}
+          max={range.max}
+          step={range.step}
+          value={value}
+          aria-valuetext={`${metadata.label} ${value.toFixed(2)}`}
+          onChange={(event) => updateGenerationSetting(key, Number(event.target.value))}
+          className="w-full accent-primary"
+        />
+        <div className="flex justify-between text-[10px] tabular-nums text-muted-foreground">
+          <span>{range.min.toFixed(2)}</span>
+          <span>Recommended {range.recommended.toFixed(2)}</span>
+          <span>{range.max.toFixed(2)}</span>
+        </div>
+        <p className="text-xs leading-snug text-muted-foreground">{metadata.helper}</p>
+      </div>
+    );
+  };
+
+  const renderVoiceConfigurationControls = () => (
+    <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)]">
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-foreground">Voice Model</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {MODEL_OPTIONS.map((option) => {
+              const selected = draftModelVariant === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-xs transition-colors',
+                    selected
+                      ? 'border-primary bg-primary/5 text-foreground'
+                      : 'border-border/70 text-muted-foreground hover:bg-muted/40',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="voice-model-variant"
+                    value={option.value}
+                    checked={selected}
+                    onChange={() => setDraftModelVariant(option.value)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="block font-medium">{option.label}</span>
+                    <span className="mt-0.5 block">{option.description}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="voice-language-id" className="text-xs font-medium text-foreground">
+            Voice Language
+          </label>
+          <select
+            id="voice-language-id"
+            value={draftLanguageId}
+            onChange={(event) => setDraftLanguageId(event.target.value as TTSLanguageCode)}
+            className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+          >
+            {CHATTERBOX_SUPPORTED_LANGUAGE_IDS.map((languageId) => (
+              <option key={languageId} value={languageId}>
+                {CHATTERBOX_LANGUAGE_LABELS[languageId]}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs leading-snug text-muted-foreground">
+            Chatterbox receives the selected language ID for previews and narration.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border/70">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-foreground"
+          aria-expanded={advancedOpen}
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="size-4" />
+            Advanced Voice Settings
+          </span>
+          <span className="text-xs text-muted-foreground">{advancedOpen ? 'Hide' : 'Show'}</span>
+        </button>
+
+        {advancedOpen && (
+          <div className="space-y-4 border-t border-border/70 p-3">
+            <div className="grid gap-2 sm:grid-cols-4">
+              {PRESET_OPTIONS.map((preset) => {
+                const selected = draftPreset === preset.value;
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => applyPreset(preset.value)}
+                    className={cn(
+                      'rounded-md border p-2 text-left text-xs transition-colors',
+                      selected
+                        ? 'border-primary bg-primary/5 text-foreground'
+                        : 'border-border/70 text-muted-foreground hover:bg-muted/40',
+                    )}
+                  >
+                    <span className="block font-medium">{preset.label}</span>
+                    <span className="mt-0.5 block leading-snug">{preset.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {BASIC_SETTING_KEYS.map(renderSettingSlider)}
+            </div>
+
+            <div className="rounded-md border border-border/70">
+              <button
+                type="button"
+                onClick={() => setExpertOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-medium text-foreground"
+                aria-expanded={expertOpen}
+              >
+                <span>Expert Settings</span>
+                <span className="text-muted-foreground">{expertOpen ? 'Hide' : 'Show'}</span>
+              </button>
+              {expertOpen && (
+                <div className="grid gap-4 border-t border-border/70 p-3 md:grid-cols-3">
+                  {EXPERT_SETTING_KEYS.map(renderSettingSlider)}
+                </div>
               )}
-            >
-              <input
-                type="radio"
-                name="voice-model-variant"
-                value={option.value}
-                checked={selected}
-                onChange={() => setModelVariant(option.value)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="block font-medium">{option.label}</span>
-                <span className="mt-0.5 block">{option.description}</span>
-              </span>
-            </label>
-          );
-        })}
+            </div>
+
+            <Button type="button" size="sm" variant="outline" onClick={resetRecommendedDraft}>
+              <RotateCcw className="size-4" />
+              Reset to Recommended
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -242,8 +520,10 @@ export function TeachingVoiceCard({
       const formData = new FormData();
       formData.set('consent', 'true');
       formData.set('displayName', 'My Teaching Voice');
-      formData.set('language', 'en');
-      formData.set('modelVariant', modelVariant);
+      formData.set('language', draftLanguageId);
+      formData.set('languageId', draftLanguageId);
+      formData.set('modelVariant', draftModelVariant);
+      formData.set('generationSettings', JSON.stringify(draftGenerationSettings));
       clips.forEach((clip, index) => {
         formData.set(`clip${index}`, clip.blob!, `phrase-${index + 1}.webm`);
       });
@@ -256,7 +536,10 @@ export function TeachingVoiceCard({
         throw new Error(data.details || data.error || 'Voice enrollment failed.');
       }
       setProfile(data.profile);
-      setModelVariant(data.profile.modelVariant);
+      const config = data.profile.draftPreview?.config ?? profileConfiguration(data.profile);
+      setDraftModelVariant(config.modelVariant);
+      setDraftLanguageId(isTTSLanguageCode(config.languageId) ? config.languageId : 'en');
+      setDraftGenerationSettings(config.generationSettings);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Voice enrollment failed.');
     } finally {
@@ -272,14 +555,23 @@ export function TeachingVoiceCard({
       const response = await fetch('/api/voice-cloning/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: profile.id, action: 'accept-preview', modelVariant }),
+        body: JSON.stringify({
+          profileId: profile.id,
+          action: 'accept-preview',
+          modelVariant: draftModelVariant,
+          languageId: draftLanguageId,
+          generationSettings: draftGenerationSettings,
+        }),
       });
       const data = (await response.json()) as ApiProfileResponse;
       if (!response.ok || !data.profile) {
         throw new Error(data.details || data.error || 'Could not accept preview.');
       }
       setProfile(data.profile);
-      setModelVariant(data.profile.modelVariant);
+      const config = profileConfiguration(data.profile);
+      setDraftModelVariant(config.modelVariant);
+      setDraftLanguageId(config.languageId as TTSLanguageCode);
+      setDraftGenerationSettings(config.generationSettings);
       onSelectedProfileIdChange(data.profile.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not accept preview.');
@@ -296,7 +588,13 @@ export function TeachingVoiceCard({
       const response = await fetch('/api/voice-cloning/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: profile.id, action: 'preview-model', modelVariant }),
+        body: JSON.stringify({
+          profileId: profile.id,
+          action: 'preview-model',
+          modelVariant: draftModelVariant,
+          languageId: draftLanguageId,
+          generationSettings: draftGenerationSettings,
+        }),
       });
       const data = (await response.json()) as ApiProfileResponse;
       if (!response.ok || !data.profile) {
@@ -373,7 +671,7 @@ export function TeachingVoiceCard({
           )}
 
           {(profile?.status === 'preview-ready' || readyProfile) && (
-            <div className="mb-3">{renderModelSelector()}</div>
+            <div className="mb-3">{renderVoiceConfigurationControls()}</div>
           )}
 
           {profile?.status === 'preview-ready' ? (
@@ -387,7 +685,7 @@ export function TeachingVoiceCard({
               ) : (
                 <Button type="button" size="sm" onClick={generateModelPreview} disabled={busy}>
                   <Play className="size-4" />
-                  Preview {modelVariant.toUpperCase()}
+                  Generate Preview
                 </Button>
               )}
               <div className="flex flex-wrap gap-2">
@@ -398,7 +696,7 @@ export function TeachingVoiceCard({
                   disabled={busy || !selectedPreview}
                 >
                   <Check className="size-4" />
-                  Use This Voice
+                  Use These Settings
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => setProfile(null)}>
                   <RotateCcw className="size-4" />
@@ -419,16 +717,16 @@ export function TeachingVoiceCard({
                   src={`data:audio/${selectedPreview.format};base64,${selectedPreview.base64}`}
                 />
               )}
-              {modelVariant !== readyProfile.modelVariant &&
+              {!draftMatchesAccepted &&
                 (selectedPreview ? (
                   <Button type="button" size="sm" onClick={acceptPreview} disabled={busy}>
                     <Check className="size-4" />
-                    Use {modelVariant.toUpperCase()}
+                    Use These Settings
                   </Button>
                 ) : (
                   <Button type="button" size="sm" onClick={generateModelPreview} disabled={busy}>
                     <Play className="size-4" />
-                    Preview {modelVariant.toUpperCase()}
+                    Generate Preview
                   </Button>
                 ))}
               <Button type="button" size="sm" variant="outline" onClick={() => setProfile(null)}>
@@ -461,7 +759,7 @@ export function TeachingVoiceCard({
                 </span>
               </label>
 
-              {renderModelSelector()}
+              {renderVoiceConfigurationControls()}
 
               <div className="rounded-lg border border-border/70 p-3">
                 <div className="mb-2 text-xs font-medium text-muted-foreground">

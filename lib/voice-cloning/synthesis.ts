@@ -8,6 +8,8 @@ import {
 import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
 import {
   isVoiceProviderProfileNotFoundError,
+  resolveVoiceProfileGenerationSettings,
+  resolveVoiceProfileLanguageId,
   resolveVoiceProfileModelVariant,
 } from '@/lib/voice-cloning/types';
 
@@ -29,8 +31,11 @@ export async function synthesizeFacultyVoice(input: {
   if (!(await referenceAudioExists(profile.referenceAudioKey))) {
     throw new Error('Voice profile reference audio not found');
   }
-  const language = resolveTTSLanguageCode(input.language, { fallbackLanguage: profile.language });
+  const language = resolveTTSLanguageCode(resolveVoiceProfileLanguageId(profile), {
+    fallbackLanguage: profile.language,
+  });
   const modelVariant = resolveVoiceProfileModelVariant(profile);
+  const generationSettings = resolveVoiceProfileGenerationSettings(profile);
   const provider = getVoiceCloningProvider();
   const synthesize = (providerReferenceId: string) =>
     provider.synthesize({
@@ -38,6 +43,7 @@ export async function synthesizeFacultyVoice(input: {
       text: input.text,
       language,
       modelVariant,
+      generationSettings,
     });
 
   try {
@@ -51,8 +57,9 @@ export async function synthesizeFacultyVoice(input: {
   const { providerReferenceId } = await provider.createProfile({
     profileId: profile.id,
     referenceAudioKey: profile.referenceAudioKey!,
-    language: profile.language,
+    language,
     modelVariant,
+    generationSettings,
   });
   if (providerReferenceId !== profile.providerReferenceId) {
     await writeVoiceProfile({

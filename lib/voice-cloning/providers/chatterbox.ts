@@ -3,6 +3,7 @@ import {
   isChatterboxModelVariant,
   VoiceProviderProfileNotFoundError,
   type VoiceCloningProvider,
+  type VoiceGenerationSettings,
 } from '@/lib/voice-cloning/types';
 import type { ChatterboxModelVariant } from '@/lib/voice-cloning/types';
 
@@ -81,6 +82,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     referenceAudioKey: string;
     language: string;
     modelVariant: ChatterboxModelVariant;
+    generationSettings: VoiceGenerationSettings;
   }): Promise<{ providerReferenceId: string }> {
     const modelVariant = assertModelVariant(input.modelVariant);
     const result = await fetchJson<{ providerReferenceId?: string }>(`${this.baseUrl()}/profiles`, {
@@ -101,6 +103,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     text: string;
     language: string;
     modelVariant: ChatterboxModelVariant;
+    generationSettings: VoiceGenerationSettings;
   }): Promise<{ audio: Uint8Array; format: string }> {
     return this.synthesize(input);
   }
@@ -110,6 +113,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     text: string;
     language: string;
     modelVariant: ChatterboxModelVariant;
+    generationSettings: VoiceGenerationSettings;
   }): Promise<{ audio: Uint8Array; format: string }> {
     const modelVariant = assertModelVariant(input.modelVariant);
     return fetchAudio(
@@ -122,6 +126,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
           text: input.text,
           language: input.language,
           modelVariant,
+          generationSettings: input.generationSettings,
         }),
       },
       { providerReferenceId: input.providerReferenceId },

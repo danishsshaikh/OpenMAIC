@@ -19,9 +19,14 @@ import {
 import {
   isChatterboxModelVariant,
   resolveNewVoiceProfileModelVariant,
+  resolveVoiceProfileGenerationSettings,
+  resolveVoiceProfileLanguageId,
   resolveVoiceProfileModelVariant,
   toPublicVoiceProfile,
+  validateVoiceGenerationSettings,
   type ChatterboxModelVariant,
+  type VoiceConfiguration,
+  type VoiceGenerationSettings,
   type VoicePreview,
   type VoiceProfile,
 } from '@/lib/voice-cloning/types';
@@ -31,7 +36,7 @@ import {
 } from '@/lib/voice-cloning/audio-validation';
 import { getVoiceCloningProvider } from '@/lib/voice-cloning/provider';
 import { createLogger } from '@/lib/logger';
-import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
+import { resolveTTSLanguageCode, tryResolveTTSLanguageCode } from '@/lib/audio/tts-language';
 
 const log = createLogger('VoiceCloningProfileAPI');
 
@@ -61,9 +66,71 @@ function voicePreviewFromAudio(audio: Uint8Array, format: string): VoicePreview 
   };
 }
 
+function parseGenerationSettings(value: unknown): VoiceGenerationSettings {
+  if (typeof value === 'string') {
+    try {
+      return validateVoiceGenerationSettings(JSON.parse(value));
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error('Invalid voice generation settings');
+      throw error;
+    }
+  }
+  return validateVoiceGenerationSettings(value);
+}
+
+function parseProfileLanguageId(value: unknown, fallbackLanguage?: string | null): string {
+  if (value === undefined || value === null || value === '') {
+    return resolveTTSLanguageCode(fallbackLanguage, {
+      defaultLanguage: getVoiceCloningDefaultLanguage(),
+    });
+  }
+  if (typeof value !== 'string') throw new Error('Unsupported voice language');
+  const languageId = tryResolveTTSLanguageCode(value.trim());
+  if (!languageId) throw new Error('Unsupported voice language');
+  return languageId;
+}
+
+function resolveVoiceConfiguration(input: {
+  modelVariant?: unknown;
+  languageId?: unknown;
+  generationSettings?: unknown;
+  fallbackProfile?: VoiceProfile;
+}): VoiceConfiguration {
+  const profile = input.fallbackProfile;
+  const modelVariant =
+    input.modelVariant === undefined
+      ? profile
+        ? resolveVoiceProfileModelVariant(profile)
+        : serverDefaultModelVariant()
+      : isChatterboxModelVariant(input.modelVariant)
+        ? input.modelVariant
+        : null;
+  if (!modelVariant) throw new Error('Unsupported voice model');
+
+  const languageId = parseProfileLanguageId(
+    input.languageId,
+    profile ? resolveVoiceProfileLanguageId(profile) : undefined,
+  );
+
+  const generationSettings =
+    input.generationSettings === undefined && profile
+      ? resolveVoiceProfileGenerationSettings(profile)
+      : parseGenerationSettings(input.generationSettings);
+
+  return { modelVariant, languageId, generationSettings };
+}
+
+function voiceConfigurationsEqual(left: VoiceConfiguration, right: VoiceConfiguration): boolean {
+  return (
+    left.modelVariant === right.modelVariant &&
+    left.languageId === right.languageId &&
+    JSON.stringify(left.generationSettings) === JSON.stringify(right.generationSettings)
+  );
+}
+
 async function generateVariantPreview(
   profile: VoiceProfile,
-  modelVariant: ChatterboxModelVariant,
+  config: VoiceConfiguration,
 ): Promise<{ providerReferenceId: string; preview: VoicePreview }> {
   if (!profile.referenceAudioKey || !(await referenceAudioExists(profile.referenceAudioKey))) {
     throw new Error('Voice profile reference audio not found');
@@ -72,14 +139,16 @@ async function generateVariantPreview(
   const { providerReferenceId } = await provider.createProfile({
     profileId: profile.id,
     referenceAudioKey: profile.referenceAudioKey,
-    language: profile.language,
-    modelVariant,
+    language: config.languageId,
+    modelVariant: config.modelVariant,
+    generationSettings: config.generationSettings,
   });
   const preview = await provider.generatePreview({
     providerReferenceId,
     text: VOICE_PREVIEW_TEXT,
-    language: profile.language,
-    modelVariant,
+    language: config.languageId,
+    modelVariant: config.modelVariant,
+    generationSettings: config.generationSettings,
   });
   return {
     providerReferenceId,
@@ -120,20 +189,30 @@ export async function POST(req: NextRequest) {
       typeof formData.get('displayName') === 'string'
         ? String(formData.get('displayName')).trim().slice(0, 80)
         : '';
-    const language = resolveTTSLanguageCode(
-      typeof formData.get('language') === 'string'
-        ? String(formData.get('language')).trim() || getVoiceCloningDefaultLanguage()
-        : getVoiceCloningDefaultLanguage(),
-      { defaultLanguage: getVoiceCloningDefaultLanguage() },
-    );
     const parsedModelVariant = requestedModelVariant(formData.get('modelVariant'));
     if (parsedModelVariant === null) {
       return apiError('INVALID_REQUEST', 400, 'Unsupported voice model');
     }
-    const modelVariant = parsedModelVariant ?? serverDefaultModelVariant();
-    if (!modelVariant) {
-      return apiError('INVALID_REQUEST', 400, 'Unsupported voice model');
+    let languageId: string;
+    let generationSettings: VoiceGenerationSettings;
+    try {
+      languageId = parseProfileLanguageId(
+        formData.get('languageId') ?? formData.get('language'),
+        getVoiceCloningDefaultLanguage(),
+      );
+      generationSettings = parseGenerationSettings(formData.get('generationSettings'));
+    } catch (error) {
+      return apiError(
+        'INVALID_REQUEST',
+        400,
+        error instanceof Error ? error.message : 'Invalid voice settings',
+      );
     }
+    const config: VoiceConfiguration = {
+      modelVariant: parsedModelVariant ?? serverDefaultModelVariant(),
+      languageId,
+      generationSettings,
+    };
     const clips = await Promise.all([
       readClip(formData, 'clip0'),
       readClip(formData, 'clip1'),
@@ -148,8 +227,10 @@ export async function POST(req: NextRequest) {
       ownerId: FACULTY_VOICE_OWNER_ID,
       displayName: displayName || 'My Teaching Voice',
       provider: 'chatterbox',
-      language,
-      modelVariant,
+      language: languageId,
+      languageId,
+      modelVariant: config.modelVariant,
+      generationSettings,
       status: 'processing',
       createdAt: now,
       updatedAt: now,
@@ -164,15 +245,13 @@ export async function POST(req: NextRequest) {
     profile = { ...profile, referenceAudioKey, updatedAt: new Date().toISOString() };
     await writeVoiceProfile(profile);
 
-    const { providerReferenceId, preview } = await generateVariantPreview(profile, modelVariant);
+    const { providerReferenceId, preview } = await generateVariantPreview(profile, config);
     profile = {
       ...profile,
       providerReferenceId,
-      modelVariant,
       status: 'preview-ready',
       updatedAt: new Date().toISOString(),
-      preview,
-      previewVariants: { [modelVariant]: preview },
+      draftPreview: { config, preview },
     };
     await writeVoiceProfile(profile);
 
@@ -190,6 +269,7 @@ export async function POST(req: NextRequest) {
         providerReferenceId: undefined,
         preview: undefined,
         previewVariants: undefined,
+        draftPreview: undefined,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -233,6 +313,8 @@ export async function PATCH(req: NextRequest) {
     profileId?: string;
     action?: string;
     modelVariant?: string;
+    languageId?: string;
+    generationSettings?: unknown;
   };
   if (!body.profileId || !body.action) {
     return apiError('INVALID_REQUEST', 400, 'Invalid profile update');
@@ -241,27 +323,31 @@ export async function PATCH(req: NextRequest) {
   if (!profile || profile.ownerId !== FACULTY_VOICE_OWNER_ID || profile.status === 'deleted') {
     return apiError('INVALID_REQUEST', 404, 'Voice profile not found');
   }
-  const modelVariant =
-    body.modelVariant === undefined
-      ? resolveVoiceProfileModelVariant(profile)
-      : isChatterboxModelVariant(body.modelVariant)
-        ? body.modelVariant
-        : null;
-  if (!modelVariant) {
-    return apiError('INVALID_REQUEST', 400, 'Unsupported voice model');
+  let config: VoiceConfiguration;
+  try {
+    config = resolveVoiceConfiguration({
+      modelVariant: body.modelVariant,
+      languageId: body.languageId,
+      generationSettings: body.generationSettings,
+      fallbackProfile: profile,
+    });
+  } catch (error) {
+    return apiError(
+      'INVALID_REQUEST',
+      400,
+      error instanceof Error ? error.message : 'Invalid voice settings',
+    );
   }
 
   if (body.action === 'preview-model') {
     if (profile.status !== 'preview-ready' && profile.status !== 'ready') {
       return apiError('INVALID_REQUEST', 400, 'Voice profile is not ready for preview');
     }
-    const { providerReferenceId, preview } = await generateVariantPreview(profile, modelVariant);
-    const previewVariants = { ...(profile.previewVariants ?? {}), [modelVariant]: preview };
+    const { providerReferenceId, preview } = await generateVariantPreview(profile, config);
     const next = {
       ...profile,
       providerReferenceId,
-      preview,
-      previewVariants,
+      draftPreview: { config, preview },
       updatedAt: new Date().toISOString(),
     };
     await writeVoiceProfile(next);
@@ -272,16 +358,19 @@ export async function PATCH(req: NextRequest) {
     return apiError('INVALID_REQUEST', 400, 'Invalid profile update');
   }
 
-  const acceptedPreview = profile.previewVariants?.[modelVariant] ?? profile.preview;
-  if (!acceptedPreview) {
+  const acceptedDraft = profile.draftPreview;
+  if (!acceptedDraft || !voiceConfigurationsEqual(acceptedDraft.config, config)) {
     return apiError('INVALID_REQUEST', 400, 'Preview must be generated before accepting');
   }
   const next = {
     ...profile,
     status: 'ready' as const,
-    modelVariant,
-    preview: acceptedPreview,
-    previewVariants: { ...(profile.previewVariants ?? {}), [modelVariant]: acceptedPreview },
+    language: config.languageId,
+    languageId: config.languageId,
+    modelVariant: config.modelVariant,
+    generationSettings: config.generationSettings,
+    preview: acceptedDraft.preview,
+    draftPreview: undefined,
     updatedAt: new Date().toISOString(),
   };
   await writeVoiceProfile(next);
@@ -311,6 +400,7 @@ export async function DELETE(req: NextRequest) {
       providerReferenceId: undefined,
       preview: undefined,
       previewVariants: undefined,
+      draftPreview: undefined,
       updatedAt: new Date().toISOString(),
     });
     log.info('voice profile deleted', {

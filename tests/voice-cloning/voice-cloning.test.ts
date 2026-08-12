@@ -3,8 +3,13 @@ import { readFeatureFlagBoolean } from '@/lib/config/feature-flags';
 import {
   DEFAULT_CHATTERBOX_MODEL_VARIANT,
   LEGACY_CHATTERBOX_MODEL_VARIANT,
+  RECOMMENDED_VOICE_GENERATION_SETTINGS,
+  VOICE_SETTINGS_PRESETS,
+  resolveVoiceProfileGenerationSettings,
   resolveVoiceProfileModelVariant,
   toPublicVoiceProfile,
+  validateVoiceGenerationSettings,
+  voiceGenerationPresetForSettings,
   VoiceProviderProfileNotFoundError,
   type VoiceProfile,
 } from '@/lib/voice-cloning/types';
@@ -34,6 +39,8 @@ describe('voice profile privacy', () => {
       language: 'en',
       status: 'ready',
       modelVariant: 'v3',
+      languageId: 'hi',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
       createdAt: '2026-08-11T00:00:00.000Z',
       updatedAt: '2026-08-11T00:00:00.000Z',
       consentTimestamp: '2026-08-11T00:00:00.000Z',
@@ -50,6 +57,8 @@ describe('voice profile privacy', () => {
       language: 'en',
       status: 'ready',
       modelVariant: 'v3',
+      languageId: 'hi',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
       createdAt: '2026-08-11T00:00:00.000Z',
       updatedAt: '2026-08-11T00:00:00.000Z',
       consentTimestamp: '2026-08-11T00:00:00.000Z',
@@ -207,6 +216,8 @@ describe('faculty voice synthesis language resolution', () => {
         language: 'hi',
         status: 'ready',
         modelVariant: 'v3',
+        languageId: 'hi',
+        generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
         createdAt: '2026-08-11T00:00:00.000Z',
         updatedAt: '2026-08-11T00:00:00.000Z',
         consentTimestamp: '2026-08-11T00:00:00.000Z',
@@ -241,6 +252,7 @@ describe('faculty voice synthesis language resolution', () => {
       text: 'Hello class',
       language: 'hi',
       modelVariant: 'v3',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
   });
 
@@ -265,19 +277,22 @@ describe('faculty voice synthesis language resolution', () => {
       referenceAudioKey: '/private/reference.wav',
       language: 'hi',
       modelVariant: 'v3',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
     expect(synthesize).toHaveBeenCalledTimes(2);
     expect(synthesize).toHaveBeenNthCalledWith(1, {
       providerReferenceId: 'ref-1',
       text: 'Hello class',
-      language: 'en',
+      language: 'hi',
       modelVariant: 'v3',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
     expect(synthesize).toHaveBeenNthCalledWith(2, {
       providerReferenceId: 'ref-1',
       text: 'Hello class',
-      language: 'en',
+      language: 'hi',
       modelVariant: 'v3',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
   });
 
@@ -304,6 +319,37 @@ describe('faculty voice model variants', () => {
     expect(resolveVoiceProfileModelVariant({ modelVariant: undefined })).toBe('v2');
     expect(resolveVoiceProfileModelVariant({ modelVariant: 'v2' })).toBe('v2');
     expect(resolveVoiceProfileModelVariant({ modelVariant: 'v3' })).toBe('v3');
+  });
+});
+
+describe('faculty voice generation settings', () => {
+  it('validates settings and fills missing values from recommended defaults', () => {
+    expect(validateVoiceGenerationSettings({ cfgWeight: 0 })).toEqual({
+      ...RECOMMENDED_VOICE_GENERATION_SETTINGS,
+      cfgWeight: 0,
+    });
+    expect(resolveVoiceProfileGenerationSettings({ generationSettings: null })).toEqual(
+      RECOMMENDED_VOICE_GENERATION_SETTINGS,
+    );
+    expect(() => validateVoiceGenerationSettings({ cfgWeight: 2 })).toThrow(
+      'Invalid voice generation setting: cfgWeight',
+    );
+    expect(() => validateVoiceGenerationSettings({ unexpected: 1 })).toThrow(
+      'Unknown voice generation setting: unexpected',
+    );
+  });
+
+  it('recognizes safe presets and treats manual changes as custom', () => {
+    expect(voiceGenerationPresetForSettings(RECOMMENDED_VOICE_GENERATION_SETTINGS)).toBe('natural');
+    expect(voiceGenerationPresetForSettings(VOICE_SETTINGS_PRESETS['accent-test'])).toBe(
+      'accent-test',
+    );
+    expect(
+      voiceGenerationPresetForSettings({
+        ...RECOMMENDED_VOICE_GENERATION_SETTINGS,
+        temperature: 1,
+      }),
+    ).toBe('custom');
   });
 });
 
@@ -364,6 +410,8 @@ describe('voice profile model preview API', () => {
       language: 'en',
       status: 'ready',
       modelVariant,
+      languageId: 'en',
+      generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
       createdAt: '2026-08-11T00:00:00.000Z',
       updatedAt: '2026-08-11T00:00:00.000Z',
       consentTimestamp: '2026-08-11T00:00:00.000Z',
@@ -393,10 +441,28 @@ describe('voice profile model preview API', () => {
 
     expect(response.status).toBe(201);
     expect(data.profile.modelVariant).toBe('v3');
+    expect(data.profile.languageId).toBe('en');
+    expect(data.profile.generationSettings).toEqual(RECOMMENDED_VOICE_GENERATION_SETTINGS);
+    expect(data.profile.draftPreview.config).toEqual({
+      modelVariant: 'v3',
+      languageId: 'en',
+      generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
+    });
     expect(createProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ modelVariant: 'v3', referenceAudioKey: '/private/reference.wav' }),
+      expect.objectContaining({
+        modelVariant: 'v3',
+        language: 'en',
+        referenceAudioKey: '/private/reference.wav',
+        generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
+      }),
     );
-    expect(generatePreview).toHaveBeenCalledWith(expect.objectContaining({ modelVariant: 'v3' }));
+    expect(generatePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelVariant: 'v3',
+        language: 'en',
+        generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
+      }),
+    );
   });
 
   it('rejects unknown profile model variants clearly', async () => {
@@ -418,6 +484,34 @@ describe('voice profile model preview API', () => {
     expect(createProfile).not.toHaveBeenCalled();
   });
 
+  it('rejects unsupported profile languages and malformed settings clearly', async () => {
+    const { POST } = await import('@/app/api/voice-cloning/profile/route');
+    const unsupportedLanguage = new FormData();
+    unsupportedLanguage.set('consent', 'true');
+    unsupportedLanguage.set('languageId', 'xx');
+
+    const languageResponse = await POST(
+      new Request('http://localhost/api/voice-cloning/profile', {
+        method: 'POST',
+        body: unsupportedLanguage,
+      }) as never,
+    );
+    expect(languageResponse.status).toBe(400);
+
+    const malformedSettings = new FormData();
+    malformedSettings.set('consent', 'true');
+    malformedSettings.set('generationSettings', JSON.stringify({ cfgWeight: 3 }));
+
+    const settingsResponse = await POST(
+      new Request('http://localhost/api/voice-cloning/profile', {
+        method: 'POST',
+        body: malformedSettings,
+      }) as never,
+    );
+    expect(settingsResponse.status).toBe(400);
+    expect(createProfile).not.toHaveBeenCalled();
+  });
+
   it('previews V2 and V3 from the same persisted reference without re-recording', async () => {
     readVoiceProfile.mockResolvedValue(readyProfile('v2'));
     const { PATCH } = await import('@/app/api/voice-cloning/profile/route');
@@ -429,6 +523,8 @@ describe('voice profile model preview API', () => {
           profileId: 'vcp_ready',
           action: 'preview-model',
           modelVariant: 'v2',
+          languageId: 'en',
+          generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
         }),
       }) as never,
     );
@@ -439,24 +535,55 @@ describe('voice profile model preview API', () => {
           profileId: 'vcp_ready',
           action: 'preview-model',
           modelVariant: 'v3',
+          languageId: 'hi',
+          generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
         }),
       }) as never,
     );
 
     expect(referenceAudioExists).toHaveBeenCalledWith('/private/reference.wav');
     expect(createProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ modelVariant: 'v2', referenceAudioKey: '/private/reference.wav' }),
+      expect.objectContaining({
+        modelVariant: 'v2',
+        language: 'en',
+        referenceAudioKey: '/private/reference.wav',
+        generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
+      }),
     );
     expect(createProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ modelVariant: 'v3', referenceAudioKey: '/private/reference.wav' }),
+      expect.objectContaining({
+        modelVariant: 'v3',
+        language: 'hi',
+        referenceAudioKey: '/private/reference.wav',
+        generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
+      }),
+    );
+    expect(writeVoiceProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        modelVariant: 'v2',
+        languageId: 'en',
+        generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
+        draftPreview: expect.objectContaining({
+          config: {
+            modelVariant: 'v3',
+            languageId: 'hi',
+            generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
+          },
+        }),
+      }),
     );
   });
 
-  it('persists selected model variant while preserving the reference audio', async () => {
+  it('persists accepted preview config while preserving the reference audio', async () => {
     readVoiceProfile.mockResolvedValue({
       ...readyProfile('v2'),
-      previewVariants: {
-        v3: { format: 'wav', base64: 'new', createdAt: '2026-08-12T00:00:00.000Z' },
+      draftPreview: {
+        config: {
+          modelVariant: 'v3',
+          languageId: 'hi',
+          generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
+        },
+        preview: { format: 'wav', base64: 'new', createdAt: '2026-08-12T00:00:00.000Z' },
       },
     });
     const { PATCH } = await import('@/app/api/voice-cloning/profile/route');
@@ -468,6 +595,8 @@ describe('voice profile model preview API', () => {
           profileId: 'vcp_ready',
           action: 'accept-preview',
           modelVariant: 'v3',
+          languageId: 'hi',
+          generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
         }),
       }) as never,
     );
@@ -475,10 +604,17 @@ describe('voice profile model preview API', () => {
 
     expect(response.status).toBe(200);
     expect(data.profile.modelVariant).toBe('v3');
+    expect(data.profile.languageId).toBe('hi');
+    expect(data.profile.generationSettings).toEqual(VOICE_SETTINGS_PRESETS['accent-test']);
     expect(writeVoiceProfile).toHaveBeenLastCalledWith(
       expect.objectContaining({
         modelVariant: 'v3',
+        language: 'hi',
+        languageId: 'hi',
+        generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
         referenceAudioKey: '/private/reference.wav',
+        preview: { format: 'wav', base64: 'new', createdAt: '2026-08-12T00:00:00.000Z' },
+        draftPreview: undefined,
       }),
     );
   });
@@ -512,12 +648,14 @@ describe('Chatterbox provider model routing', () => {
       referenceAudioKey: '/private/reference.wav',
       language: 'en',
       modelVariant: 'v2',
+      generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
     });
     await provider.synthesize({
       providerReferenceId: 'vcp_ready',
       text: 'Hello class',
-      language: 'en',
+      language: 'hi',
       modelVariant: 'v3',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
@@ -525,6 +663,8 @@ describe('Chatterbox provider model routing', () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
       modelVariant: 'v3',
+      language: 'hi',
+      generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
   });
 });

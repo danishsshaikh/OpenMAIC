@@ -69,6 +69,14 @@ SUPPORTED_LANGUAGE_IDS = {
     "tr",
     "zh",
 }
+GENERATION_SETTING_RANGES = {
+    "exaggeration": (0.25, 2.0),
+    "cfgWeight": (0.0, 1.0),
+    "temperature": (0.2, 1.5),
+    "topP": (0.10, 1.0),
+    "minP": (0.0, 0.20),
+    "repetitionPenalty": (1.0, 3.0),
+}
 
 app = FastAPI(title="OpenMAIC Chatterbox Voice Cloning")
 generation_lock = threading.Semaphore(MAX_CONCURRENCY)
@@ -84,6 +92,16 @@ class ProfileCreateRequest(BaseModel):
     referenceAudioPath: str = Field(min_length=1)
     language: str = "en"
     modelVariant: str | None = None
+    generationSettings: dict | None = None
+
+
+class GenerationSettings(BaseModel):
+    exaggeration: float | None = None
+    cfgWeight: float | None = None
+    temperature: float | None = None
+    topP: float | None = None
+    minP: float | None = None
+    repetitionPenalty: float | None = None
 
 
 class SynthesizeRequest(BaseModel):
@@ -91,6 +109,7 @@ class SynthesizeRequest(BaseModel):
     text: str = Field(min_length=1)
     language: str = "en"
     modelVariant: str | None = None
+    generationSettings: GenerationSettings | None = None
 
 
 @app.on_event("startup")
@@ -143,6 +162,7 @@ def synthesize(req: SynthesizeRequest) -> Response:
     try:
         language = normalize_language_id(req.language)
         variant = normalize_model_variant(req.modelVariant)
+        generation_settings = resolve_generation_settings(req.generationSettings)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     reference = profiles.get(req.profileId)
@@ -152,7 +172,7 @@ def synthesize(req: SynthesizeRequest) -> Response:
         raise HTTPException(status_code=429, detail="voice cloning service is busy")
     try:
         active_model = get_model(variant)
-        wav = generate_long_text(active_model, req.text, reference, language)
+        wav = generate_long_text(active_model, req.text, reference, language, generation_settings)
         buffer = io.BytesIO()
         torchaudio.save(buffer, wav, SAMPLE_RATE, format="wav")
         return Response(content=buffer.getvalue(), media_type="audio/wav")
@@ -223,6 +243,27 @@ def normalize_model_variant(model_variant_value: str | None) -> str:
     if variant not in SUPPORTED_MODEL_VARIANTS:
         raise ValueError(f"Unsupported modelVariant '{model_variant_value}'")
     return variant
+
+
+def resolve_generation_settings(settings: GenerationSettings | None) -> dict:
+    values = {
+        "exaggeration": EXAGGERATION,
+        "cfgWeight": CFG_WEIGHT,
+        "temperature": TEMPERATURE,
+        "topP": TOP_P,
+        "minP": MIN_P,
+        "repetitionPenalty": REPETITION_PENALTY,
+    }
+    if settings is None:
+        return values
+
+    supplied = settings.dict(exclude_none=True)
+    for key, value in supplied.items():
+        lower, upper = GENERATION_SETTING_RANGES[key]
+        if value < lower or value > upper:
+            raise ValueError(f"Invalid generationSettings.{key}")
+        values[key] = value
+    return values
 
 
 def from_pretrained_supports_t3_model() -> bool:
@@ -343,7 +384,13 @@ def get_model(variant: str):
     return model
 
 
-def generate_long_text(active_model, text: str, reference: Path, language: str) -> torch.Tensor:
+def generate_long_text(
+    active_model,
+    text: str,
+    reference: Path,
+    language: str,
+    generation_settings: dict,
+) -> torch.Tensor:
     chunks = split_text(text)
     if not chunks:
         raise ValueError("text is empty")
@@ -355,12 +402,12 @@ def generate_long_text(active_model, text: str, reference: Path, language: str) 
             chunk,
             audio_prompt_path=str(reference),
             language_id=language_id,
-            exaggeration=EXAGGERATION,
-            cfg_weight=CFG_WEIGHT,
-            temperature=TEMPERATURE,
-            top_p=TOP_P,
-            min_p=MIN_P,
-            repetition_penalty=REPETITION_PENALTY,
+            exaggeration=generation_settings["exaggeration"],
+            cfg_weight=generation_settings["cfgWeight"],
+            temperature=generation_settings["temperature"],
+            top_p=generation_settings["topP"],
+            min_p=generation_settings["minP"],
+            repetition_penalty=generation_settings["repetitionPenalty"],
         )
         outputs.append(completed_audio_tensor(wav))
         if index < len(chunks) - 1:
