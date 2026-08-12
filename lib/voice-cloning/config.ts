@@ -28,3 +28,7 @@ export function getVoiceCloningTimeoutMs(): number {
   const parsed = Number(process.env.VOICE_CLONING_TIMEOUT_MS || 120000);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 120000;
 }
+
+export function getChatterboxDefaultModelVariant(): string {
+  return (process.env.CHATTERBOX_T3_MODEL || 'v3').trim().toLowerCase() || 'v3';
+}

@@ -9,7 +9,11 @@ import {
   MAX_RECORDING_DURATION_SECONDS,
   MIN_RECORDING_DURATION_SECONDS,
 } from '@/lib/voice-cloning/limits';
-import type { PublicVoiceProfile } from '@/lib/voice-cloning/types';
+import {
+  DEFAULT_CHATTERBOX_MODEL_VARIANT,
+  type ChatterboxModelVariant,
+  type PublicVoiceProfile,
+} from '@/lib/voice-cloning/types';
 
 interface TeachingVoiceCardProps {
   selectedProfileId?: string;
@@ -29,6 +33,15 @@ type ApiProfileResponse = {
   error?: string;
   details?: string;
 };
+
+const MODEL_OPTIONS: Array<{
+  value: ChatterboxModelVariant;
+  label: string;
+  description: string;
+}> = [
+  { value: 'v3', label: 'V3 — Recommended', description: 'Newer multilingual voice model' },
+  { value: 'v2', label: 'V2 — Legacy', description: 'Previous voice model' },
+];
 
 function chooseMimeType(): string {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
@@ -51,6 +64,9 @@ export function TeachingVoiceCard({
   const [activeIndex, setActiveIndex] = useState(0);
   const [clips, setClips] = useState<ClipState[]>(phrases.map(() => ({})));
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const [modelVariant, setModelVariant] = useState<ChatterboxModelVariant>(
+    DEFAULT_CHATTERBOX_MODEL_VARIANT,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -59,6 +75,9 @@ export function TeachingVoiceCard({
   const onSelectedProfileIdChangeRef = useRef(onSelectedProfileIdChange);
 
   const readyProfile = profile?.status === 'ready' ? profile : null;
+  const selectedPreview =
+    profile?.previewVariants?.[modelVariant] ??
+    (profile?.modelVariant === modelVariant ? profile.preview : undefined);
   const allClipsReady = clips.every(
     (clip) =>
       clip.blob &&
@@ -80,6 +99,7 @@ export function TeachingVoiceCard({
         if (cancelled) return;
         const next = data?.profile ?? null;
         setProfile(next);
+        if (next?.modelVariant) setModelVariant(next.modelVariant);
         if (next?.status === 'ready' && !selectedProfileIdRef.current) {
           onSelectedProfileIdChangeRef.current(next.id);
         }
@@ -111,6 +131,41 @@ export function TeachingVoiceCard({
       }),
     );
   };
+
+  const renderModelSelector = () => (
+    <div className="space-y-2">
+      <div className="text-xs font-medium text-foreground">Voice Model</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {MODEL_OPTIONS.map((option) => {
+          const selected = modelVariant === option.value;
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                'flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-xs transition-colors',
+                selected
+                  ? 'border-primary bg-primary/5 text-foreground'
+                  : 'border-border/70 text-muted-foreground hover:bg-muted/40',
+              )}
+            >
+              <input
+                type="radio"
+                name="voice-model-variant"
+                value={option.value}
+                checked={selected}
+                onChange={() => setModelVariant(option.value)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block font-medium">{option.label}</span>
+                <span className="mt-0.5 block">{option.description}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const startRecording = async (index: number) => {
     setError(null);
@@ -188,6 +243,7 @@ export function TeachingVoiceCard({
       formData.set('consent', 'true');
       formData.set('displayName', 'My Teaching Voice');
       formData.set('language', 'en');
+      formData.set('modelVariant', modelVariant);
       clips.forEach((clip, index) => {
         formData.set(`clip${index}`, clip.blob!, `phrase-${index + 1}.webm`);
       });
@@ -200,6 +256,7 @@ export function TeachingVoiceCard({
         throw new Error(data.details || data.error || 'Voice enrollment failed.');
       }
       setProfile(data.profile);
+      setModelVariant(data.profile.modelVariant);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Voice enrollment failed.');
     } finally {
@@ -215,16 +272,39 @@ export function TeachingVoiceCard({
       const response = await fetch('/api/voice-cloning/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: profile.id, action: 'accept-preview' }),
+        body: JSON.stringify({ profileId: profile.id, action: 'accept-preview', modelVariant }),
       });
       const data = (await response.json()) as ApiProfileResponse;
       if (!response.ok || !data.profile) {
         throw new Error(data.details || data.error || 'Could not accept preview.');
       }
       setProfile(data.profile);
+      setModelVariant(data.profile.modelVariant);
       onSelectedProfileIdChange(data.profile.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not accept preview.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generateModelPreview = async () => {
+    if (!profile) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/voice-cloning/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: profile.id, action: 'preview-model', modelVariant }),
+      });
+      const data = (await response.json()) as ApiProfileResponse;
+      if (!response.ok || !data.profile) {
+        throw new Error(data.details || data.error || 'Could not generate preview.');
+      }
+      setProfile(data.profile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate preview.');
     } finally {
       setBusy(false);
     }
@@ -292,17 +372,33 @@ export function TeachingVoiceCard({
             </div>
           )}
 
-          {profile?.status === 'preview-ready' && profile.preview ? (
+          {(profile?.status === 'preview-ready' || readyProfile) && (
+            <div className="mb-3">{renderModelSelector()}</div>
+          )}
+
+          {profile?.status === 'preview-ready' ? (
             <div className="space-y-3">
-              <audio
-                controls
-                className="w-full"
-                src={`data:audio/${profile.preview.format};base64,${profile.preview.base64}`}
-              />
+              {selectedPreview ? (
+                <audio
+                  controls
+                  className="w-full"
+                  src={`data:audio/${selectedPreview.format};base64,${selectedPreview.base64}`}
+                />
+              ) : (
+                <Button type="button" size="sm" onClick={generateModelPreview} disabled={busy}>
+                  <Play className="size-4" />
+                  Preview {modelVariant.toUpperCase()}
+                </Button>
+              )}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={acceptPreview} disabled={busy}>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={acceptPreview}
+                  disabled={busy || !selectedPreview}
+                >
                   <Check className="size-4" />
-                  Accept
+                  Use This Voice
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => setProfile(null)}>
                   <RotateCcw className="size-4" />
@@ -316,13 +412,25 @@ export function TeachingVoiceCard({
             </div>
           ) : readyProfile ? (
             <div className="flex flex-wrap gap-2">
-              {readyProfile.preview && (
+              {selectedPreview && (
                 <audio
                   controls
                   className="min-w-[260px] flex-1"
-                  src={`data:audio/${readyProfile.preview.format};base64,${readyProfile.preview.base64}`}
+                  src={`data:audio/${selectedPreview.format};base64,${selectedPreview.base64}`}
                 />
               )}
+              {modelVariant !== readyProfile.modelVariant &&
+                (selectedPreview ? (
+                  <Button type="button" size="sm" onClick={acceptPreview} disabled={busy}>
+                    <Check className="size-4" />
+                    Use {modelVariant.toUpperCase()}
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" onClick={generateModelPreview} disabled={busy}>
+                    <Play className="size-4" />
+                    Preview {modelVariant.toUpperCase()}
+                  </Button>
+                ))}
               <Button type="button" size="sm" variant="outline" onClick={() => setProfile(null)}>
                 <RotateCcw className="size-4" />
                 Replace Voice
@@ -352,6 +460,8 @@ export function TeachingVoiceCard({
                   generate course narration in my voice. I can delete my voice profile later.
                 </span>
               </label>
+
+              {renderModelSelector()}
 
               <div className="rounded-lg border border-border/70 p-3">
                 <div className="mb-2 text-xs font-medium text-muted-foreground">

@@ -1,8 +1,17 @@
 import { getVoiceCloningBaseUrl, getVoiceCloningTimeoutMs } from '@/lib/voice-cloning/config';
 import {
+  isChatterboxModelVariant,
   VoiceProviderProfileNotFoundError,
   type VoiceCloningProvider,
 } from '@/lib/voice-cloning/types';
+import type { ChatterboxModelVariant } from '@/lib/voice-cloning/types';
+
+function assertModelVariant(value: ChatterboxModelVariant): ChatterboxModelVariant {
+  if (!isChatterboxModelVariant(value)) {
+    throw new Error(`Unsupported Chatterbox model variant: ${String(value)}`);
+  }
+  return value;
+}
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
@@ -71,7 +80,9 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     profileId: string;
     referenceAudioKey: string;
     language: string;
+    modelVariant: ChatterboxModelVariant;
   }): Promise<{ providerReferenceId: string }> {
+    const modelVariant = assertModelVariant(input.modelVariant);
     const result = await fetchJson<{ providerReferenceId?: string }>(`${this.baseUrl()}/profiles`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -79,6 +90,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
         profileId: input.profileId,
         referenceAudioPath: input.referenceAudioKey,
         language: input.language,
+        modelVariant,
       }),
     });
     return { providerReferenceId: result.providerReferenceId || input.profileId };
@@ -88,6 +100,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     providerReferenceId: string;
     text: string;
     language: string;
+    modelVariant: ChatterboxModelVariant;
   }): Promise<{ audio: Uint8Array; format: string }> {
     return this.synthesize(input);
   }
@@ -96,7 +109,9 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
     providerReferenceId: string;
     text: string;
     language: string;
+    modelVariant: ChatterboxModelVariant;
   }): Promise<{ audio: Uint8Array; format: string }> {
+    const modelVariant = assertModelVariant(input.modelVariant);
     return fetchAudio(
       `${this.baseUrl()}/synthesize`,
       {
@@ -106,6 +121,7 @@ export class ChatterboxVoiceCloningProvider implements VoiceCloningProvider {
           profileId: input.providerReferenceId,
           text: input.text,
           language: input.language,
+          modelVariant,
         }),
       },
       { providerReferenceId: input.providerReferenceId },

@@ -28,4 +28,40 @@ describe('Chatterbox service scaffold', () => {
     );
     expect(source).toContain('return torch.cat(outputs, dim=-1)');
   });
+
+  it('supports explicit V2/V3 model variants with V3 as the default', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('DEFAULT_MODEL_VARIANT = os.getenv("CHATTERBOX_T3_MODEL", "v3")');
+    expect(source).toContain('SUPPORTED_MODEL_VARIANTS = {"v2", "v3"}');
+    expect(source).toContain('"v2": "t3_mtl23ls_v2.safetensors"');
+    expect(source).toContain('"v3": "t3_mtl23ls_v3.safetensors"');
+    expect(source).toContain('def normalize_model_variant');
+    expect(source).toContain('raise ValueError(f"Unsupported modelVariant');
+  });
+
+  it('uses the runtime t3_model selector when installed and legacy V2 otherwise', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('def from_pretrained_supports_t3_model');
+    expect(source).toContain(
+      'ChatterboxMultilingualTTS.from_pretrained(device=DEVICE, t3_model=variant)',
+    );
+    expect(source).toContain('if variant == "v2":');
+    expect(source).toContain('return ChatterboxMultilingualTTS.from_pretrained(device=DEVICE)');
+  });
+
+  it('keeps one active model variant and logs reuse/switch lifecycle', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('model_variant: str | None = None');
+    expect(source).toContain('reusing chatterbox model variant=%s');
+    expect(source).toContain('switching chatterbox model variant=%s -> %s');
+    expect(source).toContain('release_active_model()');
+    expect(source).toContain('torch.cuda.empty_cache()');
+  });
+
+  it('passes the selected model variant through registration and synthesis requests', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('modelVariant: str | None = None');
+    expect(source).toContain('variant = normalize_model_variant(req.modelVariant)');
+    expect(source).toContain('active_model = get_model(variant)');
+  });
 });
