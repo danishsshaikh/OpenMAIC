@@ -23,10 +23,35 @@ describe('Chatterbox service scaffold', () => {
     const source = readFileSync(servicePath, 'utf8');
     expect(source).toContain('def completed_audio_tensor');
     expect(source).toContain('ensure_wave_tensor(wav).detach().cpu()');
+    expect(source).toContain('def clean_pause_tensor');
+    expect(source).toContain('torch.zeros((1, samples), dtype=dtype)');
+    expect(source).toContain('assembled = torch.cat(outputs, dim=-1)');
+    expect(source).toContain('return assembled');
+  });
+
+  it('cleans only multi-chunk boundaries and preserves explicit digital silence pauses', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('BOUNDARY_TRIM_THRESHOLD_DB');
+    expect(source).toContain('def low_energy_edge_samples');
+    expect(source).toContain('def clean_chunk_boundary');
+    expect(source).toContain('if len(chunks) > 1:');
+    expect(source).toContain('output_chunk, cleaned = clean_chunk_boundary(raw_chunk)');
+    expect(source).toContain('else:\n            output_chunk = raw_chunk');
     expect(source).toContain(
-      'torch.zeros((1, int(SAMPLE_RATE * PAUSE_SECONDS)), dtype=torch.float32)',
+      'silence = clean_pause_tensor(pause_samples, dtype=output_chunk.dtype)',
     );
-    expect(source).toContain('return torch.cat(outputs, dim=-1)');
+    expect(source).toContain('pauseMaxAbs');
+  });
+
+  it('logs safe numeric synthesis diagnostics without logging private text or paths', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('voice synthesis chunks=%s');
+    expect(source).toContain('durationMs=%s');
+    expect(source).toContain('pauseMs=%s');
+    expect(source).toContain('boundaryCleanupApplied=%s');
+    expect(source).toContain('voice synthesis assembled durationMs=%s');
+    expect(source).not.toContain('chunk=%s text=');
+    expect(source).not.toContain('reference=%s');
   });
 
   it('supports explicit V2/V3 model variants with V3 as the default', () => {

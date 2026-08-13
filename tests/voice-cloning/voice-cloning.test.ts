@@ -412,6 +412,13 @@ describe('faculty voice setup UI contract', () => {
     expect(source).toContain("generating: 'Generating your voice preview...'");
     expect(source).toContain("finishing: 'Finishing audio...'");
     expect(source).toContain('const [customizeOpen, setCustomizeOpen] = useState(false)');
+    expect(source).toContain("value: Exclude<VoiceSettingsPreset, 'custom'>");
+    expect(source).toContain("{ value: 'natural', label: 'Natural' }");
+    expect(source).toContain("{ value: 'expressive', label: 'Expressive' }");
+    expect(source).toContain("{ value: 'accent-test', label: 'Accent Test' }");
+    expect(source).toContain('draftPresetDescription');
+    expect(source).toContain('Manual settings are active.');
+    expect(source).not.toContain("{ value: 'custom'");
     expect(source).toContain('Speak naturally and do not rush.');
     expect(source).not.toContain('Minimum');
     expect(source).not.toContain('MAX_RECORDING_DURATION_SECONDS');
@@ -420,6 +427,38 @@ describe('faculty voice setup UI contract', () => {
     expect(source).toContain('setRecordingRequiresRetry(true)');
     expect(source).toContain('Customize Voice');
     expect(source).not.toContain('{renderVoiceConfigurationControls()}\n\n              <div');
+  });
+
+  it('keeps customization controls compact and teacher-facing', () => {
+    const source = componentSource();
+
+    expect(source).toContain('Balanced settings for clear, natural teaching narration.');
+    expect(source).toContain('Adds more emphasis and energy to the delivery.');
+    expect(source).toContain('Uses lower voice guidance to test whether the generated accent');
+    expect(source).toContain('Choose the language this teaching voice will speak.');
+    expect(source).toContain('Voice Model');
+    expect(source).toContain('Advanced Voice Settings');
+    expect(source).toContain('Expert Settings');
+    expect(source).toContain('sm:grid-cols-2');
+    expect(source).not.toContain('Chatterbox receives');
+    expect(source).not.toContain('grid gap-2 sm:grid-cols-4');
+  });
+
+  it('cleans candidate recording state during re-record without deleting accepted voice state', () => {
+    const source = componentSource();
+
+    expect(source).toContain('const candidateAudioRef = useRef<HTMLAudioElement | null>(null)');
+    expect(source).toContain('candidateAudioRef.current.pause()');
+    expect(source).toContain('candidateAudioRef.current.currentTime = 0');
+    expect(source).toContain('URL.revokeObjectURL(prev.url)');
+    expect(source).toContain('const clearCandidateRecording = () =>');
+    expect(source).toContain('setRecordingRequiresRetry(false)');
+    expect(source).toContain('setPreviewError(null)');
+    expect(source).toContain('setEnrollmentError(null)');
+    expect(source).toContain('const discardCandidateProfile = async (profileId: string)');
+    expect(source).toContain('onClick={() => discardCandidateProfile(profile.id)}');
+    expect(source).toContain("method: 'DELETE'");
+    expect(source).not.toContain('Discard');
   });
 });
 

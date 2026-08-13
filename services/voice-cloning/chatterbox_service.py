@@ -38,6 +38,11 @@ TOP_P = float(os.getenv("CHATTERBOX_TOP_P", "0.95"))
 MIN_P = float(os.getenv("CHATTERBOX_MIN_P", "0.05"))
 REPETITION_PENALTY = float(os.getenv("CHATTERBOX_REPETITION_PENALTY", "2.0"))
 PAUSE_SECONDS = float(os.getenv("CHATTERBOX_CHUNK_PAUSE_SECONDS", "0.25"))
+BOUNDARY_TRIM_THRESHOLD_DB = float(os.getenv("CHATTERBOX_BOUNDARY_TRIM_THRESHOLD_DB", "-45"))
+BOUNDARY_MAX_TRIM_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_MAX_TRIM_SECONDS", "0.35"))
+BOUNDARY_TRAILING_KEEP_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_TRAILING_KEEP_SECONDS", "0.08"))
+BOUNDARY_LEADING_KEEP_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_LEADING_KEEP_SECONDS", "0.03"))
+BOUNDARY_FADE_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_FADE_SECONDS", "0.006"))
 DEFAULT_MODEL_VARIANT = os.getenv("CHATTERBOX_T3_MODEL", "v3").strip().lower() or "v3"
 SUPPORTED_MODEL_VARIANTS = {"v2", "v3"}
 T3_MODEL_FILES = {
@@ -230,6 +235,88 @@ def completed_audio_tensor(wav: torch.Tensor) -> torch.Tensor:
     return ensure_wave_tensor(wav).detach().cpu()
 
 
+def tensor_duration_ms(wav: torch.Tensor) -> int:
+    if wav.numel() == 0:
+        return 0
+    return round((wav.shape[-1] / SAMPLE_RATE) * 1000)
+
+
+def low_energy_edge_samples(
+    wav: torch.Tensor,
+    *,
+    from_end: bool,
+    threshold_db: float = BOUNDARY_TRIM_THRESHOLD_DB,
+) -> int:
+    samples = wav.shape[-1]
+    if samples <= 0:
+        return 0
+    frame_samples = max(1, int(SAMPLE_RATE * 0.02))
+    hop_samples = max(1, int(SAMPLE_RATE * 0.01))
+    threshold = 10 ** (threshold_db / 20)
+    mono = wav.abs().mean(dim=0)
+
+    if from_end:
+        position = samples
+        while position > 0:
+            start = max(0, position - frame_samples)
+            frame = mono[start:position]
+            if frame.numel() and torch.sqrt(torch.mean(frame * frame)).item() >= threshold:
+                return samples - position
+            position -= hop_samples
+        return samples
+
+    position = 0
+    while position < samples:
+        end = min(samples, position + frame_samples)
+        frame = mono[position:end]
+        if frame.numel() and torch.sqrt(torch.mean(frame * frame)).item() >= threshold:
+            return position
+        position += hop_samples
+    return samples
+
+
+def fade_edge(wav: torch.Tensor, *, fade_in: bool, fade_out: bool) -> torch.Tensor:
+    fade_samples = min(int(SAMPLE_RATE * BOUNDARY_FADE_SECONDS), wav.shape[-1] // 2)
+    if fade_samples <= 0:
+        return wav
+    faded = wav.clone()
+    if fade_in:
+        ramp = torch.linspace(0.0, 1.0, fade_samples, dtype=faded.dtype).unsqueeze(0)
+        faded[:, :fade_samples] = faded[:, :fade_samples] * ramp
+    if fade_out:
+        ramp = torch.linspace(1.0, 0.0, fade_samples, dtype=faded.dtype).unsqueeze(0)
+        faded[:, -fade_samples:] = faded[:, -fade_samples:] * ramp
+    return faded
+
+
+def clean_chunk_boundary(wav: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    wav = completed_audio_tensor(wav).to(dtype=torch.float32)
+    samples = wav.shape[-1]
+    if samples <= 0:
+        return wav, False
+
+    max_trim = int(SAMPLE_RATE * BOUNDARY_MAX_TRIM_SECONDS)
+    leading_keep = int(SAMPLE_RATE * BOUNDARY_LEADING_KEEP_SECONDS)
+    trailing_keep = int(SAMPLE_RATE * BOUNDARY_TRAILING_KEEP_SECONDS)
+    leading_low = low_energy_edge_samples(wav, from_end=False)
+    trailing_low = low_energy_edge_samples(wav, from_end=True)
+
+    leading_trim = min(max(0, leading_low - leading_keep), max_trim)
+    trailing_trim = min(max(0, trailing_low - trailing_keep), max_trim)
+    if leading_trim + trailing_trim >= samples:
+        return wav, False
+
+    cleaned = wav[:, leading_trim : samples - trailing_trim if trailing_trim else samples]
+    fade_in = leading_trim > 0 or leading_low > leading_keep + int(SAMPLE_RATE * BOUNDARY_FADE_SECONDS)
+    fade_out = trailing_trim > 0 or trailing_low > trailing_keep + int(SAMPLE_RATE * BOUNDARY_FADE_SECONDS)
+    cleaned = fade_edge(cleaned, fade_in=fade_in, fade_out=fade_out)
+    return cleaned, leading_trim > 0 or trailing_trim > 0 or fade_in or fade_out
+
+
+def clean_pause_tensor(samples: int, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    return torch.zeros((1, samples), dtype=dtype)
+
+
 def normalize_language_id(language: str | None) -> str:
     normalized = (language or "en").strip().lower().replace("_", "-")
     base = normalized.split("-")[0]
@@ -395,8 +482,15 @@ def generate_long_text(
     if not chunks:
         raise ValueError("text is empty")
     outputs = []
-    silence = torch.zeros((1, int(SAMPLE_RATE * PAUSE_SECONDS)), dtype=torch.float32)
+    pause_samples = int(SAMPLE_RATE * PAUSE_SECONDS)
+    boundary_cleanup_applied = False
     language_id = normalize_language_id(language)
+    log.info(
+        "voice synthesis chunks=%s pauseMs=%s boundaryCleanupEligible=%s",
+        len(chunks),
+        round(PAUSE_SECONDS * 1000),
+        len(chunks) > 1,
+    )
     for index, chunk in enumerate(chunks):
         wav = active_model.generate(
             chunk,
@@ -409,10 +503,37 @@ def generate_long_text(
             min_p=generation_settings["minP"],
             repetition_penalty=generation_settings["repetitionPenalty"],
         )
-        outputs.append(completed_audio_tensor(wav))
+        raw_chunk = completed_audio_tensor(wav).to(dtype=torch.float32)
+        if len(chunks) > 1:
+            output_chunk, cleaned = clean_chunk_boundary(raw_chunk)
+            boundary_cleanup_applied = boundary_cleanup_applied or cleaned
+        else:
+            output_chunk = raw_chunk
+            cleaned = False
+        outputs.append(output_chunk)
+        log.info(
+            "voice synthesis chunk=%s durationMs=%s cleanedDurationMs=%s boundaryCleanupApplied=%s",
+            index + 1,
+            tensor_duration_ms(raw_chunk),
+            tensor_duration_ms(output_chunk),
+            cleaned,
+        )
         if index < len(chunks) - 1:
+            silence = clean_pause_tensor(pause_samples, dtype=output_chunk.dtype)
+            log.info(
+                "voice synthesis boundary=%s pauseMs=%s pauseMaxAbs=%s",
+                index + 1,
+                tensor_duration_ms(silence),
+                float(silence.abs().max().item()) if silence.numel() else 0.0,
+            )
             outputs.append(silence)
-    return torch.cat(outputs, dim=-1)
+    assembled = torch.cat(outputs, dim=-1)
+    log.info(
+        "voice synthesis assembled durationMs=%s boundaryCleanupApplied=%s",
+        tensor_duration_ms(assembled),
+        boundary_cleanup_applied,
+    )
+    return assembled
 
 
 if __name__ == "__main__":

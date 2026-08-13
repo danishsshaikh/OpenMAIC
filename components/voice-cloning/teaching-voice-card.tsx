@@ -78,15 +78,20 @@ const MODEL_OPTIONS: Array<{
 ];
 
 const PRESET_OPTIONS: Array<{
-  value: VoiceSettingsPreset;
+  value: Exclude<VoiceSettingsPreset, 'custom'>;
   label: string;
-  description: string;
 }> = [
-  { value: 'natural', label: 'Natural', description: 'Recommended balanced settings' },
-  { value: 'accent-test', label: 'Accent Test', description: 'Lower guidance for A/B testing' },
-  { value: 'expressive', label: 'Expressive', description: 'More emphasis in delivery' },
-  { value: 'custom', label: 'Custom', description: 'Manual slider values' },
+  { value: 'natural', label: 'Natural' },
+  { value: 'expressive', label: 'Expressive' },
+  { value: 'accent-test', label: 'Accent Test' },
 ];
+
+const PRESET_DESCRIPTIONS: Record<Exclude<VoiceSettingsPreset, 'custom'>, string> = {
+  natural: 'Balanced settings for clear, natural teaching narration.',
+  expressive: 'Adds more emphasis and energy to the delivery.',
+  'accent-test':
+    'Uses lower voice guidance to test whether the generated accent stays closer to your recording.',
+};
 
 const SETTING_LABELS: Record<keyof VoiceGenerationSettings, { label: string; helper: string }> = {
   exaggeration: {
@@ -203,6 +208,7 @@ export function TeachingVoiceCard({
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const candidateAudioRef = useRef<HTMLAudioElement | null>(null);
   const enrollmentRequestInFlightRef = useRef(false);
   const previewRequestInFlightRef = useRef(false);
   const busyTimersRef = useRef<number[]>([]);
@@ -217,6 +223,10 @@ export function TeachingVoiceCard({
     generationSettings: draftGenerationSettings,
   };
   const draftPreset = voiceGenerationPresetForSettings(draftGenerationSettings);
+  const draftPresetDescription =
+    draftPreset === 'custom'
+      ? 'Manual settings are active. Choose a style above to return to a preset.'
+      : PRESET_DESCRIPTIONS[draftPreset];
   const acceptedConfiguration = readyProfile ? profileConfiguration(readyProfile) : null;
   const draftMatchesAccepted =
     acceptedConfiguration && voiceConfigurationsEqual(draftConfiguration, acceptedConfiguration);
@@ -316,12 +326,30 @@ export function TeachingVoiceCard({
   }, []);
 
   const replaceRecording = (next: ClipState) => {
+    if (candidateAudioRef.current) {
+      candidateAudioRef.current.pause();
+      candidateAudioRef.current.currentTime = 0;
+    }
     setRecording((prev) => {
       if (prev.url) URL.revokeObjectURL(prev.url);
       return next;
     });
     setEnrollmentError(null);
     setPreviewError(null);
+    setRecordingRequiresRetry(false);
+    setSetupStep('record');
+  };
+
+  const clearCandidateRecording = () => {
+    busyTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    busyTimersRef.current = [];
+    replaceRecording({});
+    setBusy(false);
+    setBusyPhase(null);
+    setBusyStartedAt(null);
+    setEnrollmentError(null);
+    setPreviewError(null);
+    setError(null);
     setRecordingRequiresRetry(false);
     setSetupStep('record');
   };
@@ -397,11 +425,22 @@ export function TeachingVoiceCard({
   };
 
   const renderVoiceConfigurationControls = () => (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px]">
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-sm font-semibold text-foreground">Customize Voice</div>
+          {draftPreset === 'custom' && (
+            <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Custom
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <div className="space-y-2">
           <div className="text-xs font-medium text-foreground">Voice Style</div>
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="flex flex-wrap gap-2">
             {PRESET_OPTIONS.map((preset) => {
               const selected = draftPreset === preset.value;
               return (
@@ -411,20 +450,24 @@ export function TeachingVoiceCard({
                   aria-pressed={selected}
                   onClick={() => applyPreset(preset.value)}
                   className={cn(
-                    'rounded-md border p-2 text-left text-xs transition-colors',
+                    'min-w-[104px] rounded-full border px-3 py-1.5 text-center text-sm font-medium transition-colors',
                     selected
                       ? 'border-primary bg-primary/5 text-foreground'
                       : 'border-border/70 text-muted-foreground hover:bg-muted/40',
                   )}
                 >
-                  <span className="block font-medium">{preset.label}</span>
-                  <span className="mt-0.5 block leading-snug">{preset.description}</span>
+                  {preset.label}
                 </button>
               );
             })}
           </div>
+          <p className="max-w-[62ch] text-xs leading-snug text-muted-foreground">
+            {draftPresetDescription}
+          </p>
         </div>
+      </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor="voice-language-id" className="text-xs font-medium text-foreground">
             Language
@@ -441,11 +484,15 @@ export function TeachingVoiceCard({
               </option>
             ))}
           </select>
+          <p className="text-xs leading-snug text-muted-foreground">
+            Choose the language this teaching voice will speak. Matching it to your narration
+            usually gives the best pronunciation.
+          </p>
         </div>
 
         <div className="space-y-2">
           <label htmlFor="voice-model-variant" className="text-xs font-medium text-foreground">
-            Model
+            Voice Model
           </label>
           <select
             id="voice-model-variant"
@@ -511,11 +558,7 @@ export function TeachingVoiceCard({
 
   const startRecording = async () => {
     if (busy) return;
-    setError(null);
-    setEnrollmentError(null);
-    setPreviewError(null);
-    setRecordingRequiresRetry(false);
-    setSetupStep('record');
+    clearCandidateRecording();
     if (!consented) {
       setEnrollmentError('Consent is required before recording.');
       return;
@@ -534,7 +577,6 @@ export function TeachingVoiceCard({
       const chunks: BlobPart[] = [];
       const recorder = new MediaRecorder(stream, { mimeType });
       const recordingStartedAt = performance.now();
-      replaceRecording({});
       streamRef.current = stream;
       recorderRef.current = recorder;
       setRecordingStartedAt(recordingStartedAt);
@@ -738,6 +780,23 @@ export function TeachingVoiceCard({
     }
   };
 
+  const discardCandidateProfile = async (profileId: string) => {
+    if (previewRequestInFlightRef.current) return;
+    previewRequestInFlightRef.current = true;
+    clearCandidateRecording();
+    setProfile(null);
+    setCustomizeOpen(false);
+    try {
+      await fetch(`/api/voice-cloning/profile?profileId=${encodeURIComponent(profileId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      setError('Could not delete the candidate voice preview.');
+    } finally {
+      previewRequestInFlightRef.current = false;
+    }
+  };
+
   const renderStepHeader = (step: SetupStep, title: string) => {
     const stepNumber = step === 'record' ? 1 : step === 'preview' ? 2 : 3;
     return (
@@ -846,6 +905,7 @@ export function TeachingVoiceCard({
               {selectedPreview ? (
                 <audio
                   controls
+                  ref={candidateAudioRef}
                   className="w-full"
                   src={`data:audio/${selectedPreview.format};base64,${selectedPreview.base64}`}
                 />
@@ -885,7 +945,7 @@ export function TeachingVoiceCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => deleteProfile(profile.id)}
+                  onClick={() => discardCandidateProfile(profile.id)}
                   disabled={busy}
                 >
                   <RotateCcw className="size-4" />
@@ -1085,6 +1145,7 @@ export function TeachingVoiceCard({
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <audio
                       controls
+                      ref={candidateAudioRef}
                       className="h-9 min-w-[240px] max-w-full flex-1"
                       src={recording.url}
                     />
@@ -1094,11 +1155,12 @@ export function TeachingVoiceCard({
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
-                      onClick={() => replaceRecording({})}
+                      variant="outline"
+                      onClick={startRecording}
+                      disabled={!consented || busy}
                     >
-                      <Trash2 className="size-4" />
-                      Discard
+                      <RotateCcw className="size-4" />
+                      Re-record
                     </Button>
                   </div>
                 )}
