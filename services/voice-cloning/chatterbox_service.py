@@ -43,6 +43,7 @@ BOUNDARY_MAX_TRIM_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_MAX_TRIM_SECOND
 BOUNDARY_TRAILING_KEEP_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_TRAILING_KEEP_SECONDS", "0.08"))
 BOUNDARY_LEADING_KEEP_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_LEADING_KEEP_SECONDS", "0.03"))
 BOUNDARY_FADE_SECONDS = float(os.getenv("CHATTERBOX_BOUNDARY_FADE_SECONDS", "0.006"))
+MAX_TEXT_CHUNK_CHARS = int(os.getenv("CHATTERBOX_MAX_TEXT_CHUNK_CHARS", "420"))
 DEFAULT_MODEL_VARIANT = os.getenv("CHATTERBOX_T3_MODEL", "v3").strip().lower() or "v3"
 SUPPORTED_MODEL_VARIANTS = {"v2", "v3"}
 T3_MODEL_FILES = {
@@ -177,7 +178,15 @@ def synthesize(req: SynthesizeRequest) -> Response:
         raise HTTPException(status_code=429, detail="voice cloning service is busy")
     try:
         active_model = get_model(variant)
-        wav = generate_long_text(active_model, req.text, reference, language, generation_settings)
+        wav = generate_long_text(
+            active_model,
+            req.text,
+            reference,
+            language,
+            generation_settings,
+            profile_id=req.profileId,
+            variant=variant,
+        )
         buffer = io.BytesIO()
         torchaudio.save(buffer, wav, SAMPLE_RATE, format="wav")
         return Response(content=buffer.getvalue(), media_type="audio/wav")
@@ -201,25 +210,42 @@ def split_text(text: str) -> List[str]:
     if not normalized:
         return []
     chunks: List[str] = []
-    for paragraph in re.split(r"\n+", normalized):
-        start = 0
-        parts = re.split(r"(?<=[.!?;:。！？；：])\s+", paragraph)
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-            if len(part) <= 420:
-                chunks.append(part)
-                continue
-            while start < len(part):
-                end = min(len(part), start + 420)
-                if end < len(part):
-                    space = part.rfind(" ", start, end)
+
+    current = ""
+
+    def flush_current() -> None:
+        nonlocal current
+        if current:
+            chunks.append(current)
+            current = ""
+
+    def append_segment(segment: str) -> None:
+        nonlocal current
+        if not segment:
+            return
+        if len(segment) > MAX_TEXT_CHUNK_CHARS:
+            flush_current()
+            start = 0
+            while start < len(segment):
+                end = min(len(segment), start + MAX_TEXT_CHUNK_CHARS)
+                if end < len(segment):
+                    space = segment.rfind(" ", start, end)
                     if space > start + 80:
                         end = space
-                chunks.append(part[start:end].strip())
+                chunks.append(segment[start:end].strip())
                 start = end
-            start = 0
+            return
+
+        candidate = f"{current} {segment}".strip() if current else segment
+        if len(candidate) <= MAX_TEXT_CHUNK_CHARS:
+            current = candidate
+            return
+        flush_current()
+        current = segment
+
+    for part in re.split(r"(?<=[.!?;:。！？；：])\s+", normalized):
+        append_segment(part.strip())
+    flush_current()
     return chunks
 
 
@@ -233,6 +259,75 @@ def ensure_wave_tensor(wav: torch.Tensor) -> torch.Tensor:
 
 def completed_audio_tensor(wav: torch.Tensor) -> torch.Tensor:
     return ensure_wave_tensor(wav).detach().cpu()
+
+
+def transformer_layers(active_model) -> list:
+    return list(getattr(getattr(getattr(active_model, "t3", None), "tfmr", None), "layers", []) or [])
+
+
+def transformer_config(active_model):
+    return getattr(getattr(getattr(active_model, "t3", None), "tfmr", None), "config", None)
+
+
+def generation_hook_snapshot(active_model) -> dict:
+    snapshot = {}
+    for layer in transformer_layers(active_model):
+        attention = getattr(layer, "self_attn", None)
+        hooks = getattr(attention, "_forward_hooks", None)
+        if hooks is not None:
+            snapshot[attention] = set(hooks.keys())
+    return snapshot
+
+
+def forward_hook_count(active_model) -> int:
+    total = 0
+    for layer in transformer_layers(active_model):
+        attention = getattr(layer, "self_attn", None)
+        hooks = getattr(attention, "_forward_hooks", None)
+        if hooks is not None:
+            total += len(hooks)
+    return total
+
+
+def attention_config_snapshot(active_model) -> dict:
+    config = transformer_config(active_model)
+    if config is None:
+        return {}
+    values = {}
+    for name in ("output_attentions", "_attn_implementation"):
+        if hasattr(config, name):
+            values[name] = getattr(config, name)
+    return values
+
+
+def restore_attention_config(active_model, snapshot: dict) -> bool:
+    config = transformer_config(active_model)
+    if config is None:
+        return False
+    restored = False
+    for name, value in snapshot.items():
+        if hasattr(config, name) and getattr(config, name) != value:
+            setattr(config, name, value)
+            restored = True
+    return restored
+
+
+def cleanup_generation_runtime(active_model, hook_snapshot: dict, config_snapshot: dict) -> dict:
+    removed = 0
+    for attention, existing_hook_ids in hook_snapshot.items():
+        hooks = getattr(attention, "_forward_hooks", None)
+        if hooks is None:
+            continue
+        for hook_id in list(hooks.keys()):
+            if hook_id not in existing_hook_ids:
+                hooks.pop(hook_id, None)
+                removed += 1
+    config_restored = restore_attention_config(active_model, config_snapshot)
+    return {
+        "hooksRemoved": removed,
+        "configRestored": config_restored,
+        "hooksAfterCleanup": forward_hook_count(active_model),
+    }
 
 
 def tensor_duration_ms(wav: torch.Tensor) -> int:
@@ -315,6 +410,53 @@ def clean_chunk_boundary(wav: torch.Tensor) -> tuple[torch.Tensor, bool]:
 
 def clean_pause_tensor(samples: int, dtype: torch.dtype = torch.float32) -> torch.Tensor:
     return torch.zeros((1, samples), dtype=dtype)
+
+
+def generate_with_runtime_cleanup(
+    active_model,
+    *,
+    chunk: str,
+    chunk_index: int,
+    profile_id: str,
+    reference: Path,
+    language_id: str,
+    generation_settings: dict,
+    variant: str,
+) -> torch.Tensor:
+    hooks_before = forward_hook_count(active_model)
+    hook_snapshot = generation_hook_snapshot(active_model)
+    config_snapshot = attention_config_snapshot(active_model)
+    log.info(
+        "voice synthesis generation start profileId=%s variant=%s chunk=%s textLen=%s hooksBefore=%s",
+        profile_id,
+        variant,
+        chunk_index,
+        len(chunk),
+        hooks_before,
+    )
+    try:
+        return active_model.generate(
+            chunk,
+            audio_prompt_path=str(reference),
+            language_id=language_id,
+            exaggeration=generation_settings["exaggeration"],
+            cfg_weight=generation_settings["cfgWeight"],
+            temperature=generation_settings["temperature"],
+            top_p=generation_settings["topP"],
+            min_p=generation_settings["minP"],
+            repetition_penalty=generation_settings["repetitionPenalty"],
+        )
+    finally:
+        cleanup = cleanup_generation_runtime(active_model, hook_snapshot, config_snapshot)
+        log.info(
+            "voice synthesis generation cleanup profileId=%s variant=%s chunk=%s hooksRemoved=%s hooksAfter=%s configRestored=%s",
+            profile_id,
+            variant,
+            chunk_index,
+            cleanup["hooksRemoved"],
+            cleanup["hooksAfterCleanup"],
+            cleanup["configRestored"],
+        )
 
 
 def normalize_language_id(language: str | None) -> str:
@@ -477,6 +619,8 @@ def generate_long_text(
     reference: Path,
     language: str,
     generation_settings: dict,
+    profile_id: str = "unknown",
+    variant: str = "unknown",
 ) -> torch.Tensor:
     chunks = split_text(text)
     if not chunks:
@@ -486,22 +630,25 @@ def generate_long_text(
     boundary_cleanup_applied = False
     language_id = normalize_language_id(language)
     log.info(
-        "voice synthesis chunks=%s pauseMs=%s boundaryCleanupEligible=%s",
+        "voice synthesis start profileId=%s variant=%s textLen=%s chunks=%s pauseMs=%s boundaryCleanupEligible=%s hooks=%s",
+        profile_id,
+        variant,
+        len(text),
         len(chunks),
         round(PAUSE_SECONDS * 1000),
         len(chunks) > 1,
+        forward_hook_count(active_model),
     )
     for index, chunk in enumerate(chunks):
-        wav = active_model.generate(
-            chunk,
-            audio_prompt_path=str(reference),
+        wav = generate_with_runtime_cleanup(
+            active_model,
+            chunk=chunk,
+            chunk_index=index + 1,
+            profile_id=profile_id,
+            reference=reference,
             language_id=language_id,
-            exaggeration=generation_settings["exaggeration"],
-            cfg_weight=generation_settings["cfgWeight"],
-            temperature=generation_settings["temperature"],
-            top_p=generation_settings["topP"],
-            min_p=generation_settings["minP"],
-            repetition_penalty=generation_settings["repetitionPenalty"],
+            generation_settings=generation_settings,
+            variant=variant,
         )
         raw_chunk = completed_audio_tensor(wav).to(dtype=torch.float32)
         if len(chunks) > 1:
@@ -529,9 +676,13 @@ def generate_long_text(
             outputs.append(silence)
     assembled = torch.cat(outputs, dim=-1)
     log.info(
-        "voice synthesis assembled durationMs=%s boundaryCleanupApplied=%s",
+        "voice synthesis assembled profileId=%s variant=%s rawDurationMs=%s finalDurationMs=%s boundaryCleanupApplied=%s hooks=%s",
+        profile_id,
+        variant,
+        tensor_duration_ms(assembled),
         tensor_duration_ms(assembled),
         boundary_cleanup_applied,
+        forward_hook_count(active_model),
     )
     return assembled
 

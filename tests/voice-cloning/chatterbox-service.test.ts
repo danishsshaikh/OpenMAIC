@@ -43,13 +43,52 @@ describe('Chatterbox service scaffold', () => {
     expect(source).toContain('pauseMaxAbs');
   });
 
+  it('packs short multi-sentence text into one generation chunk where supported', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('MAX_TEXT_CHUNK_CHARS');
+    expect(source).toContain('candidate = f"{current} {segment}".strip() if current else segment');
+    expect(source).toContain('if len(candidate) <= MAX_TEXT_CHUNK_CHARS:');
+    expect(source).not.toContain('if len(part) <= 420:\n                chunks.append(part)');
+  });
+
+  it('cleans temporary analyzer hooks after each generation without clearing unrelated hooks', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('def generation_hook_snapshot');
+    expect(source).toContain('def forward_hook_count');
+    expect(source).toContain('def cleanup_generation_runtime');
+    expect(source).toContain('if hook_id not in existing_hook_ids:');
+    expect(source).toContain('hooks.pop(hook_id, None)');
+    expect(source).not.toContain('_forward_hooks.clear()');
+  });
+
+  it('restores attention config mutated by the multilingual alignment analyzer', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('def attention_config_snapshot');
+    expect(source).toContain('"output_attentions"');
+    expect(source).toContain('"_attn_implementation"');
+    expect(source).toContain('def restore_attention_config');
+    expect(source).toContain('configRestored');
+  });
+
+  it('wraps every model.generate call in a runtime cleanup guard', () => {
+    const source = readFileSync(servicePath, 'utf8');
+    expect(source).toContain('def generate_with_runtime_cleanup');
+    expect(source).toContain('hooksBefore=%s');
+    expect(source).toContain('hooksRemoved=%s');
+    expect(source).toContain('hooksAfter=%s');
+    expect(source).toContain('finally:\n        cleanup = cleanup_generation_runtime');
+    expect(source).toContain('wav = generate_with_runtime_cleanup');
+    expect(source).toContain('chunk=chunk');
+    expect(source).not.toContain('wav = active_model.generate(\n            chunk,');
+  });
+
   it('logs safe numeric synthesis diagnostics without logging private text or paths', () => {
     const source = readFileSync(servicePath, 'utf8');
-    expect(source).toContain('voice synthesis chunks=%s');
+    expect(source).toContain('voice synthesis start profileId=%s variant=%s textLen=%s chunks=%s');
     expect(source).toContain('durationMs=%s');
     expect(source).toContain('pauseMs=%s');
     expect(source).toContain('boundaryCleanupApplied=%s');
-    expect(source).toContain('voice synthesis assembled durationMs=%s');
+    expect(source).toContain('voice synthesis assembled profileId=%s variant=%s rawDurationMs=%s');
     expect(source).not.toContain('chunk=%s text=');
     expect(source).not.toContain('reference=%s');
   });
