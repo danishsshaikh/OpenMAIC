@@ -31,7 +31,9 @@ import {
   type VoiceProfile,
 } from '@/lib/voice-cloning/types';
 import {
-  normalizeVoiceEnrollmentClips,
+  isVoiceRecordingQualityError,
+  masterGeneratedVoiceAudio,
+  normalizeVoiceEnrollmentRecording,
   type IncomingVoiceClip,
 } from '@/lib/voice-cloning/audio-validation';
 import { getVoiceCloningProvider } from '@/lib/voice-cloning/provider';
@@ -150,16 +152,22 @@ async function generateVariantPreview(
     modelVariant: config.modelVariant,
     generationSettings: config.generationSettings,
   });
+  const mastered = await masterGeneratedVoiceAudio(preview.audio, preview.format);
+  log.info('voice output mastering completed', {
+    profileId: profile.id,
+    operation: 'preview',
+    format: mastered.format,
+  });
   return {
     providerReferenceId,
-    preview: voicePreviewFromAudio(preview.audio, preview.format),
+    preview: voicePreviewFromAudio(mastered.audio, mastered.format),
   };
 }
 
-async function readClip(formData: FormData, key: string): Promise<IncomingVoiceClip> {
-  const value = formData.get(key);
+async function readEnrollmentRecording(formData: FormData): Promise<IncomingVoiceClip> {
+  const value = formData.get('recording');
   if (!(value instanceof File)) {
-    throw new Error(`Missing recording: ${key}`);
+    throw new Error('Missing recording');
   }
   return {
     bytes: new Uint8Array(await value.arrayBuffer()),
@@ -213,15 +221,43 @@ export async function POST(req: NextRequest) {
       languageId,
       generationSettings,
     };
-    const clips = await Promise.all([
-      readClip(formData, 'clip0'),
-      readClip(formData, 'clip1'),
-      readClip(formData, 'clip2'),
-    ]);
+    const profileId = createVoiceProfileId();
+    let normalizedReference: Awaited<ReturnType<typeof normalizeVoiceEnrollmentRecording>>;
+    try {
+      const recording = await readEnrollmentRecording(formData);
+      log.info('voice enrollment quality check started', {
+        profileId,
+        operation: 'enroll',
+        recordingBytes: recording.bytes.byteLength,
+      });
+      normalizedReference = await normalizeVoiceEnrollmentRecording(recording);
+      log.info('voice enrollment quality check passed', {
+        profileId,
+        operation: 'enroll',
+        duration: normalizedReference.durationSeconds,
+        meanVolumeDb: normalizedReference.quality.meanVolumeDb,
+        maxVolumeDb: normalizedReference.quality.maxVolumeDb,
+        silenceRatio: normalizedReference.quality.silenceRatio,
+      });
+    } catch (error) {
+      if (isVoiceRecordingQualityError(error)) {
+        log.warn('voice enrollment rejected', {
+          profileId,
+          operation: 'enroll',
+          reason: error.code,
+        });
+        return apiError('INVALID_REQUEST', 400, error.userMessage);
+      }
+      return apiError(
+        'INVALID_REQUEST',
+        400,
+        error instanceof Error ? error.message : 'Invalid voice recording',
+      );
+    }
+
     previousProfile = await findCurrentVoiceProfile(FACULTY_VOICE_OWNER_ID);
 
     const now = new Date().toISOString();
-    const profileId = createVoiceProfileId();
     profile = {
       id: profileId,
       ownerId: FACULTY_VOICE_OWNER_ID,
@@ -237,13 +273,21 @@ export async function POST(req: NextRequest) {
       consentTimestamp: now,
       consentVersion: VOICE_CLONING_CONSENT_VERSION,
       profileVersion: 1,
+      replacesProfileId: previousProfile?.id,
     };
     await writeVoiceProfile(profile);
 
-    const { referenceAudio, durations } = await normalizeVoiceEnrollmentClips(clips);
-    const referenceAudioKey = await writeReferenceAudio(profileId, referenceAudio);
+    const referenceAudioKey = await writeReferenceAudio(
+      profileId,
+      normalizedReference.referenceAudio,
+    );
     profile = { ...profile, referenceAudioKey, updatedAt: new Date().toISOString() };
     await writeVoiceProfile(profile);
+    log.info('voice reference preprocessing completed', {
+      profileId,
+      operation: 'enroll',
+      duration: normalizedReference.durationSeconds,
+    });
 
     const { providerReferenceId, preview } = await generateVariantPreview(profile, config);
     profile = {
@@ -255,30 +299,11 @@ export async function POST(req: NextRequest) {
     };
     await writeVoiceProfile(profile);
 
-    if (previousProfile && previousProfile.id !== profile.id) {
-      if (previousProfile.providerReferenceId) {
-        await getVoiceCloningProvider()
-          .deleteProfile({ providerReferenceId: previousProfile.providerReferenceId })
-          .catch(() => undefined);
-      }
-      await deleteVoiceProfileAssets(previousProfile);
-      await writeVoiceProfile({
-        ...previousProfile,
-        status: 'deleted',
-        referenceAudioKey: undefined,
-        providerReferenceId: undefined,
-        preview: undefined,
-        previewVariants: undefined,
-        draftPreview: undefined,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
     log.info('voice profile enrolled', {
       profileId,
       operation: 'enroll',
       status: profile.status,
-      duration: durations.reduce((sum, value) => sum + value, 0),
+      duration: normalizedReference.durationSeconds,
     });
 
     return apiSuccess({ profile: toPublicVoiceProfile(profile) }, 201);
@@ -374,6 +399,31 @@ export async function PATCH(req: NextRequest) {
     updatedAt: new Date().toISOString(),
   };
   await writeVoiceProfile(next);
+  if (profile.replacesProfileId) {
+    const previousProfile = await readVoiceProfile(profile.replacesProfileId);
+    if (
+      previousProfile &&
+      previousProfile.ownerId === FACULTY_VOICE_OWNER_ID &&
+      previousProfile.status !== 'deleted'
+    ) {
+      if (previousProfile.providerReferenceId) {
+        await getVoiceCloningProvider()
+          .deleteProfile({ providerReferenceId: previousProfile.providerReferenceId })
+          .catch(() => undefined);
+      }
+      await deleteVoiceProfileAssets(previousProfile);
+      await writeVoiceProfile({
+        ...previousProfile,
+        status: 'deleted',
+        referenceAudioKey: undefined,
+        providerReferenceId: undefined,
+        preview: undefined,
+        previewVariants: undefined,
+        draftPreview: undefined,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
   return apiSuccess({ profile: toPublicVoiceProfile(next) });
 }
 

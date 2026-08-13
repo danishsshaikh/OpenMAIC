@@ -20,10 +20,12 @@ import {
   isTTSLanguageCode,
   type TTSLanguageCode,
 } from '@/lib/audio/tts-language';
-import { getVoiceEnrollmentPhrases } from '@/lib/voice-cloning/phrases';
+import { VOICE_ENROLLMENT_PARAGRAPH } from '@/lib/voice-cloning/phrases';
 import {
   MAX_RECORDING_DURATION_SECONDS,
+  MIN_RECORDING_SIZE_BYTES,
   MIN_RECORDING_DURATION_SECONDS,
+  VOICE_ENROLLMENT_TARGET_SECONDS,
 } from '@/lib/voice-cloning/limits';
 import {
   DEFAULT_CHATTERBOX_MODEL_VARIANT,
@@ -155,17 +157,23 @@ function formatSeconds(value: number | undefined): string {
   return `${value.toFixed(1)}s`;
 }
 
+function formatClock(value: number): string {
+  const seconds = Math.max(0, Math.floor(value));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 export function TeachingVoiceCard({
   selectedProfileId,
   onSelectedProfileIdChange,
 }: TeachingVoiceCardProps) {
-  const phrases = useMemo(() => getVoiceEnrollmentPhrases('en'), []);
+  const enrollmentParagraph = useMemo(() => VOICE_ENROLLMENT_PARAGRAPH, []);
   const [profile, setProfile] = useState<PublicVoiceProfile | null>(null);
   const [open, setOpen] = useState(false);
   const [consented, setConsented] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [clips, setClips] = useState<ClipState[]>(phrases.map(() => ({})));
-  const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const [recording, setRecording] = useState<ClipState>({});
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [draftModelVariant, setDraftModelVariant] = useState<ChatterboxModelVariant>(
     DEFAULT_CHATTERBOX_MODEL_VARIANT,
   );
@@ -180,6 +188,7 @@ export function TeachingVoiceCard({
   const streamRef = useRef<MediaStream | null>(null);
   const selectedProfileIdRef = useRef(selectedProfileId);
   const onSelectedProfileIdChangeRef = useRef(onSelectedProfileIdChange);
+  const recordingUrlRef = useRef<string | undefined>(undefined);
 
   const readyProfile = profile?.status === 'ready' ? profile : null;
   const draftConfiguration: VoiceConfiguration = {
@@ -198,12 +207,39 @@ export function TeachingVoiceCard({
       : draftMatchesAccepted
         ? readyProfile?.preview
         : undefined;
-  const allClipsReady = clips.every(
-    (clip) =>
-      clip.blob &&
-      clip.duration &&
-      clip.duration >= MIN_RECORDING_DURATION_SECONDS &&
-      clip.duration <= MAX_RECORDING_DURATION_SECONDS,
+  const recordingReady =
+    Boolean(recording.blob) &&
+    Boolean(recording.duration) &&
+    recording.duration! >= MIN_RECORDING_DURATION_SECONDS &&
+    recording.duration! <= MAX_RECORDING_DURATION_SECONDS;
+  const recordingGuidance =
+    recordingStartedAt !== null
+      ? elapsedSeconds < MIN_RECORDING_DURATION_SECONDS
+        ? `Keep going. Minimum ${MIN_RECORDING_DURATION_SECONDS} seconds.`
+        : elapsedSeconds < VOICE_ENROLLMENT_TARGET_SECONDS
+          ? `Aim for about ${VOICE_ENROLLMENT_TARGET_SECONDS} seconds.`
+          : elapsedSeconds <= MAX_RECORDING_DURATION_SECONDS
+            ? 'You can stop when the paragraph feels complete.'
+            : 'Please stop and record a shorter sample.'
+      : `Target: about ${VOICE_ENROLLMENT_TARGET_SECONDS} seconds.`;
+
+  useEffect(() => {
+    recordingUrlRef.current = recording.url;
+  }, [recording.url]);
+
+  useEffect(() => {
+    if (recordingStartedAt === null) return undefined;
+    const updateElapsed = () => setElapsedSeconds((performance.now() - recordingStartedAt) / 1000);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 250);
+    return () => window.clearInterval(timer);
+  }, [recordingStartedAt]);
+
+  useEffect(
+    () => () => {
+      if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
+    },
+    [],
   );
 
   useEffect(() => {
@@ -249,20 +285,14 @@ export function TeachingVoiceCard({
         recorderRef.current.stop();
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      clips.forEach((clip) => {
-        if (clip.url) URL.revokeObjectURL(clip.url);
-      });
     };
-  }, [clips]);
+  }, []);
 
-  const replaceClip = (index: number, next: ClipState) => {
-    setClips((prev) =>
-      prev.map((clip, i) => {
-        if (i !== index) return clip;
-        if (clip.url) URL.revokeObjectURL(clip.url);
-        return next;
-      }),
-    );
+  const replaceRecording = (next: ClipState) => {
+    setRecording((prev) => {
+      if (prev.url) URL.revokeObjectURL(prev.url);
+      return next;
+    });
   };
 
   const updateGenerationSetting = (key: keyof VoiceGenerationSettings, value: number) => {
@@ -445,7 +475,7 @@ export function TeachingVoiceCard({
     </div>
   );
 
-  const startRecording = async (index: number) => {
+  const startRecording = async () => {
     setError(null);
     if (!consented) {
       setError('Consent is required before recording.');
@@ -465,9 +495,11 @@ export function TeachingVoiceCard({
       const chunks: BlobPart[] = [];
       const recorder = new MediaRecorder(stream, { mimeType });
       const recordingStartedAt = performance.now();
+      replaceRecording({});
       streamRef.current = stream;
       recorderRef.current = recorder;
-      setRecordingIndex(index);
+      setRecordingStartedAt(recordingStartedAt);
+      setElapsedSeconds(0);
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.push(event.data);
       };
@@ -479,17 +511,27 @@ export function TeachingVoiceCard({
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         recorderRef.current = null;
-        setRecordingIndex(null);
+        setRecordingStartedAt(null);
         const blob = new Blob(chunks, { type: mimeType });
-        if (blob.size === 0 || duration < MIN_RECORDING_DURATION_SECONDS) {
-          replaceClip(index, { error: 'Recording is too short.' });
+        if (blob.size < MIN_RECORDING_SIZE_BYTES) {
+          replaceRecording({
+            error: 'The recording appears empty. Please check your microphone and try again.',
+          });
+          return;
+        }
+        if (duration < MIN_RECORDING_DURATION_SECONDS) {
+          replaceRecording({
+            error: 'The recording is too short. Please read the full paragraph naturally.',
+          });
           return;
         }
         if (duration > MAX_RECORDING_DURATION_SECONDS) {
-          replaceClip(index, { error: 'Recording is too long.' });
+          replaceRecording({
+            error: 'The recording is too long. Please keep it close to ten seconds.',
+          });
           return;
         }
-        replaceClip(index, {
+        replaceRecording({
           blob,
           duration,
           url: URL.createObjectURL(blob),
@@ -497,7 +539,7 @@ export function TeachingVoiceCard({
       };
       recorder.start();
     } catch (err) {
-      setRecordingIndex(null);
+      setRecordingStartedAt(null);
       setError(
         err instanceof DOMException && err.name === 'NotAllowedError'
           ? 'Microphone permission was denied.'
@@ -513,7 +555,7 @@ export function TeachingVoiceCard({
   };
 
   const submitEnrollment = async () => {
-    if (!allClipsReady) return;
+    if (!recordingReady || !recording.blob) return;
     setBusy(true);
     setError(null);
     try {
@@ -524,9 +566,7 @@ export function TeachingVoiceCard({
       formData.set('languageId', draftLanguageId);
       formData.set('modelVariant', draftModelVariant);
       formData.set('generationSettings', JSON.stringify(draftGenerationSettings));
-      clips.forEach((clip, index) => {
-        formData.set(`clip${index}`, clip.blob!, `phrase-${index + 1}.webm`);
-      });
+      formData.set('recording', recording.blob, 'teaching-voice.webm');
       const response = await fetch('/api/voice-cloning/profile', {
         method: 'POST',
         body: formData,
@@ -608,14 +648,17 @@ export function TeachingVoiceCard({
     }
   };
 
-  const deleteProfile = async () => {
+  const deleteProfile = async (profileId?: string) => {
     setBusy(true);
     setError(null);
     try {
-      await fetch('/api/voice-cloning/profile', { method: 'DELETE' });
+      const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
+      await fetch(`/api/voice-cloning/profile${query}`, { method: 'DELETE' });
       setProfile(null);
-      onSelectedProfileIdChange(undefined);
-      setOpen(false);
+      if (!profileId || selectedProfileId === profileId) {
+        onSelectedProfileIdChange(undefined);
+      }
+      if (!profileId) setOpen(false);
     } catch {
       setError('Could not delete the voice profile.');
     } finally {
@@ -698,7 +741,13 @@ export function TeachingVoiceCard({
                   <Check className="size-4" />
                   Use These Settings
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setProfile(null)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => deleteProfile(profile.id)}
+                  disabled={busy}
+                >
                   <RotateCcw className="size-4" />
                   Re-record
                 </Button>
@@ -737,7 +786,7 @@ export function TeachingVoiceCard({
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={deleteProfile}
+                onClick={() => deleteProfile()}
                 disabled={busy}
               >
                 <Trash2 className="size-4" />
@@ -762,106 +811,110 @@ export function TeachingVoiceCard({
               {renderVoiceConfigurationControls()}
 
               <div className="rounded-lg border border-border/70 p-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">
-                  {activeIndex + 1} of {phrases.length}
+                <div className="text-sm font-medium text-foreground">
+                  Record Your Teaching Voice
                 </div>
-                <p className="text-sm leading-relaxed text-foreground">
-                  {phrases[activeIndex].text}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Read this short paragraph naturally, just as you would speak while teaching.
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {recordingIndex === activeIndex ? (
-                    <Button type="button" size="sm" onClick={stopRecording}>
+                <p className="mt-3 max-w-[70ch] text-sm leading-relaxed text-foreground">
+                  {enrollmentParagraph}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>Quiet room</span>
+                  <span aria-hidden="true">•</span>
+                  <span>Steady mic distance</span>
+                  <span aria-hidden="true">•</span>
+                  <span>Natural voice</span>
+                </div>
+                <p className="mt-2 text-xs leading-snug text-muted-foreground">
+                  Your recording is used only to create your private teaching-voice reference. A
+                  quiet, natural recording usually produces the closest result.
+                </p>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {recordingStartedAt !== null ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={stopRecording}
+                      aria-label="Stop recording teaching voice"
+                    >
                       <Mic className="size-4" />
-                      Stop
+                      Stop Recording
                     </Button>
                   ) : (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={!consented || recordingIndex !== null}
-                      onClick={() => startRecording(activeIndex)}
+                      disabled={!consented}
+                      onClick={startRecording}
+                      aria-label={
+                        recording.blob
+                          ? 'Record teaching voice again'
+                          : 'Start recording teaching voice'
+                      }
                     >
                       <Mic className="size-4" />
-                      Record
+                      {recording.blob ? 'Re-record' : 'Start Recording'}
                     </Button>
                   )}
-                  {clips[activeIndex].url && (
-                    <audio controls className="h-9 max-w-full" src={clips[activeIndex].url} />
-                  )}
-                  {clips[activeIndex].blob && (
+                  <span
+                    className={cn(
+                      'rounded-md border px-2 py-1 text-sm tabular-nums',
+                      recordingStartedAt !== null
+                        ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                        : 'border-border text-muted-foreground',
+                    )}
+                    aria-live="polite"
+                  >
+                    {formatClock(
+                      recordingStartedAt !== null ? elapsedSeconds : (recording.duration ?? 0),
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{recordingGuidance}</span>
+                </div>
+
+                {recording.url && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <audio
+                      controls
+                      className="h-9 min-w-[240px] max-w-full flex-1"
+                      src={recording.url}
+                    />
                     <span className="text-xs text-muted-foreground">
-                      {formatSeconds(clips[activeIndex].duration)}
+                      {formatSeconds(recording.duration)}
                     </span>
-                  )}
-                  {clips[activeIndex].blob && (
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => replaceClip(activeIndex, {})}
+                      onClick={() => replaceRecording({})}
                     >
                       <Trash2 className="size-4" />
                       Discard
                     </Button>
-                  )}
-                </div>
-                {clips[activeIndex].error && (
-                  <p className="mt-2 text-xs text-destructive">{clips[activeIndex].error}</p>
+                  </div>
+                )}
+
+                {recording.error && (
+                  <p className="mt-2 text-xs text-destructive" role="alert">
+                    {recording.error}
+                  </p>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex gap-1">
-                  {phrases.map((phrase, index) => (
-                    <button
-                      type="button"
-                      key={phrase.id}
-                      onClick={() => setActiveIndex(index)}
-                      className={cn(
-                        'size-7 rounded-full border text-xs transition-colors',
-                        index === activeIndex
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : clips[index].blob
-                            ? 'border-emerald-500/60 bg-emerald-50 text-emerald-700'
-                            : 'border-border text-muted-foreground',
-                      )}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setActiveIndex(Math.max(0, activeIndex - 1))}
-                    disabled={activeIndex === 0}
-                  >
-                    Back
-                  </Button>
-                  {activeIndex < phrases.length - 1 ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => setActiveIndex(activeIndex + 1)}
-                      disabled={!clips[activeIndex].blob}
-                    >
-                      Continue
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={submitEnrollment}
-                      disabled={!allClipsReady || busy}
-                    >
-                      <Play className="size-4" />
-                      Generate Preview
-                    </Button>
-                  )}
-                </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={submitEnrollment}
+                  disabled={!recordingReady || busy}
+                >
+                  <Play className="size-4" />
+                  Generate Preview
+                </Button>
               </div>
             </div>
           )}

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFeatureFlagBoolean } from '@/lib/config/feature-flags';
+import { VOICE_ENROLLMENT_PARAGRAPH } from '@/lib/voice-cloning/phrases';
+import {
+  MAX_RECORDING_DURATION_SECONDS,
+  MIN_RECORDING_DURATION_SECONDS,
+  VOICE_ENROLLMENT_TARGET_SECONDS,
+} from '@/lib/voice-cloning/limits';
 import {
   DEFAULT_CHATTERBOX_MODEL_VARIANT,
   LEGACY_CHATTERBOX_MODEL_VARIANT,
@@ -13,6 +19,12 @@ import {
   VoiceProviderProfileNotFoundError,
   type VoiceProfile,
 } from '@/lib/voice-cloning/types';
+import {
+  evaluateVoiceRecordingQuality,
+  parseTotalSilenceSeconds,
+  qualityMetricsFromFfmpegReports,
+  VoiceRecordingQualityError,
+} from '@/lib/voice-cloning/audio-validation';
 
 describe('voice cloning feature flag', () => {
   it('defaults false for unset or non-truthy values', () => {
@@ -190,6 +202,7 @@ describe('explicit cloned voice TTS routing', () => {
 describe('faculty voice synthesis language resolution', () => {
   const synthesize = vi.fn();
   const createProfile = vi.fn();
+  const masterGeneratedVoiceAudio = vi.fn();
   const referenceAudioExists = vi.fn();
   const writeVoiceProfile = vi.fn();
 
@@ -197,10 +210,15 @@ describe('faculty voice synthesis language resolution', () => {
     vi.resetModules();
     synthesize.mockReset();
     createProfile.mockReset();
+    masterGeneratedVoiceAudio.mockReset();
     referenceAudioExists.mockReset();
     writeVoiceProfile.mockReset();
     referenceAudioExists.mockResolvedValue(true);
     writeVoiceProfile.mockResolvedValue(undefined);
+    masterGeneratedVoiceAudio.mockImplementation(async (audio, _format) => ({
+      audio: new Uint8Array([...audio, 8]),
+      format: 'wav',
+    }));
     vi.doUnmock('@/lib/voice-cloning/synthesis');
     vi.doMock('@/lib/voice-cloning/config', () => ({
       FACULTY_VOICE_OWNER_ID: 'local-faculty',
@@ -229,6 +247,15 @@ describe('faculty voice synthesis language resolution', () => {
       referenceAudioExists,
       writeVoiceProfile,
     }));
+    vi.doMock('@/lib/voice-cloning/audio-validation', async () => {
+      const actual = await vi.importActual<typeof import('@/lib/voice-cloning/audio-validation')>(
+        '@/lib/voice-cloning/audio-validation',
+      );
+      return {
+        ...actual,
+        masterGeneratedVoiceAudio,
+      };
+    });
     vi.doMock('@/lib/voice-cloning/provider', () => ({
       getVoiceCloningProvider: () => ({
         createProfile,
@@ -254,6 +281,7 @@ describe('faculty voice synthesis language resolution', () => {
       modelVariant: 'v3',
       generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
+    expect(masterGeneratedVoiceAudio).toHaveBeenCalledWith(new Uint8Array([1]), 'wav');
   });
 
   it('re-registers a persisted profile after provider restart and retries synthesis once', async () => {
@@ -269,7 +297,7 @@ describe('faculty voice synthesis language resolution', () => {
       language: 'en-US',
     });
 
-    expect(result).toMatchObject({ format: 'wav' });
+    expect(result).toEqual({ audio: new Uint8Array([1, 8]), format: 'wav' });
     expect(referenceAudioExists).toHaveBeenCalledWith('/private/reference.wav');
     expect(createProfile).toHaveBeenCalledTimes(1);
     expect(createProfile).toHaveBeenCalledWith({
@@ -280,6 +308,7 @@ describe('faculty voice synthesis language resolution', () => {
       generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
     });
     expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(masterGeneratedVoiceAudio).toHaveBeenCalledTimes(1);
     expect(synthesize).toHaveBeenNthCalledWith(1, {
       providerReferenceId: 'ref-1',
       text: 'Hello class',
@@ -353,24 +382,120 @@ describe('faculty voice generation settings', () => {
   });
 });
 
+describe('one-paragraph voice enrollment contract', () => {
+  it('uses a single natural enrollment paragraph with ten-second guidance', () => {
+    expect(VOICE_ENROLLMENT_PARAGRAPH).toContain('Today we will take a simple idea');
+    expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeGreaterThan(120);
+    expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeLessThan(260);
+    expect(VOICE_ENROLLMENT_TARGET_SECONDS).toBe(10);
+    expect(MIN_RECORDING_DURATION_SECONDS).toBeLessThan(VOICE_ENROLLMENT_TARGET_SECONDS);
+    expect(MAX_RECORDING_DURATION_SECONDS).toBeGreaterThan(VOICE_ENROLLMENT_TARGET_SECONDS);
+  });
+});
+
+describe('faculty voice recording quality analysis', () => {
+  const validMetrics = {
+    durationSeconds: 10,
+    meanVolumeDb: -24,
+    maxVolumeDb: -4,
+    silenceSeconds: 1.5,
+    silenceRatio: 0.15,
+  };
+
+  it('parses deterministic FFmpeg quality reports', () => {
+    expect(
+      qualityMetricsFromFfmpegReports({
+        durationSeconds: 10,
+        volumeReport: '[Parsed_volumedetect_0] mean_volume: -23.5 dB\nmax_volume: -3.1 dB',
+        silenceReport:
+          'silence_start: 0\nsilence_end: 0.7 | silence_duration: 0.7\nsilence_duration: 0.4',
+      }),
+    ).toMatchObject({
+      durationSeconds: 10,
+      meanVolumeDb: -23.5,
+      maxVolumeDb: -3.1,
+      silenceSeconds: 1.1,
+      silenceRatio: expect.closeTo(0.11, 6),
+    });
+    expect(parseTotalSilenceSeconds('silence_duration: 2\nsilence_duration: 1.25')).toBe(3.25);
+  });
+
+  it('accepts a valid teaching-voice signal', () => {
+    expect(() => evaluateVoiceRecordingQuality(validMetrics)).not.toThrow();
+  });
+
+  it('rejects too-short, quiet, silent, clipped, and invalid audio', () => {
+    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 2 })).toThrow(
+      VoiceRecordingQualityError,
+    );
+    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, meanVolumeDb: -48 })).toThrow(
+      'The recording is too quiet',
+    );
+    expect(() =>
+      evaluateVoiceRecordingQuality({ ...validMetrics, silenceSeconds: 7, silenceRatio: 0.7 }),
+    ).toThrow('too much silence');
+    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, maxVolumeDb: 0 })).toThrow(
+      'clipped or distorted',
+    );
+    expect(() =>
+      qualityMetricsFromFfmpegReports({
+        durationSeconds: 10,
+        volumeReport: 'no volume here',
+        silenceReport: '',
+      }),
+    ).toThrow('could not be analyzed');
+  });
+});
+
 describe('voice profile model preview API', () => {
   const createProfile = vi.fn();
+  const deleteProfile = vi.fn();
   const generatePreview = vi.fn();
   const writeVoiceProfile = vi.fn();
   const readVoiceProfile = vi.fn();
+  const findCurrentVoiceProfile = vi.fn();
+  const deleteVoiceProfileAssets = vi.fn();
+  const writeReferenceAudio = vi.fn();
   const referenceAudioExists = vi.fn();
+  const normalizeVoiceEnrollmentRecording = vi.fn();
+  const masterGeneratedVoiceAudio = vi.fn();
 
   beforeEach(() => {
     vi.resetModules();
     createProfile.mockReset();
+    deleteProfile.mockReset();
     generatePreview.mockReset();
     writeVoiceProfile.mockReset();
     readVoiceProfile.mockReset();
+    findCurrentVoiceProfile.mockReset();
+    deleteVoiceProfileAssets.mockReset();
+    writeReferenceAudio.mockReset();
     referenceAudioExists.mockReset();
+    normalizeVoiceEnrollmentRecording.mockReset();
+    masterGeneratedVoiceAudio.mockReset();
     referenceAudioExists.mockResolvedValue(true);
     createProfile.mockImplementation(async ({ profileId }) => ({ providerReferenceId: profileId }));
+    deleteProfile.mockResolvedValue(undefined);
     generatePreview.mockResolvedValue({ audio: new Uint8Array([1, 2]), format: 'wav' });
     writeVoiceProfile.mockResolvedValue(undefined);
+    findCurrentVoiceProfile.mockResolvedValue(null);
+    writeReferenceAudio.mockResolvedValue('/private/reference.wav');
+    normalizeVoiceEnrollmentRecording.mockResolvedValue({
+      referenceAudio: new Uint8Array([9, 9]),
+      durationSeconds: 10,
+      quality: {
+        durationSeconds: 10,
+        meanVolumeDb: -24,
+        maxVolumeDb: -4,
+        silenceSeconds: 1,
+        silenceRatio: 0.1,
+      },
+      format: 'wav',
+    });
+    masterGeneratedVoiceAudio.mockImplementation(async (audio, _format) => ({
+      audio: new Uint8Array([...audio, 9]),
+      format: 'wav',
+    }));
     vi.doMock('@/lib/voice-cloning/config', () => ({
       FACULTY_VOICE_OWNER_ID: 'local-faculty',
       getVoiceCloningDefaultLanguage: () => 'en',
@@ -378,25 +503,28 @@ describe('voice profile model preview API', () => {
       isVoiceCloningServerEnabled: () => true,
     }));
     vi.doMock('@/lib/voice-cloning/audio-validation', () => ({
-      normalizeVoiceEnrollmentClips: vi.fn(async () => ({
-        referenceAudio: new Uint8Array([9, 9]),
-        durations: [3, 3, 3],
-      })),
+      isVoiceRecordingQualityError: (error: unknown) =>
+        error instanceof VoiceRecordingQualityError ||
+        (typeof error === 'object' &&
+          error !== null &&
+          (error as { name?: string }).name === 'VoiceRecordingQualityError'),
+      masterGeneratedVoiceAudio,
+      normalizeVoiceEnrollmentRecording,
     }));
     vi.doMock('@/lib/voice-cloning/storage', () => ({
       createVoiceProfileId: () => 'vcp_new',
-      deleteVoiceProfileAssets: vi.fn(),
-      findCurrentVoiceProfile: vi.fn(async () => null),
+      deleteVoiceProfileAssets,
+      findCurrentVoiceProfile,
       readVoiceProfile,
       referenceAudioExists,
-      writeReferenceAudio: vi.fn(async () => '/private/reference.wav'),
+      writeReferenceAudio,
       writeVoiceProfile,
     }));
     vi.doMock('@/lib/voice-cloning/provider', () => ({
       getVoiceCloningProvider: () => ({
         createProfile,
         generatePreview,
-        deleteProfile: vi.fn(),
+        deleteProfile,
       }),
     }));
   });
@@ -427,9 +555,10 @@ describe('voice profile model preview API', () => {
     const { POST } = await import('@/app/api/voice-cloning/profile/route');
     const formData = new FormData();
     formData.set('consent', 'true');
-    formData.set('clip0', new File([new Uint8Array([1])], 'clip0.webm', { type: 'audio/webm' }));
-    formData.set('clip1', new File([new Uint8Array([1])], 'clip1.webm', { type: 'audio/webm' }));
-    formData.set('clip2', new File([new Uint8Array([1])], 'clip2.webm', { type: 'audio/webm' }));
+    formData.set(
+      'recording',
+      new File([new Uint8Array([1, 2, 3, 4])], 'voice.webm', { type: 'audio/webm' }),
+    );
 
     const response = await POST(
       new Request('http://localhost/api/voice-cloning/profile', {
@@ -440,6 +569,13 @@ describe('voice profile model preview API', () => {
     const data = await response.json();
 
     expect(response.status).toBe(201);
+    expect(normalizeVoiceEnrollmentRecording).toHaveBeenCalledTimes(1);
+    expect(normalizeVoiceEnrollmentRecording).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mimeType: 'audio/webm',
+        fileName: 'voice.webm',
+      }),
+    );
     expect(data.profile.modelVariant).toBe('v3');
     expect(data.profile.languageId).toBe('en');
     expect(data.profile.generationSettings).toEqual(RECOMMENDED_VOICE_GENERATION_SETTINGS);
@@ -448,6 +584,9 @@ describe('voice profile model preview API', () => {
       languageId: 'en',
       generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
     });
+    expect(data.profile.draftPreview.preview.base64).toBe(
+      Buffer.from([1, 2, 9]).toString('base64'),
+    );
     expect(createProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         modelVariant: 'v3',
@@ -463,6 +602,7 @@ describe('voice profile model preview API', () => {
         generationSettings: RECOMMENDED_VOICE_GENERATION_SETTINGS,
       }),
     );
+    expect(masterGeneratedVoiceAudio).toHaveBeenCalledWith(new Uint8Array([1, 2]), 'wav');
   });
 
   it('rejects unknown profile model variants clearly', async () => {
@@ -510,6 +650,73 @@ describe('voice profile model preview API', () => {
     );
     expect(settingsResponse.status).toBe(400);
     expect(createProfile).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid one-paragraph recordings without creating a profile', async () => {
+    normalizeVoiceEnrollmentRecording.mockRejectedValue(
+      new VoiceRecordingQualityError(
+        'too_quiet',
+        'The recording is too quiet. Please try again a little closer to your microphone.',
+      ),
+    );
+    const { POST } = await import('@/app/api/voice-cloning/profile/route');
+    const formData = new FormData();
+    formData.set('consent', 'true');
+    formData.set(
+      'recording',
+      new File([new Uint8Array([1, 2])], 'voice.webm', { type: 'audio/webm' }),
+    );
+
+    const response = await POST(
+      new Request('http://localhost/api/voice-cloning/profile', {
+        method: 'POST',
+        body: formData,
+      }) as never,
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data).toMatchObject({
+      success: false,
+      error: 'The recording is too quiet. Please try again a little closer to your microphone.',
+    });
+    expect(writeVoiceProfile).not.toHaveBeenCalled();
+    expect(createProfile).not.toHaveBeenCalled();
+  });
+
+  it('keeps the existing accepted profile until a replacement preview is accepted', async () => {
+    const existingProfile = readyProfile('v3');
+    findCurrentVoiceProfile.mockResolvedValue(existingProfile);
+    const { POST } = await import('@/app/api/voice-cloning/profile/route');
+    const formData = new FormData();
+    formData.set('consent', 'true');
+    formData.set(
+      'recording',
+      new File([new Uint8Array([1, 2, 3, 4])], 'replacement.webm', { type: 'audio/webm' }),
+    );
+
+    const response = await POST(
+      new Request('http://localhost/api/voice-cloning/profile', {
+        method: 'POST',
+        body: formData,
+      }) as never,
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.profile.id).toBe('vcp_new');
+    expect(writeVoiceProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'vcp_new',
+        replacesProfileId: 'vcp_ready',
+        status: 'processing',
+      }),
+    );
+    expect(writeVoiceProfile).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'vcp_ready', status: 'deleted' }),
+    );
+    expect(deleteVoiceProfileAssets).not.toHaveBeenCalled();
+    expect(deleteProfile).not.toHaveBeenCalled();
   });
 
   it('previews V2 and V3 from the same persisted reference without re-recording', async () => {
@@ -575,17 +782,24 @@ describe('voice profile model preview API', () => {
   });
 
   it('persists accepted preview config while preserving the reference audio', async () => {
-    readVoiceProfile.mockResolvedValue({
-      ...readyProfile('v2'),
-      draftPreview: {
-        config: {
-          modelVariant: 'v3',
-          languageId: 'hi',
-          generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
+    readVoiceProfile
+      .mockResolvedValueOnce({
+        ...readyProfile('v2'),
+        replacesProfileId: 'vcp_old',
+        draftPreview: {
+          config: {
+            modelVariant: 'v3',
+            languageId: 'hi',
+            generationSettings: VOICE_SETTINGS_PRESETS['accent-test'],
+          },
+          preview: { format: 'wav', base64: 'new', createdAt: '2026-08-12T00:00:00.000Z' },
         },
-        preview: { format: 'wav', base64: 'new', createdAt: '2026-08-12T00:00:00.000Z' },
-      },
-    });
+      })
+      .mockResolvedValueOnce({
+        ...readyProfile('v2'),
+        id: 'vcp_old',
+        providerReferenceId: 'ref-old',
+      });
     const { PATCH } = await import('@/app/api/voice-cloning/profile/route');
 
     const response = await PATCH(
@@ -607,6 +821,17 @@ describe('voice profile model preview API', () => {
     expect(data.profile.languageId).toBe('hi');
     expect(data.profile.generationSettings).toEqual(VOICE_SETTINGS_PRESETS['accent-test']);
     expect(writeVoiceProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: 'vcp_old',
+        status: 'deleted',
+        referenceAudioKey: undefined,
+      }),
+    );
+    expect(deleteVoiceProfileAssets).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'vcp_old' }),
+    );
+    expect(deleteProfile).toHaveBeenCalledWith({ providerReferenceId: 'ref-old' });
+    expect(writeVoiceProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         modelVariant: 'v3',
         language: 'hi',

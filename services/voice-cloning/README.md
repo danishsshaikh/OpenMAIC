@@ -28,6 +28,31 @@ checkpoint. Newer Chatterbox sources expose `from_pretrained(device,
 t3_model="v3")`. The service uses that API when available and otherwise uses a
 bounded compatibility loader for V3.
 
+## Enrollment Audio
+
+New OpenMAIC enrollments use one short teaching paragraph, targeting about ten
+seconds of continuous natural speech. Existing profiles made with the older
+three-recording flow remain compatible because they already point at a private
+canonical `reference.wav`.
+
+The Next.js app validates and preprocesses the uploaded paragraph before the
+Chatterbox service sees it:
+
+- rejects empty, too-short, too-long, too-quiet, mostly silent, clipped, or
+  undecodable recordings with user-facing re-record guidance
+- trims only leading and trailing silence
+- applies conservative FFmpeg noise cleanup and loudness normalization
+- stores a private mono 24 kHz PCM WAV reference
+
+Processing settings live in `lib/voice-cloning/audio-validation.ts`. The denoise
+and mastering filters are intentionally restrained: they improve reference
+cleanliness and playback consistency, but they do not guarantee accent identity
+or speaker similarity and must not be treated as voice conversion.
+
+Generated Chatterbox preview and classroom/editor narration audio pass through
+the same light output mastering stage before OpenMAIC stores or returns it.
+Export should reuse already generated audio and not process it again.
+
 Set the Next.js app environment:
 
 ```bash

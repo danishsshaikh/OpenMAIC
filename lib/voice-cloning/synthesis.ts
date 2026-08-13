@@ -6,12 +6,16 @@ import {
   writeVoiceProfile,
 } from '@/lib/voice-cloning/storage';
 import { resolveTTSLanguageCode } from '@/lib/audio/tts-language';
+import { masterGeneratedVoiceAudio } from '@/lib/voice-cloning/audio-validation';
+import { createLogger } from '@/lib/logger';
 import {
   isVoiceProviderProfileNotFoundError,
   resolveVoiceProfileGenerationSettings,
   resolveVoiceProfileLanguageId,
   resolveVoiceProfileModelVariant,
 } from '@/lib/voice-cloning/types';
+
+const log = createLogger('VoiceCloningSynthesis');
 
 export async function synthesizeFacultyVoice(input: {
   profileId: string;
@@ -37,14 +41,22 @@ export async function synthesizeFacultyVoice(input: {
   const modelVariant = resolveVoiceProfileModelVariant(profile);
   const generationSettings = resolveVoiceProfileGenerationSettings(profile);
   const provider = getVoiceCloningProvider();
-  const synthesize = (providerReferenceId: string) =>
-    provider.synthesize({
+  const synthesize = async (providerReferenceId: string) => {
+    const result = await provider.synthesize({
       providerReferenceId,
       text: input.text,
       language,
       modelVariant,
       generationSettings,
     });
+    const mastered = await masterGeneratedVoiceAudio(result.audio, result.format);
+    log.info('voice output mastering completed', {
+      profileId: profile.id,
+      operation: 'synthesize',
+      format: mastered.format,
+    });
+    return mastered;
+  };
 
   try {
     return await synthesize(profile.providerReferenceId);

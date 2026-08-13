@@ -78,6 +78,7 @@ export interface VoiceProfile {
   modelVariant?: ChatterboxModelVariant;
   languageId?: string;
   generationSettings?: VoiceGenerationSettings;
+  replacesProfileId?: string;
   profileVersion: number;
   preview?: VoicePreview;
   previewVariants?: Partial<Record<ChatterboxModelVariant, VoicePreview>>;
