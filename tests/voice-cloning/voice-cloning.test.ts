@@ -389,13 +389,13 @@ describe('faculty voice generation settings', () => {
 });
 
 describe('one-paragraph voice enrollment contract', () => {
-  it('uses a single natural enrollment paragraph with fifteen-second guidance', () => {
+  it('uses a single natural enrollment paragraph with duration as guidance only', () => {
     expect(VOICE_ENROLLMENT_PARAGRAPH).toContain('Today we will take a simple idea');
     expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeGreaterThan(120);
     expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeLessThan(260);
     expect(VOICE_ENROLLMENT_TARGET_SECONDS).toBe(15);
-    expect(MIN_RECORDING_DURATION_SECONDS).toBeLessThan(VOICE_ENROLLMENT_TARGET_SECONDS);
-    expect(MAX_RECORDING_DURATION_SECONDS).toBeGreaterThan(VOICE_ENROLLMENT_TARGET_SECONDS);
+    expect(MIN_RECORDING_DURATION_SECONDS).toBeLessThanOrEqual(1);
+    expect(MAX_RECORDING_DURATION_SECONDS).toBeGreaterThanOrEqual(180);
   });
 });
 
@@ -412,6 +412,10 @@ describe('faculty voice setup UI contract', () => {
     expect(source).toContain("generating: 'Generating your voice preview...'");
     expect(source).toContain("finishing: 'Finishing audio...'");
     expect(source).toContain('const [customizeOpen, setCustomizeOpen] = useState(false)');
+    expect(source).toContain('Speak naturally and do not rush.');
+    expect(source).not.toContain('Minimum');
+    expect(source).not.toContain('MAX_RECORDING_DURATION_SECONDS');
+    expect(source).not.toContain('MIN_RECORDING_DURATION_SECONDS');
     expect(source).toContain('enrollmentRequestInFlightRef.current');
     expect(source).toContain('setRecordingRequiresRetry(true)');
     expect(source).toContain('Customize Voice');
@@ -465,14 +469,14 @@ describe('faculty voice recording quality analysis', () => {
     });
   });
 
-  it('accepts natural 15 to 20 second paragraph recordings', () => {
+  it('accepts ordinary natural paragraph recordings without a narrow duration window', () => {
     expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 15 }).severity).toBe(
       'pass',
     );
-    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 17 }).severity).toBe(
+    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 20 }).severity).toBe(
       'pass',
     );
-    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 20 }).severity).toBe(
+    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 45 }).severity).toBe(
       'pass',
     );
   });
@@ -525,8 +529,8 @@ describe('faculty voice recording quality analysis', () => {
     });
   });
 
-  it('rejects too-short, quiet, silent, clipped, and invalid audio', () => {
-    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 2 })).toThrow(
+  it('rejects near-empty, quiet, silent, clipped, and invalid audio', () => {
+    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 0.2 })).toThrow(
       VoiceRecordingQualityError,
     );
     expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, meanVolumeDb: -54 })).toThrow(

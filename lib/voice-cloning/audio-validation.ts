@@ -268,13 +268,13 @@ export function decideVoiceRecordingQuality(
   if (metrics.durationSeconds < MIN_RECORDING_DURATION_SECONDS) {
     return rejectDecision(
       'too_short',
-      'The recording is too short. Please read the full paragraph naturally.',
+      'The recording appears empty. Please check your microphone and try again.',
     );
   }
   if (metrics.durationSeconds > MAX_RECORDING_DURATION_SECONDS) {
     return rejectDecision(
       'too_long',
-      'The recording is too long. Please read the paragraph once at a natural pace.',
+      'The recording is too long to process. Please record the paragraph once at a natural pace.',
     );
   }
   if (
@@ -469,13 +469,13 @@ export async function validateVoiceClipDecodability(filePath: string): Promise<n
   if (duration < MIN_RECORDING_DURATION_SECONDS) {
     throw new VoiceRecordingQualityError(
       'too_short',
-      'The recording is too short. Please read the full paragraph naturally.',
+      'The recording appears empty. Please check your microphone and try again.',
     );
   }
   if (duration > MAX_RECORDING_DURATION_SECONDS) {
     throw new VoiceRecordingQualityError(
       'too_long',
-      'The recording is too long. Please read the paragraph once at a natural pace.',
+      'The recording is too long to process. Please record the paragraph once at a natural pace.',
     );
   }
   return duration;

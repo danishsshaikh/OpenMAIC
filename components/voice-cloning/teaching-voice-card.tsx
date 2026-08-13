@@ -23,11 +23,7 @@ import {
 } from '@/lib/audio/tts-language';
 import { VOICE_ENROLLMENT_PARAGRAPH } from '@/lib/voice-cloning/phrases';
 import {
-  MAX_RECORDING_DURATION_SECONDS,
   MIN_RECORDING_SIZE_BYTES,
-  MIN_RECORDING_DURATION_SECONDS,
-  VOICE_ENROLLMENT_TARGET_MAX_SECONDS,
-  VOICE_ENROLLMENT_TARGET_MIN_SECONDS,
   VOICE_ENROLLMENT_TARGET_SECONDS,
 } from '@/lib/voice-cloning/limits';
 import {
@@ -231,22 +227,12 @@ export function TeachingVoiceCard({
       : draftMatchesAccepted
         ? readyProfile?.preview
         : undefined;
-  const recordingReady =
-    Boolean(recording.blob) &&
-    Boolean(recording.duration) &&
-    recording.duration! >= MIN_RECORDING_DURATION_SECONDS &&
-    recording.duration! <= MAX_RECORDING_DURATION_SECONDS;
+  const recordingReady = Boolean(recording.blob);
   const canSubmitRecording = recordingReady && !recordingRequiresRetry && !busy;
   const recordingGuidance =
     recordingStartedAt !== null
-      ? elapsedSeconds < MIN_RECORDING_DURATION_SECONDS
-        ? `Keep going. Minimum ${MIN_RECORDING_DURATION_SECONDS} seconds.`
-        : elapsedSeconds < VOICE_ENROLLMENT_TARGET_MIN_SECONDS
-          ? `Most recordings take about ${VOICE_ENROLLMENT_TARGET_SECONDS} seconds.`
-          : elapsedSeconds <= VOICE_ENROLLMENT_TARGET_MAX_SECONDS
-            ? 'You can stop when the paragraph feels complete.'
-            : 'Please stop and record a shorter sample.'
-      : `Most recordings take about ${VOICE_ENROLLMENT_TARGET_SECONDS} seconds.`;
+      ? 'Speak naturally and do not rush.'
+      : `Most recordings take about 10 to ${VOICE_ENROLLMENT_TARGET_SECONDS} seconds.`;
 
   useEffect(() => {
     recordingUrlRef.current = recording.url;
@@ -569,18 +555,6 @@ export function TeachingVoiceCard({
         if (blob.size < MIN_RECORDING_SIZE_BYTES) {
           replaceRecording({
             error: 'The recording appears empty. Please check your microphone and try again.',
-          });
-          return;
-        }
-        if (duration < MIN_RECORDING_DURATION_SECONDS) {
-          replaceRecording({
-            error: 'The recording is too short. Please read the full paragraph naturally.',
-          });
-          return;
-        }
-        if (duration > MAX_RECORDING_DURATION_SECONDS) {
-          replaceRecording({
-            error: 'The recording is too long. Please read the paragraph once at a natural pace.',
           });
           return;
         }
@@ -1045,7 +1019,8 @@ export function TeachingVoiceCard({
                   Record Your Teaching Voice
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Read this paragraph naturally. Most recordings take about 15 seconds.
+                  Read this paragraph naturally. Most recordings take about 10 to 15 seconds, but do
+                  not rush.
                 </p>
                 <p className="mt-3 max-w-[70ch] text-sm leading-relaxed text-foreground">
                   {enrollmentParagraph}
