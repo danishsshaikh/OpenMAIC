@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFeatureFlagBoolean } from '@/lib/config/feature-flags';
 import { VOICE_ENROLLMENT_PARAGRAPH } from '@/lib/voice-cloning/phrases';
@@ -20,11 +22,15 @@ import {
   type VoiceProfile,
 } from '@/lib/voice-cloning/types';
 import {
+  clippingMetricsFromPcmFloat32,
+  decideVoiceRecordingQuality,
   evaluateVoiceRecordingQuality,
   parseTotalSilenceSeconds,
   qualityMetricsFromFfmpegReports,
   VoiceRecordingQualityError,
 } from '@/lib/voice-cloning/audio-validation';
+
+const repoRoot = process.cwd();
 
 describe('voice cloning feature flag', () => {
   it('defaults false for unset or non-truthy values', () => {
@@ -383,63 +389,155 @@ describe('faculty voice generation settings', () => {
 });
 
 describe('one-paragraph voice enrollment contract', () => {
-  it('uses a single natural enrollment paragraph with ten-second guidance', () => {
+  it('uses a single natural enrollment paragraph with fifteen-second guidance', () => {
     expect(VOICE_ENROLLMENT_PARAGRAPH).toContain('Today we will take a simple idea');
     expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeGreaterThan(120);
     expect(VOICE_ENROLLMENT_PARAGRAPH.length).toBeLessThan(260);
-    expect(VOICE_ENROLLMENT_TARGET_SECONDS).toBe(10);
+    expect(VOICE_ENROLLMENT_TARGET_SECONDS).toBe(15);
     expect(MIN_RECORDING_DURATION_SECONDS).toBeLessThan(VOICE_ENROLLMENT_TARGET_SECONDS);
     expect(MAX_RECORDING_DURATION_SECONDS).toBeGreaterThan(VOICE_ENROLLMENT_TARGET_SECONDS);
   });
 });
 
+describe('faculty voice setup UI contract', () => {
+  const componentSource = () =>
+    readFileSync(join(repoRoot, 'components/voice-cloning/teaching-voice-card.tsx'), 'utf8');
+
+  it('keeps customization behind an explicit control and prevents duplicate enrollments', () => {
+    const source = componentSource();
+
+    expect(source).toContain("type SetupStep = 'record' | 'preview' | 'review'");
+    expect(source).toContain("checking: 'Checking your recording...'");
+    expect(source).toContain("preparing: 'Preparing voice sample...'");
+    expect(source).toContain("generating: 'Generating your voice preview...'");
+    expect(source).toContain("finishing: 'Finishing audio...'");
+    expect(source).toContain('const [customizeOpen, setCustomizeOpen] = useState(false)');
+    expect(source).toContain('enrollmentRequestInFlightRef.current');
+    expect(source).toContain('setRecordingRequiresRetry(true)');
+    expect(source).toContain('Customize Voice');
+    expect(source).not.toContain('{renderVoiceConfigurationControls()}\n\n              <div');
+  });
+});
+
 describe('faculty voice recording quality analysis', () => {
   const validMetrics = {
-    durationSeconds: 10,
+    durationSeconds: 15,
     meanVolumeDb: -24,
     maxVolumeDb: -4,
     silenceSeconds: 1.5,
-    silenceRatio: 0.15,
+    silenceRatio: 0.1,
+    clippedSampleRatio: 0,
+    maxConsecutiveClippingMs: 0,
+    clippedSampleCount: 0,
+    totalSampleCount: 360000,
   };
 
   it('parses deterministic FFmpeg quality reports', () => {
     expect(
       qualityMetricsFromFfmpegReports({
-        durationSeconds: 10,
+        durationSeconds: 15,
         volumeReport: '[Parsed_volumedetect_0] mean_volume: -23.5 dB\nmax_volume: -3.1 dB',
         silenceReport:
           'silence_start: 0\nsilence_end: 0.7 | silence_duration: 0.7\nsilence_duration: 0.4',
+        clipping: {
+          clippedSampleRatio: 0.001,
+          maxConsecutiveClippingMs: 2,
+          clippedSampleCount: 360,
+          totalSampleCount: 360000,
+        },
       }),
     ).toMatchObject({
-      durationSeconds: 10,
+      durationSeconds: 15,
       meanVolumeDb: -23.5,
       maxVolumeDb: -3.1,
       silenceSeconds: 1.1,
-      silenceRatio: expect.closeTo(0.11, 6),
+      silenceRatio: expect.closeTo(0.073333, 6),
+      clippedSampleRatio: 0.001,
+      maxConsecutiveClippingMs: 2,
     });
     expect(parseTotalSilenceSeconds('silence_duration: 2\nsilence_duration: 1.25')).toBe(3.25);
   });
 
   it('accepts a valid teaching-voice signal', () => {
-    expect(() => evaluateVoiceRecordingQuality(validMetrics)).not.toThrow();
+    expect(evaluateVoiceRecordingQuality(validMetrics)).toEqual({
+      severity: 'pass',
+      warnings: [],
+    });
+  });
+
+  it('accepts natural 15 to 20 second paragraph recordings', () => {
+    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 15 }).severity).toBe(
+      'pass',
+    );
+    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 17 }).severity).toBe(
+      'pass',
+    );
+    expect(evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 20 }).severity).toBe(
+      'pass',
+    );
+  });
+
+  it('warns for hot audio without rejecting isolated peaks', () => {
+    expect(
+      decideVoiceRecordingQuality({
+        ...validMetrics,
+        maxVolumeDb: -0.2,
+        clippedSampleRatio: 0.00001,
+        maxConsecutiveClippingMs: 0.2,
+        clippedSampleCount: 4,
+      }),
+    ).toMatchObject({
+      severity: 'warning',
+      warnings: ['The recording is a little loud, but still usable.'],
+    });
+  });
+
+  it('rejects sustained clipping using clipped sample ratio and consecutive clipping duration', () => {
+    expect(() =>
+      evaluateVoiceRecordingQuality({
+        ...validMetrics,
+        maxVolumeDb: -0.1,
+        clippedSampleRatio: 0.02,
+        maxConsecutiveClippingMs: 5,
+        clippedSampleCount: 7200,
+      }),
+    ).toThrow('sustained distortion');
+    expect(() =>
+      evaluateVoiceRecordingQuality({
+        ...validMetrics,
+        clippedSampleRatio: 0.001,
+        maxConsecutiveClippingMs: 30,
+      }),
+    ).toThrow('sustained distortion');
+  });
+
+  it('computes clipped sample ratio and longest clipped run from decoded PCM', () => {
+    const pcm = Buffer.alloc(8 * 4);
+    [0, 0.25, 0.999, 1, -1, 0, -0.999, 0.1].forEach((sample, index) => {
+      pcm.writeFloatLE(sample, index * 4);
+    });
+
+    expect(clippingMetricsFromPcmFloat32(pcm, 1000)).toEqual({
+      clippedSampleRatio: 0.5,
+      maxConsecutiveClippingMs: 3,
+      clippedSampleCount: 4,
+      totalSampleCount: 8,
+    });
   });
 
   it('rejects too-short, quiet, silent, clipped, and invalid audio', () => {
     expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, durationSeconds: 2 })).toThrow(
       VoiceRecordingQualityError,
     );
-    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, meanVolumeDb: -48 })).toThrow(
+    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, meanVolumeDb: -54 })).toThrow(
       'The recording is too quiet',
     );
     expect(() =>
       evaluateVoiceRecordingQuality({ ...validMetrics, silenceSeconds: 7, silenceRatio: 0.7 }),
     ).toThrow('too much silence');
-    expect(() => evaluateVoiceRecordingQuality({ ...validMetrics, maxVolumeDb: 0 })).toThrow(
-      'clipped or distorted',
-    );
     expect(() =>
       qualityMetricsFromFfmpegReports({
-        durationSeconds: 10,
+        durationSeconds: 15,
         volumeReport: 'no volume here',
         silenceReport: '',
       }),
@@ -459,6 +557,7 @@ describe('voice profile model preview API', () => {
   const referenceAudioExists = vi.fn();
   const normalizeVoiceEnrollmentRecording = vi.fn();
   const masterGeneratedVoiceAudio = vi.fn();
+  const createVoiceProfileId = vi.fn(() => 'vcp_new');
 
   beforeEach(() => {
     vi.resetModules();
@@ -473,6 +572,7 @@ describe('voice profile model preview API', () => {
     referenceAudioExists.mockReset();
     normalizeVoiceEnrollmentRecording.mockReset();
     masterGeneratedVoiceAudio.mockReset();
+    createVoiceProfileId.mockClear();
     referenceAudioExists.mockResolvedValue(true);
     createProfile.mockImplementation(async ({ profileId }) => ({ providerReferenceId: profileId }));
     deleteProfile.mockResolvedValue(undefined);
@@ -482,14 +582,19 @@ describe('voice profile model preview API', () => {
     writeReferenceAudio.mockResolvedValue('/private/reference.wav');
     normalizeVoiceEnrollmentRecording.mockResolvedValue({
       referenceAudio: new Uint8Array([9, 9]),
-      durationSeconds: 10,
+      durationSeconds: 15,
       quality: {
-        durationSeconds: 10,
+        durationSeconds: 15,
         meanVolumeDb: -24,
         maxVolumeDb: -4,
         silenceSeconds: 1,
-        silenceRatio: 0.1,
+        silenceRatio: 0.067,
+        clippedSampleRatio: 0,
+        maxConsecutiveClippingMs: 0,
+        clippedSampleCount: 0,
+        totalSampleCount: 360000,
       },
+      qualityDecision: { severity: 'pass', warnings: [] },
       format: 'wav',
     });
     masterGeneratedVoiceAudio.mockImplementation(async (audio, _format) => ({
@@ -512,7 +617,7 @@ describe('voice profile model preview API', () => {
       normalizeVoiceEnrollmentRecording,
     }));
     vi.doMock('@/lib/voice-cloning/storage', () => ({
-      createVoiceProfileId: () => 'vcp_new',
+      createVoiceProfileId,
       deleteVoiceProfileAssets,
       findCurrentVoiceProfile,
       readVoiceProfile,
@@ -569,6 +674,7 @@ describe('voice profile model preview API', () => {
     const data = await response.json();
 
     expect(response.status).toBe(201);
+    expect(createVoiceProfileId).toHaveBeenCalledTimes(1);
     expect(normalizeVoiceEnrollmentRecording).toHaveBeenCalledTimes(1);
     expect(normalizeVoiceEnrollmentRecording).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -681,6 +787,7 @@ describe('voice profile model preview API', () => {
       error: 'The recording is too quiet. Please try again a little closer to your microphone.',
     });
     expect(writeVoiceProfile).not.toHaveBeenCalled();
+    expect(createVoiceProfileId).not.toHaveBeenCalled();
     expect(createProfile).not.toHaveBeenCalled();
   });
 

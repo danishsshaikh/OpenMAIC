@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'crypto';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
   FACULTY_VOICE_OWNER_ID,
@@ -221,30 +222,45 @@ export async function POST(req: NextRequest) {
       languageId,
       generationSettings,
     };
-    const profileId = createVoiceProfileId();
+    const attemptId = randomUUID();
     let normalizedReference: Awaited<ReturnType<typeof normalizeVoiceEnrollmentRecording>>;
     try {
       const recording = await readEnrollmentRecording(formData);
       log.info('voice enrollment quality check started', {
-        profileId,
+        attemptId,
         operation: 'enroll',
         recordingBytes: recording.bytes.byteLength,
       });
       normalizedReference = await normalizeVoiceEnrollmentRecording(recording);
       log.info('voice enrollment quality check passed', {
-        profileId,
+        attemptId,
         operation: 'enroll',
-        duration: normalizedReference.durationSeconds,
-        meanVolumeDb: normalizedReference.quality.meanVolumeDb,
-        maxVolumeDb: normalizedReference.quality.maxVolumeDb,
+        durationMs: Math.round(normalizedReference.quality.durationSeconds * 1000),
+        peakLevel: normalizedReference.quality.maxVolumeDb,
+        meanLevel: normalizedReference.quality.meanVolumeDb,
         silenceRatio: normalizedReference.quality.silenceRatio,
+        clippedSampleRatio: normalizedReference.quality.clippedSampleRatio,
+        maxConsecutiveClippingMs: normalizedReference.quality.maxConsecutiveClippingMs,
+        qualityDecision: normalizedReference.qualityDecision.severity,
+        qualityWarnings: normalizedReference.qualityDecision.warnings,
       });
     } catch (error) {
       if (isVoiceRecordingQualityError(error)) {
         log.warn('voice enrollment rejected', {
-          profileId,
+          attemptId,
           operation: 'enroll',
           reason: error.code,
+          qualityDecision: error.decision?.severity ?? 'reject',
+          ...(error.metrics
+            ? {
+                durationMs: Math.round(error.metrics.durationSeconds * 1000),
+                peakLevel: error.metrics.maxVolumeDb,
+                meanLevel: error.metrics.meanVolumeDb,
+                silenceRatio: error.metrics.silenceRatio,
+                clippedSampleRatio: error.metrics.clippedSampleRatio,
+                maxConsecutiveClippingMs: error.metrics.maxConsecutiveClippingMs,
+              }
+            : {}),
         });
         return apiError('INVALID_REQUEST', 400, error.userMessage);
       }
@@ -257,6 +273,7 @@ export async function POST(req: NextRequest) {
 
     previousProfile = await findCurrentVoiceProfile(FACULTY_VOICE_OWNER_ID);
 
+    const profileId = createVoiceProfileId();
     const now = new Date().toISOString();
     profile = {
       id: profileId,
@@ -274,6 +291,10 @@ export async function POST(req: NextRequest) {
       consentVersion: VOICE_CLONING_CONSENT_VERSION,
       profileVersion: 1,
       replacesProfileId: previousProfile?.id,
+      enrollmentQuality: {
+        severity: normalizedReference.qualityDecision.severity === 'warning' ? 'warning' : 'pass',
+        warnings: normalizedReference.qualityDecision.warnings,
+      },
     };
     await writeVoiceProfile(profile);
 
@@ -286,7 +307,13 @@ export async function POST(req: NextRequest) {
     log.info('voice reference preprocessing completed', {
       profileId,
       operation: 'enroll',
-      duration: normalizedReference.durationSeconds,
+      durationMs: Math.round(normalizedReference.durationSeconds * 1000),
+      peakLevel: normalizedReference.quality.maxVolumeDb,
+      meanLevel: normalizedReference.quality.meanVolumeDb,
+      silenceRatio: normalizedReference.quality.silenceRatio,
+      clippedSampleRatio: normalizedReference.quality.clippedSampleRatio,
+      maxConsecutiveClippingMs: normalizedReference.quality.maxConsecutiveClippingMs,
+      qualityDecision: normalizedReference.qualityDecision.severity,
     });
 
     const { providerReferenceId, preview } = await generateVariantPreview(profile, config);
@@ -303,7 +330,8 @@ export async function POST(req: NextRequest) {
       profileId,
       operation: 'enroll',
       status: profile.status,
-      duration: normalizedReference.durationSeconds,
+      durationMs: Math.round(normalizedReference.durationSeconds * 1000),
+      qualityDecision: normalizedReference.qualityDecision.severity,
     });
 
     return apiSuccess({ profile: toPublicVoiceProfile(profile) }, 201);

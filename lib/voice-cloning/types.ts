@@ -62,6 +62,11 @@ export interface VoiceDraftPreview {
   preview: VoicePreview;
 }
 
+export interface VoiceEnrollmentQualitySummary {
+  severity: 'pass' | 'warning';
+  warnings: string[];
+}
+
 export interface VoiceProfile {
   id: string;
   ownerId: string;
@@ -83,6 +88,7 @@ export interface VoiceProfile {
   preview?: VoicePreview;
   previewVariants?: Partial<Record<ChatterboxModelVariant, VoicePreview>>;
   draftPreview?: VoiceDraftPreview;
+  enrollmentQuality?: VoiceEnrollmentQualitySummary;
   failureReason?: string;
 }
 
@@ -103,6 +109,7 @@ export interface PublicVoiceProfile {
   preview?: VoicePreview;
   previewVariants?: Partial<Record<ChatterboxModelVariant, VoicePreview>>;
   draftPreview?: VoiceDraftPreview;
+  enrollmentQuality?: VoiceEnrollmentQualitySummary;
 }
 
 export interface VoiceCloningProvider {
@@ -250,5 +257,6 @@ export function toPublicVoiceProfile(profile: VoiceProfile | null): PublicVoiceP
     ...(profile.preview ? { preview: profile.preview } : {}),
     ...(profile.previewVariants ? { previewVariants: profile.previewVariants } : {}),
     ...(profile.draftPreview ? { draftPreview: profile.draftPreview } : {}),
+    ...(profile.enrollmentQuality ? { enrollmentQuality: profile.enrollmentQuality } : {}),
   };
 }
