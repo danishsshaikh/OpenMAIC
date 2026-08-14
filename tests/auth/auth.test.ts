@@ -11,8 +11,8 @@ describe('university account authentication', () => {
     vi.unstubAllEnvs();
     authDir = await mkdtemp(join(tmpdir(), 'openmaic-auth-'));
     vi.stubEnv('OPENMAIC_AUTH_DATA_DIR', authDir);
-    vi.stubEnv('OPENMAIC_ALLOWED_EMAIL_DOMAIN', 'mituniversity.ac.in');
-    vi.stubEnv('OPENMAIC_BOOTSTRAP_ADMIN_EMAIL', 'admin@mituniversity.ac.in');
+    vi.stubEnv('OPENMAIC_ALLOWED_EMAIL_DOMAIN', 'mituniversity.edu.in');
+    vi.stubEnv('OPENMAIC_BOOTSTRAP_ADMIN_EMAIL', 'admin@mituniversity.edu.in');
   });
 
   afterEach(async () => {
@@ -24,11 +24,11 @@ describe('university account authentication', () => {
     const { getEmailDomain, isAllowedUniversityEmail, normalizeEmail } =
       await import('@/lib/auth/server');
 
-    expect(normalizeEmail('  FACULTY@MITUNIVERSITY.AC.IN  ')).toBe('faculty@mituniversity.ac.in');
-    expect(getEmailDomain('faculty@mituniversity.ac.in')).toBe('mituniversity.ac.in');
-    expect(isAllowedUniversityEmail('faculty@mituniversity.ac.in')).toBe(true);
-    expect(isAllowedUniversityEmail('faculty@mituniversity.ac.in.evil.com')).toBe(false);
-    expect(isAllowedUniversityEmail('faculty@evilmituniversity.ac.in')).toBe(false);
+    expect(normalizeEmail('  FACULTY@MITUNIVERSITY.EDU.IN  ')).toBe('faculty@mituniversity.edu.in');
+    expect(getEmailDomain('faculty@mituniversity.edu.in')).toBe('mituniversity.edu.in');
+    expect(isAllowedUniversityEmail('faculty@mituniversity.edu.in')).toBe(true);
+    expect(isAllowedUniversityEmail('faculty@mituniversity.edu.in.evil.com')).toBe(false);
+    expect(isAllowedUniversityEmail('faculty@evilmituniversity.edu.in')).toBe(false);
   });
 
   it('creates faculty users, hashes passwords, logs in, and invalidates logout sessions', async () => {
@@ -44,33 +44,33 @@ describe('university account authentication', () => {
     expect(
       validateSignupInput({
         name: 'A',
-        email: 'faculty@mituniversity.ac.in',
+        email: 'faculty@mituniversity.edu.in',
         password: 'Password123',
       }),
     ).toMatch(/Name/);
 
     const user = await createUser({
       name: 'Faculty User',
-      email: 'Faculty@MitUniversity.Ac.In',
+      email: 'Faculty@MitUniversity.Edu.In',
       password: 'Password123',
       confirmPassword: 'Password123',
     });
     expect(user.role).toBe('faculty');
-    expect(user.email).toBe('faculty@mituniversity.ac.in');
+    expect(user.email).toBe('faculty@mituniversity.edu.in');
     expect(user.passwordHash).toContain('scrypt$');
     expect(user.passwordHash).not.toContain('Password123');
 
     await expect(
       createUser({
         name: 'Duplicate',
-        email: 'faculty@mituniversity.ac.in',
+        email: 'faculty@mituniversity.edu.in',
         password: 'Password123',
       }),
     ).rejects.toThrow('already exists');
 
-    await expect(authenticateUser('faculty@mituniversity.ac.in', 'wrong')).resolves.toBeNull();
+    await expect(authenticateUser('faculty@mituniversity.edu.in', 'wrong')).resolves.toBeNull();
     await expect(
-      authenticateUser('faculty@mituniversity.ac.in', 'Password123'),
+      authenticateUser('faculty@mituniversity.edu.in', 'Password123'),
     ).resolves.toMatchObject({
       id: user.id,
     });
@@ -87,12 +87,12 @@ describe('university account authentication', () => {
 
     const admin = await createUser({
       name: 'Admin User',
-      email: 'admin@mituniversity.ac.in',
+      email: 'admin@mituniversity.edu.in',
       password: 'Password123',
     });
     const faculty = await createUser({
       name: 'Faculty User',
-      email: 'faculty2@mituniversity.ac.in',
+      email: 'faculty2@mituniversity.edu.in',
       password: 'Password123',
     });
 

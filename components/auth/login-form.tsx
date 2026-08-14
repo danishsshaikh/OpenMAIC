@@ -2,14 +2,19 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { Loader2, LogIn } from 'lucide-react';
+import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { setBrowserAuthUserId } from '@/lib/auth/client-storage';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,43 +42,50 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
-      <label className="block">
-        <span className="text-sm font-medium text-slate-700">University Email</span>
-        <input
+    <form className="space-y-5" onSubmit={onSubmit}>
+      <Field>
+        <FieldLabel htmlFor="login-email">University Email</FieldLabel>
+        <Input
+          id="login-email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           type="email"
           autoComplete="email"
           required
-          className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
         />
-      </label>
-      <label className="block">
-        <span className="text-sm font-medium text-slate-700">Password</span>
-        <input
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          type="password"
-          autoComplete="current-password"
-          required
-          className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-        />
-      </label>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-      >
+        <FieldDescription>Use your @mituniversity.edu.in email address.</FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="login-password">Password</FieldLabel>
+        <InputGroup>
+          <InputGroupInput
+            id="login-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type={passwordVisible ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+          />
+          <InputGroupButton
+            type="button"
+            size="icon-xs"
+            aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+            onClick={() => setPasswordVisible((value) => !value)}
+          >
+            {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </InputGroupButton>
+        </InputGroup>
+      </Field>
+      {error && <FieldError>{error}</FieldError>}
+      <Button type="submit" disabled={submitting} size="lg" className="w-full">
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
         Sign in
-      </button>
-      <p className="text-center text-sm text-slate-600">
-        Need an account?{' '}
+      </Button>
+      <p className="text-center text-sm text-muted-foreground">
+        New to OpenMAIC?{' '}
         <Link
           href="/signup"
-          className="font-medium text-slate-950 underline-offset-4 hover:underline"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
           Create one
         </Link>

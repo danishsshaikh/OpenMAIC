@@ -11,7 +11,7 @@ export { AUTH_COOKIE_NAME };
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_TOUCH_INTERVAL_MS = 60_000;
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
-const DEFAULT_ALLOWED_DOMAIN = 'mituniversity.ac.in';
+const DEFAULT_ALLOWED_DOMAIN = 'mituniversity.edu.in';
 
 function scryptKey(
   password: string,
