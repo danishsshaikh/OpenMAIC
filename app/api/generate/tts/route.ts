@@ -23,12 +23,15 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
 import { synthesizeFacultyVoice } from '@/lib/voice-cloning/synthesis';
+import { requireSessionUser } from '@/lib/auth/server';
 
 const log = createLogger('TTS API');
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   let ttsProviderId: string | undefined;
   let ttsVoice: string | undefined;
   let audioId: string | undefined;
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
     if (teacherVoiceProfileId) {
       const { audio, format } = await synthesizeFacultyVoice({
         profileId: teacherVoiceProfileId,
+        ownerId: user.id,
         text,
         language: ttsLanguageCode,
       });

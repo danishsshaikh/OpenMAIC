@@ -151,6 +151,13 @@ describe('explicit cloned voice TTS routing', () => {
       resolveTTSModel: vi.fn((_providerId, modelId) => modelId),
     }));
     vi.doMock('@/lib/server/ssrf-guard', () => ({ validateUrlForSSRF: vi.fn(() => null) }));
+    vi.doMock('@/lib/auth/server', () => ({
+      requireSessionUser: vi.fn(async () => ({
+        id: 'usr_faculty_a',
+        role: 'faculty',
+        status: 'active',
+      })),
+    }));
   });
 
   function request(body: Record<string, unknown>) {
@@ -183,6 +190,7 @@ describe('explicit cloned voice TTS routing', () => {
     expect(data).toMatchObject({ success: true, audioId: 'audio-1', format: 'wav' });
     expect(synthesizeFacultyVoice).toHaveBeenCalledWith({
       profileId: 'vcp_ready',
+      ownerId: 'usr_faculty_a',
       text: 'Hello class',
       language: 'en',
     });
@@ -227,7 +235,6 @@ describe('faculty voice synthesis language resolution', () => {
     }));
     vi.doUnmock('@/lib/voice-cloning/synthesis');
     vi.doMock('@/lib/voice-cloning/config', () => ({
-      FACULTY_VOICE_OWNER_ID: 'local-faculty',
       isVoiceCloningServerEnabled: () => true,
       getVoiceCloningProviderId: () => 'chatterbox',
     }));
@@ -276,6 +283,7 @@ describe('faculty voice synthesis language resolution', () => {
 
     await synthesizeFacultyVoice({
       profileId: 'vcp_ready',
+      ownerId: 'local-faculty',
       text: 'Hello class',
       language: 'Use clear beginner-friendly wording throughout.',
     });
@@ -299,6 +307,7 @@ describe('faculty voice synthesis language resolution', () => {
 
     const result = await synthesizeFacultyVoice({
       profileId: 'vcp_ready',
+      ownerId: 'local-faculty',
       text: 'Hello class',
       language: 'en-US',
     });
@@ -338,6 +347,7 @@ describe('faculty voice synthesis language resolution', () => {
     await expect(
       synthesizeFacultyVoice({
         profileId: 'vcp_ready',
+        ownerId: 'local-faculty',
         text: 'Hello class',
         language: 'en',
       }),
@@ -645,7 +655,6 @@ describe('voice profile model preview API', () => {
       format: 'wav',
     }));
     vi.doMock('@/lib/voice-cloning/config', () => ({
-      FACULTY_VOICE_OWNER_ID: 'local-faculty',
       getVoiceCloningDefaultLanguage: () => 'en',
       getChatterboxDefaultModelVariant: () => 'v3',
       isVoiceCloningServerEnabled: () => true,
@@ -674,6 +683,14 @@ describe('voice profile model preview API', () => {
         generatePreview,
         deleteProfile,
       }),
+    }));
+    vi.doMock('@/lib/auth/server', () => ({
+      markVoiceConfigured: vi.fn(),
+      requireSessionUser: vi.fn(async () => ({
+        id: 'local-faculty',
+        role: 'faculty',
+        status: 'active',
+      })),
     }));
   });
 

@@ -72,6 +72,7 @@ import {
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { InteractiveModeButton } from '@/components/generation/interactive-mode-button';
 import { TeachingVoiceCard } from '@/components/voice-cloning/teaching-voice-card';
+import { AccountMenu } from '@/components/auth/account-menu';
 
 const log = createLogger('Home');
 
@@ -530,6 +531,10 @@ function HomePage() {
             </div>
           )}
         </div>
+
+        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+
+        <AccountMenu />
 
         <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
 

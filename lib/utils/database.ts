@@ -32,6 +32,7 @@ import {
 import type { ChatStorageOptions } from './chat-storage';
 import type { AppDocument } from '@/lib/document-store';
 import { BrowserKVStore } from '@openmaic/storage';
+import { getBrowserStorageNamespace } from '@/lib/auth/client-storage';
 
 const log = createLogger('Database');
 
@@ -242,7 +243,10 @@ export function mediaFileKey(stageId: string, elementId: string): string {
 
 // ==================== Database Definition ====================
 
-const DATABASE_NAME = 'MAIC-Database';
+function databaseName(): string {
+  if (typeof window === 'undefined') return 'MAIC-Database';
+  return `MAIC-Database-${getBrowserStorageNamespace()}`;
+}
 const _DATABASE_VERSION = 15;
 
 /**
@@ -266,7 +270,7 @@ class MAICDatabase extends Dexie {
   agentEditSessions!: EntityTable<AgentEditSessionRecord, 'id'>;
 
   constructor() {
-    super(DATABASE_NAME);
+    super(databaseName());
 
     // Version 1: Initial schema
     this.version(1).stores({

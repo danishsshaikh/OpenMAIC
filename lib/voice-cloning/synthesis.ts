@@ -1,4 +1,4 @@
-import { FACULTY_VOICE_OWNER_ID, isVoiceCloningServerEnabled } from '@/lib/voice-cloning/config';
+import { isVoiceCloningServerEnabled } from '@/lib/voice-cloning/config';
 import { getVoiceCloningProvider } from '@/lib/voice-cloning/provider';
 import {
   readVoiceProfile,
@@ -19,14 +19,15 @@ const log = createLogger('VoiceCloningSynthesis');
 
 export async function synthesizeFacultyVoice(input: {
   profileId: string;
+  ownerId: string;
   text: string;
   language?: string;
 }): Promise<{ audio: Uint8Array; format: string }> {
   if (!isVoiceCloningServerEnabled()) {
     throw new Error('Voice cloning is disabled');
   }
-  const profile = await readVoiceProfile(input.profileId);
-  if (!profile || profile.ownerId !== FACULTY_VOICE_OWNER_ID || profile.status === 'deleted') {
+  const profile = await readVoiceProfile(input.profileId, input.ownerId);
+  if (!profile || profile.ownerId !== input.ownerId || profile.status === 'deleted') {
     throw new Error('Voice profile not found');
   }
   if (profile.status !== 'ready' || !profile.providerReferenceId) {

@@ -8,22 +8,23 @@ import {
 } from '@/lib/document-store/config';
 import { assertRuntimeStorageConfigurable, configureRuntimeStorage } from '@/lib/runtime/config';
 import { getLearnerKey } from '@/lib/runtime/learner-key';
+import { getBrowserAuthUserId, getBrowserStorageNamespace } from '@/lib/auth/client-storage';
 
 if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_PERSISTENCE === '1') {
   const deviceKv = new BrowserKVStore();
   let learnerKeyPromise: Promise<string> | undefined;
   const learnerKey = (): Promise<string> =>
-    (learnerKeyPromise ??= getLearnerKey(deviceKv).catch((error) => {
-      learnerKeyPromise = undefined;
-      throw error;
-    }));
+    (learnerKeyPromise ??= Promise.resolve(getBrowserAuthUserId() || null)
+      .then((userId) => (userId ? `user:${userId}` : getLearnerKey(deviceKv)))
+      .catch((error) => {
+        learnerKeyPromise = undefined;
+        throw error;
+      }));
 
-  const token = process.env.NEXT_PUBLIC_PERSISTENCE_TOKEN;
   const headers = async (): Promise<Record<string, string>> => {
-    const resolvedLearnerKey = await learnerKey();
+    await learnerKey();
     return {
-      'x-learner-key': resolvedLearnerKey,
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      'x-openmaic-storage-namespace': getBrowserStorageNamespace(),
     };
   };
 

@@ -36,11 +36,13 @@ import { buildVideoManifestFromOutlines } from '@/lib/media/video-manifest';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
+import { incrementClassroomsCreated } from '@/lib/auth/server';
 
 const log = createLogger('Classroom');
 
 export interface GenerateClassroomInput {
   requirement: string;
+  ownerUserId?: string;
   pdfContent?: { text: string; images: string[] };
   enableWebSearch?: boolean;
   webSearchProviderId?: WebSearchProviderId;
@@ -697,6 +699,7 @@ export async function generateClassroom(
   const persisted = await persistClassroom(
     {
       id: stageId,
+      ownerUserId: input.ownerUserId || 'legacy-unassigned',
       stage,
       scenes,
     },
@@ -704,6 +707,9 @@ export async function generateClassroom(
   );
 
   log.info(`Classroom persisted: ${persisted.id}, URL: ${persisted.url}`);
+  if (input.ownerUserId) {
+    await incrementClassroomsCreated(input.ownerUserId);
+  }
 
   await options.onProgress?.({
     step: 'completed',

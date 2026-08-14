@@ -1,8 +1,6 @@
 import path from 'path';
 import { isVoiceCloningEnabled } from '@/lib/config/feature-flags';
 
-export const FACULTY_VOICE_OWNER_ID = 'local-faculty';
-
 export function isVoiceCloningServerEnabled(): boolean {
   return isVoiceCloningEnabled();
 }

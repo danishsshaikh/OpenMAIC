@@ -21,22 +21,6 @@ describe('embedded persistence route', () => {
     });
   });
 
-  it('refuses configured persistence when the development token is missing', async () => {
-    vi.stubEnv('DATABASE_URL', 'postgres://unused-in-this-test');
-    vi.stubEnv('PERSISTENCE_DEV_TOKEN', '');
-    const { GET } = await import('@/app/api/persistence/[...path]/route');
-
-    const response = await GET(new Request('http://localhost/api/persistence/documents'));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: 'PERSISTENCE_DEV_TOKEN_MISSING',
-        message: 'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
-      },
-    });
-  });
-
   it('retries initialization on the next request after a failed pool initialization', async () => {
     const ensureSchema = vi
       .fn()
@@ -70,11 +54,10 @@ describe('embedded persistence route', () => {
       ),
     }));
     vi.stubEnv('DATABASE_URL', 'postgres://retry-test');
-    vi.stubEnv('PERSISTENCE_DEV_TOKEN', 'test-token');
     const { handlePersistenceRequest } = await import('@/app/api/persistence/[...path]/route');
     const request = () =>
       new Request('http://localhost/api/persistence/runtime/sessions', {
-        headers: { authorization: 'Bearer test-token' },
+        headers: { cookie: 'openmaic_session=session-token' },
       });
 
     const first = await handlePersistenceRequest(request(), {
@@ -145,14 +128,13 @@ describe('embedded persistence route', () => {
       ),
     }));
     vi.stubEnv('DATABASE_URL', 'postgres://adapter-test');
-    vi.stubEnv('PERSISTENCE_DEV_TOKEN', 'test-token');
     const { handlePersistenceRequest } = await import('@/app/api/persistence/[...path]/route');
     const pool = { end: vi.fn().mockResolvedValue(undefined) };
 
     const put = await handlePersistenceRequest(
       new Request('http://localhost/api/persistence/documents/stage%2Fslash', {
         method: 'PUT',
-        headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+        headers: { cookie: 'openmaic_session=session-token', 'content-type': 'application/json' },
         body: JSON.stringify({ hello: 'world' }),
       }),
       { poolFactory: () => pool as never },
@@ -165,7 +147,7 @@ describe('embedded persistence route', () => {
     const del = await handlePersistenceRequest(
       new Request('http://localhost/api/persistence/documents/stage%2Fslash', {
         method: 'DELETE',
-        headers: { authorization: 'Bearer test-token' },
+        headers: { cookie: 'openmaic_session=session-token' },
       }),
       { poolFactory: () => pool as never },
     );

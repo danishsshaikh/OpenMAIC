@@ -8,10 +8,13 @@ import {
   readClassroom,
 } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { incrementClassroomsCreated, requireSessionUser } from '@/lib/auth/server';
 
 const log = createLogger('Classroom API');
 
 export async function POST(request: NextRequest) {
+  const user = await requireSessionUser(request);
+  if (user instanceof Response) return user;
   let stageId: string | undefined;
   let sceneCount: number | undefined;
   try {
@@ -31,7 +34,11 @@ export async function POST(request: NextRequest) {
     const id = stage.id || randomUUID();
     const baseUrl = buildRequestOrigin(request);
 
-    const persisted = await persistClassroom({ id, stage: { ...stage, id }, scenes }, baseUrl);
+    const persisted = await persistClassroom(
+      { id, ownerUserId: user.id, stage: { ...stage, id }, scenes },
+      baseUrl,
+    );
+    await incrementClassroomsCreated(user.id);
 
     return apiSuccess({ id: persisted.id, url: persisted.url }, 201);
   } catch (error) {
@@ -49,6 +56,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const user = await requireSessionUser(request);
+  if (user instanceof Response) return user;
   try {
     const id = request.nextUrl.searchParams.get('id');
 
@@ -66,6 +75,9 @@ export async function GET(request: NextRequest) {
 
     const classroom = await readClassroom(id);
     if (!classroom) {
+      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
+    }
+    if (classroom.ownerUserId !== user.id) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
     }
 

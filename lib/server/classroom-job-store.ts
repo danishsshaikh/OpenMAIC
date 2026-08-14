@@ -16,6 +16,7 @@ export type ClassroomGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 
 
 export interface ClassroomGenerationJob {
   id: string;
+  ownerUserId: string;
   status: ClassroomGenerationJobStatus;
   step: ClassroomGenerationStep | 'queued' | 'failed';
   progress: number;
@@ -104,6 +105,7 @@ export async function createClassroomGenerationJob(
   const now = new Date().toISOString();
   const job: ClassroomGenerationJob = {
     id: jobId,
+    ownerUserId: input.ownerUserId || 'legacy-unassigned',
     status: 'queued',
     step: 'queued',
     progress: 0,

@@ -18,33 +18,49 @@ function safeProfileId(id: string): string {
   return id;
 }
 
+function safeOwnerId(id: string): string {
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error('Invalid voice profile owner id');
+  }
+  return id;
+}
+
 export function createVoiceProfileId(): string {
   return `vcp_${nanoid(16)}`;
 }
 
-export function getVoiceProfileDir(profileId: string): string {
-  return path.join(getVoiceCloningStorageDir(), safeProfileId(profileId));
+export function getVoiceProfileDir(profileId: string, ownerId: string): string {
+  return path.join(
+    getVoiceCloningStorageDir(),
+    'users',
+    safeOwnerId(ownerId),
+    'voice-profiles',
+    safeProfileId(profileId),
+  );
 }
 
-function profilePath(profileId: string): string {
-  return path.join(getVoiceProfileDir(profileId), PROFILE_FILE);
+function profilePath(profileId: string, ownerId: string): string {
+  return path.join(getVoiceProfileDir(profileId, ownerId), PROFILE_FILE);
 }
 
-export function referenceAudioKeyForProfile(profileId: string): string {
-  return path.join(getVoiceProfileDir(profileId), REFERENCE_FILE);
+export function referenceAudioKeyForProfile(profileId: string, ownerId: string): string {
+  return path.join(getVoiceProfileDir(profileId, ownerId), REFERENCE_FILE);
 }
 
 export async function writeVoiceProfile(profile: VoiceProfile): Promise<void> {
-  const dir = getVoiceProfileDir(profile.id);
+  const dir = getVoiceProfileDir(profile.id, profile.ownerId);
   await ensureDir(dir);
   const tmp = path.join(dir, `${PROFILE_FILE}.${process.pid}.${Date.now()}.tmp`);
   await fs.writeFile(tmp, JSON.stringify(profile, null, 2), { encoding: 'utf8', mode: 0o600 });
-  await fs.rename(tmp, profilePath(profile.id));
+  await fs.rename(tmp, profilePath(profile.id, profile.ownerId));
 }
 
-export async function readVoiceProfile(profileId: string): Promise<VoiceProfile | null> {
+export async function readVoiceProfile(
+  profileId: string,
+  ownerId: string,
+): Promise<VoiceProfile | null> {
   try {
-    const raw = await fs.readFile(profilePath(profileId), 'utf8');
+    const raw = await fs.readFile(profilePath(profileId, ownerId), 'utf8');
     return JSON.parse(raw) as VoiceProfile;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -66,7 +82,12 @@ export async function referenceAudioExists(
 }
 
 export async function findCurrentVoiceProfile(ownerId: string): Promise<VoiceProfile | null> {
-  const root = getVoiceCloningStorageDir();
+  const root = path.join(
+    getVoiceCloningStorageDir(),
+    'users',
+    safeOwnerId(ownerId),
+    'voice-profiles',
+  );
   let entries: string[];
   try {
     entries = await fs.readdir(root);
@@ -78,7 +99,7 @@ export async function findCurrentVoiceProfile(ownerId: string): Promise<VoicePro
   const profiles: VoiceProfile[] = [];
   for (const entry of entries) {
     if (!entry.startsWith('vcp_')) continue;
-    const profile = await readVoiceProfile(entry).catch(() => null);
+    const profile = await readVoiceProfile(entry, ownerId).catch(() => null);
     if (profile?.ownerId === ownerId && profile.status !== 'deleted') {
       profiles.push(profile);
     }
@@ -87,8 +108,12 @@ export async function findCurrentVoiceProfile(ownerId: string): Promise<VoicePro
   return profiles[0] ?? null;
 }
 
-export async function writeReferenceAudio(profileId: string, bytes: Uint8Array): Promise<string> {
-  const key = referenceAudioKeyForProfile(profileId);
+export async function writeReferenceAudio(
+  profileId: string,
+  ownerId: string,
+  bytes: Uint8Array,
+): Promise<string> {
+  const key = referenceAudioKeyForProfile(profileId, ownerId);
   await ensureDir(path.dirname(key));
   await fs.writeFile(key, bytes, { mode: 0o600 });
   return key;

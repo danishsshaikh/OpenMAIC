@@ -2,11 +2,11 @@ import { NextRequest } from 'next/server';
 import { randomUUID } from 'crypto';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
-  FACULTY_VOICE_OWNER_ID,
   getVoiceCloningDefaultLanguage,
   getChatterboxDefaultModelVariant,
   isVoiceCloningServerEnabled,
 } from '@/lib/voice-cloning/config';
+import { markVoiceConfigured, requireSessionUser } from '@/lib/auth/server';
 import { VOICE_CLONING_CONSENT_VERSION, VOICE_PREVIEW_TEXT } from '@/lib/voice-cloning/phrases';
 import {
   createVoiceProfileId,
@@ -177,14 +177,18 @@ async function readEnrollmentRecording(formData: FormData): Promise<IncomingVoic
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!isVoiceCloningServerEnabled()) return disabled();
-  const profile = await findCurrentVoiceProfile(FACULTY_VOICE_OWNER_ID);
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
+  const profile = await findCurrentVoiceProfile(user.id);
   return apiSuccess({ profile: toPublicVoiceProfile(profile) });
 }
 
 export async function POST(req: NextRequest) {
   if (!isVoiceCloningServerEnabled()) return disabled();
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   let profile: VoiceProfile | null = null;
   let previousProfile: VoiceProfile | null = null;
   try {
@@ -271,13 +275,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    previousProfile = await findCurrentVoiceProfile(FACULTY_VOICE_OWNER_ID);
+    previousProfile = await findCurrentVoiceProfile(user.id);
 
     const profileId = createVoiceProfileId();
     const now = new Date().toISOString();
     profile = {
       id: profileId,
-      ownerId: FACULTY_VOICE_OWNER_ID,
+      ownerId: user.id,
       displayName: displayName || 'My Teaching Voice',
       provider: 'chatterbox',
       language: languageId,
@@ -300,6 +304,7 @@ export async function POST(req: NextRequest) {
 
     const referenceAudioKey = await writeReferenceAudio(
       profileId,
+      user.id,
       normalizedReference.referenceAudio,
     );
     profile = { ...profile, referenceAudioKey, updatedAt: new Date().toISOString() };
@@ -362,6 +367,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   if (!isVoiceCloningServerEnabled()) return disabled();
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   const body = (await req.json().catch(() => ({}))) as {
     profileId?: string;
     action?: string;
@@ -372,8 +379,8 @@ export async function PATCH(req: NextRequest) {
   if (!body.profileId || !body.action) {
     return apiError('INVALID_REQUEST', 400, 'Invalid profile update');
   }
-  const profile = await readVoiceProfile(body.profileId);
-  if (!profile || profile.ownerId !== FACULTY_VOICE_OWNER_ID || profile.status === 'deleted') {
+  const profile = await readVoiceProfile(body.profileId, user.id);
+  if (!profile || profile.ownerId !== user.id || profile.status === 'deleted') {
     return apiError('INVALID_REQUEST', 404, 'Voice profile not found');
   }
   let config: VoiceConfiguration;
@@ -427,11 +434,12 @@ export async function PATCH(req: NextRequest) {
     updatedAt: new Date().toISOString(),
   };
   await writeVoiceProfile(next);
+  await markVoiceConfigured(user.id);
   if (profile.replacesProfileId) {
-    const previousProfile = await readVoiceProfile(profile.replacesProfileId);
+    const previousProfile = await readVoiceProfile(profile.replacesProfileId, user.id);
     if (
       previousProfile &&
-      previousProfile.ownerId === FACULTY_VOICE_OWNER_ID &&
+      previousProfile.ownerId === user.id &&
       previousProfile.status !== 'deleted'
     ) {
       if (previousProfile.providerReferenceId) {
@@ -457,11 +465,13 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!isVoiceCloningServerEnabled()) return disabled();
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   const profileId = req.nextUrl.searchParams.get('profileId');
   const profile = profileId
-    ? await readVoiceProfile(profileId)
-    : await findCurrentVoiceProfile(FACULTY_VOICE_OWNER_ID);
-  if (!profile || profile.ownerId !== FACULTY_VOICE_OWNER_ID || profile.status === 'deleted') {
+    ? await readVoiceProfile(profileId, user.id)
+    : await findCurrentVoiceProfile(user.id);
+  if (!profile || profile.ownerId !== user.id || profile.status === 'deleted') {
     return apiSuccess({ deleted: true });
   }
   try {

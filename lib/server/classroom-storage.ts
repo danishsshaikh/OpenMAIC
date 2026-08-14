@@ -36,6 +36,7 @@ export function buildRequestOrigin(req: NextRequest): string {
 
 export interface PersistedClassroomData {
   id: string;
+  ownerUserId: string;
   stage: Stage;
   scenes: Scene[];
   createdAt: string;
@@ -61,6 +62,7 @@ export async function readClassroom(id: string): Promise<PersistedClassroomData 
 export async function persistClassroom(
   data: {
     id: string;
+    ownerUserId: string;
     stage: Stage;
     scenes: Scene[];
   },
@@ -68,6 +70,7 @@ export async function persistClassroom(
 ): Promise<PersistedClassroomData & { url: string }> {
   const classroomData: PersistedClassroomData = {
     id: data.id,
+    ownerUserId: data.ownerUserId,
     stage: data.stage,
     scenes: data.scenes,
     createdAt: new Date().toISOString(),

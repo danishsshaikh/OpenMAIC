@@ -45,6 +45,7 @@ import {
   settleStageDeletionCascade,
   unmarkStageDeleted,
 } from './deleted-stages';
+import { getBrowserAuthUserId } from '@/lib/auth/client-storage';
 
 const log = createLogger('StageStorage');
 
@@ -675,7 +676,7 @@ export async function listStages(): Promise<StageListItem[]> {
   try {
     const summaries = await getDocumentStore().listDocuments();
     const ids = new Set(summaries.map((summary) => summary.id));
-    const legacy = await getLegacyDocumentStore().listStages();
+    const legacy = getBrowserAuthUserId() ? [] : await getLegacyDocumentStore().listStages();
     const legacyOnly = await Promise.all(
       legacy
         .filter((stage) => !ids.has(stage.id))
@@ -857,6 +858,7 @@ export async function stageExists(stageId: string): Promise<boolean> {
   try {
     const summaries = await getDocumentStore().listDocuments();
     if (summaries.some((stage) => stage.id === stageId)) return true;
+    if (getBrowserAuthUserId()) return false;
     return (await getLegacyDocumentStore().read(stageId)) !== null;
   } catch (error) {
     log.error('Failed to check stage existence:', error);
