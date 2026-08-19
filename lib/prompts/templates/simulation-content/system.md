@@ -2,6 +2,14 @@
 
 Generate a self-contained HTML simulation with embedded widget configuration.
 
+## Language Requirement
+
+The requested output language is: **{{requestedLanguage}}**.
+
+All user-visible natural-language text inside the simulation must be written in the requested language. This includes every button, control, label, status, instruction, tooltip, message, placeholder, legend, counter, aria-label, title attribute, validation/error message, and every JavaScript string that is dynamically inserted into the UI with `textContent`, `innerText`, `innerHTML`, canvas text drawing, alerts, or template strings.
+
+Do not mix languages. If the requested language is English, all visible UI strings must be English. Do not use Chinese, Japanese, Korean, or another natural language unless the requested language explicitly requires it. HTML, CSS, and JavaScript identifiers may remain normal programming syntax. Mathematical symbols and standard technical notation may remain unchanged.
+
 ## Output Structure
 
 Your output must be a complete HTML document with:
@@ -136,7 +144,7 @@ Example mobile-safe layout:
 
 ### 2. Reset Button - MUST WORK CORRECTLY
 - **Reset button MUST return simulation to initial state**
-- Common bug: Button changes text to "重新开始" but clicking it doesn't reset
+- Common bug: Button changes text to "Restart" but clicking it doesn't reset
 - Solution: Use a separate reset function, or check state properly
 
 Correct implementation:
@@ -159,7 +167,7 @@ function resetSimulation() {
   state.ended = false;
   state.posX = 50;  // Reset to initial position!
   state.velocity = 0;  // Reset velocity!
-  updateButton('启动');
+  updateButton('Start');
   draw();
 }
 
@@ -167,7 +175,7 @@ function resetSimulation() {
 function onSimulationEnd() {
   state.running = false;
   state.ended = true;
-  updateButton('重新开始');
+  updateButton('Restart');
 }
 
 function updateButton(text) {
@@ -178,10 +186,10 @@ function updateButton(text) {
 ### 3. Button State Management
 - Use clear state variables: `running`, `paused`, `ended`
 - Button text should reflect what will happen when clicked:
-  - "启动" / "开始" → Start simulation
-  - "暂停" / "暂停" → Pause running simulation
-  - "继续" / "继续" → Resume paused simulation
-  - "重新开始" / "重试" → Reset and start fresh (when ended)
+  - "Start" → Start simulation
+  - "Pause" → Pause running simulation
+  - "Continue" / "Resume" → Resume paused simulation
+  - "Restart" / "Try again" → Reset and start fresh (when ended)
 - One button should NOT do different things based on text alone
 
 ### 4. Touch-Friendly Controls
@@ -201,11 +209,11 @@ function updateButton(text) {
 - Show current state in UI (running indicator, paused icon)
 - Highlight end boundary or target
 - Show success/failure message when simulation ends
-- Animate the "重新开始" button appearance
+- Animate the restart button appearance
 
 ### 7. Visible Animation (CRITICAL)
 
-**When the user clicks "启动" (Start), there MUST be OBVIOUS visual animation.**
+**When the user clicks the start button, there MUST be OBVIOUS visual animation.**
 
 #### Animation Requirements:
 1. **Moving objects**: Objects should visibly move, rotate, or change when simulation runs
@@ -306,6 +314,7 @@ const objectY = baseY - BOTTOM_MARGIN - (value / maxValue) * playableHeight;
 - [ ] Control panel does NOT overlap canvas on mobile (test 320px width)
 - [ ] Reset button returns simulation to EXACT initial state
 - [ ] Button text matches button action correctly
+- [ ] All static HTML labels and dynamically assigned JavaScript UI strings use the requested language
 - [ ] Touch targets are at least 44px
 - [ ] Canvas resizes properly on window resize
 - [ ] State machine is clear (running/paused/ended)

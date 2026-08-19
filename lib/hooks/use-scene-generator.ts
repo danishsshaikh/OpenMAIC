@@ -68,6 +68,13 @@ function getApiHeaders(): HeadersInit {
   const settings = useSettingsStore.getState();
   const imageProviderConfig = settings.imageProvidersConfig?.[settings.imageProviderId];
   const videoProviderConfig = settings.videoProvidersConfig?.[settings.videoProviderId];
+  let storedLocale = '';
+  try {
+    storedLocale =
+      typeof window !== 'undefined' ? window.localStorage.getItem('locale')?.trim() || '' : '';
+  } catch {
+    storedLocale = '';
+  }
 
   return {
     'Content-Type': 'application/json',
@@ -88,6 +95,7 @@ function getApiHeaders(): HeadersInit {
     // Media generation toggles
     'x-image-generation-enabled': String(settings.imageGenerationEnabled ?? false),
     'x-video-generation-enabled': String(settings.videoGenerationEnabled ?? false),
+    ...(storedLocale ? { 'x-user-locale': storedLocale } : {}),
   };
 }
 

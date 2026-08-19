@@ -179,6 +179,23 @@ describe('scene-content async simulation route', () => {
     expect((await changed.json()).jobId).not.toBe((await first.json()).jobId);
   });
 
+  test('threads the requested locale into the async simulation generation prompt', async () => {
+    mocks.callLLM.mockResolvedValueOnce({ text: simulationHtml() });
+
+    const { POST } = await import('@/app/api/generate/scene-content/route');
+    await POST(
+      mockRequest(sceneContentBody(), 'owner-a', {
+        'x-user-locale': 'en-US',
+      }),
+    );
+    await mocks.afterCallbacks[0]();
+
+    const request = mocks.callLLM.mock.calls[0][0] as { system?: string; prompt?: string };
+    expect(request.system).toContain('The requested output language is: **English (en-US)**');
+    expect(request.prompt).toContain('Requested output language: English (en-US)');
+    expect(request.prompt).toContain('Teach in English.');
+  });
+
   test("does not expose another user's simulation job status", async () => {
     const { POST } = await import('@/app/api/generate/scene-content/route');
     const response = await POST(mockRequest(sceneContentBody(), 'owner-a'));
@@ -217,11 +234,15 @@ function sceneContentBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockRequest(body: Record<string, unknown>, userId = 'owner-a') {
+function mockRequest(
+  body: Record<string, unknown>,
+  userId = 'owner-a',
+  headers: Record<string, string> = {},
+) {
   mocks.requireSessionUser.mockResolvedValueOnce({ id: userId });
   return {
     json: async () => body,
-    headers: new Headers(),
+    headers: new Headers(headers),
     nextUrl: new URL('http://localhost/api/generate/scene-content'),
   } as unknown as NextRequest;
 }

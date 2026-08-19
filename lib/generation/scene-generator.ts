@@ -71,6 +71,11 @@ const HTML_DOCTYPE_RE = /<!doctype\s+html\b[^>]*>/i;
 const MARKDOWN_FENCE_RE = /```(?:html)?\s*([\s\S]*?)```/gi;
 const WIDGET_CONFIG_RE =
   /<script\b(?=[^>]*\btype=["']application\/json["'])(?=[^>]*\bid=["']widget-config["'])[^>]*>([\s\S]*?)<\/script>/i;
+const CJK_TEXT_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+const ENGLISH_LOCALE_RE = /^en(?:[-_]|$)/i;
+const ENGLISH_DIRECTIVE_RE = /\benglish\b|\ben[-_]?(?:us|gb|in|au|ca)?\b/i;
+const MULTILINGUAL_DIRECTIVE_RE =
+  /\b(?:bilingual|multilingual|dual[-\s]?language|mixed[-\s]?language|mix languages|both languages)\b|中英|双语/i;
 
 type HtmlExtractionFailureCategory =
   | 'NO_HTML_DOCUMENT'
@@ -91,6 +96,14 @@ interface HtmlExtractionDiagnostics {
 interface HtmlExtractionResult {
   html: string | null;
   diagnostics: HtmlExtractionDiagnostics;
+}
+
+export interface SimulationLanguageValidationResult {
+  requestedLanguage: string;
+  enforceEnglishCjkGuard: boolean;
+  hasUnexpectedCjk: boolean;
+  suspiciousSpans: string[];
+  suspiciousSpanCount: number;
 }
 
 type WidgetConfigExtractionResult =
@@ -292,7 +305,10 @@ export async function generateSceneContent(
     }
 
     // Route to widget generation (handles all 5 types)
-    return generateWidgetContent(outline, aiCall, languageDirective, { allowProceduralSkill });
+    return generateWidgetContent(outline, aiCall, languageDirective, {
+      allowProceduralSkill,
+      targetLanguage,
+    });
   }
 
   switch (outline.type) {
@@ -1216,7 +1232,7 @@ export async function generateWidgetContent(
   outline: SceneOutline,
   aiCall: AICallFn,
   languageDirective?: string,
-  options: { allowProceduralSkill?: boolean } = {},
+  options: { allowProceduralSkill?: boolean; targetLanguage?: string } = {},
 ): Promise<GeneratedInteractiveContent | null> {
   const widgetType = outline.widgetType;
   const widgetOutline = outline.widgetOutline;
@@ -1239,6 +1255,10 @@ export async function generateWidgetContent(
         keyPoints: (outline.keyPoints || []).join('\n'),
         variables: widgetOutline.keyVariables?.join(', ') || '',
         designIdea: '',
+        requestedLanguage: describeRequestedSimulationLanguage(
+          languageDirective,
+          options.targetLanguage,
+        ),
         languageDirective: languageDirective || '',
       };
       break;
@@ -1345,7 +1365,40 @@ export async function generateWidgetContent(
     return null;
   }
 
-  // Extract widget config from HTML if present
+  let acceptedHtml = html;
+  let widgetConfigResult = validateWidgetConfigForGeneratedHtml(html, widgetType, outline);
+  if (!widgetConfigResult) return null;
+
+  if (widgetType === 'simulation') {
+    const languageSafeHtml = await enforceSimulationLanguageContract({
+      html,
+      outline,
+      widgetType,
+      aiCall,
+      languageDirective,
+      targetLanguage: options.targetLanguage,
+    });
+    if (!languageSafeHtml) return null;
+
+    if (languageSafeHtml !== html) {
+      acceptedHtml = languageSafeHtml;
+      widgetConfigResult = validateWidgetConfigForGeneratedHtml(acceptedHtml, widgetType, outline);
+      if (!widgetConfigResult) return null;
+    }
+  }
+
+  return {
+    html: postProcessInteractiveHtml(acceptedHtml),
+    widgetType,
+    widgetConfig: widgetConfigResult.config,
+  };
+}
+
+function validateWidgetConfigForGeneratedHtml(
+  html: string,
+  widgetType: WidgetType,
+  outline: SceneOutline,
+): WidgetConfigExtractionResult | null {
   const widgetConfigResult = extractWidgetConfig(html, widgetType);
   if (widgetConfigResult.status === 'mismatch') {
     log.error(`Widget config type mismatch for ${widgetType} response: ${outline.title}`, {
@@ -1372,11 +1425,166 @@ export async function generateWidgetContent(
     });
   }
 
+  return widgetConfigResult;
+}
+
+function describeRequestedSimulationLanguage(
+  languageDirective?: string,
+  targetLanguage?: string,
+): string {
+  const locale = targetLanguage?.trim();
+  if (locale && ENGLISH_LOCALE_RE.test(locale)) return `English (${locale})`;
+  if (locale) return locale;
+  if (isEnglishSimulationRequested(languageDirective, targetLanguage)) return 'English';
+  return languageDirective?.trim() || 'the requested teaching language';
+}
+
+function isEnglishSimulationRequested(
+  languageDirective?: string,
+  targetLanguage?: string,
+): boolean {
+  const locale = targetLanguage?.trim();
+  if (locale && ENGLISH_LOCALE_RE.test(locale)) return true;
+
+  const directive = languageDirective?.trim();
+  if (!directive) return false;
+  return ENGLISH_DIRECTIVE_RE.test(directive) && !MULTILINGUAL_DIRECTIVE_RE.test(directive);
+}
+
+function collectCjkSpans(value: string): string[] {
+  const spans = new Set<string>();
+  for (const match of value.matchAll(CJK_TEXT_RE)) {
+    spans.add(match[0]);
+    if (spans.size >= 20) break;
+  }
+  return [...spans];
+}
+
+export function validateSimulationOutputLanguage(
+  html: string,
+  options: { languageDirective?: string; targetLanguage?: string } = {},
+): SimulationLanguageValidationResult {
+  const requestedLanguage = describeRequestedSimulationLanguage(
+    options.languageDirective,
+    options.targetLanguage,
+  );
+  const enforceEnglishCjkGuard = isEnglishSimulationRequested(
+    options.languageDirective,
+    options.targetLanguage,
+  );
+  const suspiciousSpans = enforceEnglishCjkGuard ? collectCjkSpans(html) : [];
+
   return {
-    html: postProcessInteractiveHtml(html),
-    widgetType,
-    widgetConfig: widgetConfigResult.config,
+    requestedLanguage,
+    enforceEnglishCjkGuard,
+    hasUnexpectedCjk: suspiciousSpans.length > 0,
+    suspiciousSpans,
+    suspiciousSpanCount: suspiciousSpans.length,
   };
+}
+
+async function enforceSimulationLanguageContract({
+  html,
+  outline,
+  widgetType,
+  aiCall,
+  languageDirective,
+  targetLanguage,
+}: {
+  html: string;
+  outline: SceneOutline;
+  widgetType: WidgetType;
+  aiCall: AICallFn;
+  languageDirective?: string;
+  targetLanguage?: string;
+}): Promise<string | null> {
+  const initialValidation = validateSimulationOutputLanguage(html, {
+    languageDirective,
+    targetLanguage,
+  });
+  if (!initialValidation.enforceEnglishCjkGuard || !initialValidation.hasUnexpectedCjk) {
+    log.info(`Simulation language validation passed: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: initialValidation.requestedLanguage,
+      cjkDetected: false,
+      suspiciousSpanCount: 0,
+      repairAttempted: false,
+    });
+    return html;
+  }
+
+  log.warn(`Simulation language drift detected: ${outline.title}`, {
+    sceneType: outline.type,
+    widgetType,
+    requestedLanguage: initialValidation.requestedLanguage,
+    cjkDetected: true,
+    suspiciousSpanCount: initialValidation.suspiciousSpanCount,
+    repairAttempted: true,
+  });
+
+  const repairResponse = await aiCall(
+    [
+      'You repair generated simulation HTML without changing behavior.',
+      'Return exactly one complete HTML document and nothing else.',
+      'Preserve HTML structure, CSS, JavaScript logic, IDs, element relationships, widget config, and educational meaning.',
+      'Translate only user-facing natural-language UI strings to the requested language.',
+      'Do not translate JavaScript keywords, variable names, HTML tags, CSS properties, mathematical notation, symbols, or technical syntax.',
+    ].join('\n'),
+    [
+      `Requested output language: ${initialValidation.requestedLanguage}`,
+      languageDirective ? `Language directive: ${languageDirective}` : '',
+      '',
+      'The simulation below is structurally valid but contains unexpected CJK/Japanese/Korean natural-language UI text.',
+      'Repair it by translating only user-facing labels, buttons, controls, status text, tooltips, alerts, placeholders, legends, aria-labels, title attributes, and dynamically assigned JavaScript UI strings into the requested language.',
+      'Do not add explanations or markdown fences.',
+      '',
+      html,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+
+  const repairedHtmlResult = extractHtml(repairResponse);
+  const repairedHtml = repairedHtmlResult.html;
+  if (!repairedHtml) {
+    log.error(`Simulation language repair produced invalid HTML: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: initialValidation.requestedLanguage,
+      repairSucceeded: false,
+      ...repairedHtmlResult.diagnostics,
+      responsePreview: repairResponse.slice(0, 120),
+    });
+    return null;
+  }
+
+  const repairedValidation = validateSimulationOutputLanguage(repairedHtml, {
+    languageDirective,
+    targetLanguage,
+  });
+  if (repairedValidation.hasUnexpectedCjk) {
+    log.error(`Simulation language repair still contains unexpected CJK: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: repairedValidation.requestedLanguage,
+      cjkDetected: true,
+      suspiciousSpanCount: repairedValidation.suspiciousSpanCount,
+      repairSucceeded: false,
+    });
+    return null;
+  }
+
+  log.info(`Simulation language repair passed: ${outline.title}`, {
+    sceneType: outline.type,
+    widgetType,
+    requestedLanguage: repairedValidation.requestedLanguage,
+    cjkDetected: true,
+    suspiciousSpanCount: initialValidation.suspiciousSpanCount,
+    repairSucceeded: true,
+  });
+
+  return repairedHtml;
 }
 
 /**

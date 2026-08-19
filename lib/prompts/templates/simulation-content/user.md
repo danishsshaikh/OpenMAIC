@@ -18,7 +18,11 @@ Create a simulation widget for: {{conceptName}}
 
 ## Language
 
+Requested output language: {{requestedLanguage}}
+
 {{languageDirective}}
+
+All user-facing simulation text must follow the requested output language. This includes static HTML text, button labels, status badges, tooltips, aria labels, title attributes, validation messages, and JavaScript strings assigned dynamically with `textContent`, `innerText`, `innerHTML`, canvas text drawing, alerts, or template strings. Do not mix languages.
 
 ---
 
@@ -39,9 +43,9 @@ Generate a complete, interactive HTML simulation with these MANDATORY features:
 
 ### Button Logic (CRITICAL)
 1. **Main button MUST handle all states correctly:**
-   - "启动" → Starts simulation
-   - "暂停" → Pauses running simulation
-   - "重新开始" → Resets to initial state, then starts fresh
+   - "Start" → Starts simulation
+   - "Pause" → Pauses running simulation
+   - "Restart" → Resets to initial state, then starts fresh
 2. **Reset function MUST reset ALL state variables** (position, velocity, time, etc.)
 3. Use clear state tracking: `{ running: boolean, ended: boolean, paused: boolean }`
 
