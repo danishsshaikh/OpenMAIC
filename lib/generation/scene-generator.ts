@@ -65,6 +65,39 @@ const INTERACTIVE_WIDGET_ACTIONS = [
   'widget_reveal',
 ];
 const SLIDE_ACTIONS_WITHOUT_DISCUSSION = ['spotlight', 'laser'];
+const HTML_OPEN_TAG_RE = /<html\b[^>]*>/i;
+const HTML_CLOSE_TAG_RE = /<\/html\s*>/gi;
+const HTML_DOCTYPE_RE = /<!doctype\s+html\b[^>]*>/i;
+const MARKDOWN_FENCE_RE = /```(?:html)?\s*([\s\S]*?)```/gi;
+const WIDGET_CONFIG_RE =
+  /<script\b(?=[^>]*\btype=["']application\/json["'])(?=[^>]*\bid=["']widget-config["'])[^>]*>([\s\S]*?)<\/script>/i;
+
+type HtmlExtractionFailureCategory =
+  | 'NO_HTML_DOCUMENT'
+  | 'INCOMPLETE_HTML_DOCUMENT'
+  | 'HTML_FENCE_EXTRACTION_FAILED'
+  | 'INVALID_JSON_HTML_WRAPPER';
+
+interface HtmlExtractionDiagnostics {
+  responseChars: number;
+  hasDoctype: boolean;
+  hasHtmlOpen: boolean;
+  hasHtmlClose: boolean;
+  hasMarkdownFence: boolean;
+  hasJsonWrapper: boolean;
+  failureCategory?: HtmlExtractionFailureCategory;
+}
+
+interface HtmlExtractionResult {
+  html: string | null;
+  diagnostics: HtmlExtractionDiagnostics;
+}
+
+type WidgetConfigExtractionResult =
+  | { status: 'missing'; config?: undefined }
+  | { status: 'invalid'; reason: string; config?: undefined }
+  | { status: 'mismatch'; actualType: string; config?: undefined }
+  | { status: 'ok'; config: WidgetConfig };
 
 // ── Options interfaces for scene generation functions ──
 
@@ -1039,41 +1072,139 @@ async function generatePBLSceneContent(
   }
 }
 
-/**
- * Extract HTML document from AI response.
- * Tries to find <!DOCTYPE html>...</html> first, then falls back to code block extraction.
- */
-function extractHtml(response: string): string | null {
-  // Strategy 1: Find complete HTML document
-  const doctypeStart = response.indexOf('<!DOCTYPE html>');
-  const htmlTagStart = response.indexOf('<html');
-  const start = doctypeStart !== -1 ? doctypeStart : htmlTagStart;
+function baseHtmlDiagnostics(response: string): HtmlExtractionDiagnostics {
+  return {
+    responseChars: response.length,
+    hasDoctype: HTML_DOCTYPE_RE.test(response),
+    hasHtmlOpen: HTML_OPEN_TAG_RE.test(response),
+    hasHtmlClose: /<\/html\s*>/i.test(response),
+    hasMarkdownFence: /```/i.test(response),
+    hasJsonWrapper: false,
+  };
+}
 
-  if (start !== -1) {
-    const htmlEnd = response.lastIndexOf('</html>');
-    if (htmlEnd !== -1) {
-      return response.substring(start, htmlEnd + 7);
-    }
+function withHtmlFailure(
+  diagnostics: HtmlExtractionDiagnostics,
+  failureCategory: HtmlExtractionFailureCategory,
+): HtmlExtractionResult {
+  return {
+    html: null,
+    diagnostics: {
+      ...diagnostics,
+      failureCategory,
+    },
+  };
+}
+
+function findCompleteHtmlDocument(input: string): HtmlExtractionResult {
+  const diagnostics = baseHtmlDiagnostics(input);
+  const doctypeMatch = HTML_DOCTYPE_RE.exec(input);
+  const htmlOpenMatch = HTML_OPEN_TAG_RE.exec(input);
+  const starts = [doctypeMatch?.index, htmlOpenMatch?.index].filter(
+    (index): index is number => typeof index === 'number',
+  );
+  const start = starts.length ? Math.min(...starts) : -1;
+
+  if (start === -1) {
+    return withHtmlFailure(diagnostics, 'NO_HTML_DOCUMENT');
   }
 
-  // Strategy 2: Extract from code block
-  const codeBlockMatch = response.match(/```(?:html)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    const content = codeBlockMatch[1].trim();
-    if (content.includes('<html') || content.includes('<!DOCTYPE')) {
-      return content;
-    }
+  HTML_CLOSE_TAG_RE.lastIndex = 0;
+  let lastClose: RegExpExecArray | null = null;
+  let closeMatch: RegExpExecArray | null;
+  while ((closeMatch = HTML_CLOSE_TAG_RE.exec(input)) !== null) {
+    lastClose = closeMatch;
   }
 
-  // Strategy 3: If response itself looks like HTML
+  if (!lastClose || lastClose.index < start) {
+    return withHtmlFailure(diagnostics, 'INCOMPLETE_HTML_DOCUMENT');
+  }
+
+  return {
+    html: input.substring(start, lastClose.index + lastClose[0].length).trim(),
+    diagnostics,
+  };
+}
+
+function extractHtmlFromJsonWrapper(
+  response: string,
+  diagnostics: HtmlExtractionDiagnostics,
+): HtmlExtractionResult | null {
   const trimmed = response.trim();
-  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
-    return trimmed;
+  if (!trimmed.startsWith('{')) return null;
+
+  const jsonDiagnostics = { ...diagnostics, hasJsonWrapper: true };
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+    }
+
+    const htmlValue = (parsed as Record<string, unknown>).html;
+    if (typeof htmlValue !== 'string' || htmlValue.trim() === '') {
+      return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+    }
+
+    const extracted = findCompleteHtmlDocument(htmlValue);
+    return {
+      html: extracted.html,
+      diagnostics: {
+        ...extracted.diagnostics,
+        hasJsonWrapper: true,
+        failureCategory: extracted.diagnostics.failureCategory,
+      },
+    };
+  } catch {
+    return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+  }
+}
+
+function extractHtmlFromMarkdownFence(response: string): HtmlExtractionResult | null {
+  const diagnostics = baseHtmlDiagnostics(response);
+  if (!diagnostics.hasMarkdownFence) return null;
+
+  MARKDOWN_FENCE_RE.lastIndex = 0;
+  let sawFence = false;
+  let lastFailure: HtmlExtractionResult | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = MARKDOWN_FENCE_RE.exec(response)) !== null) {
+    sawFence = true;
+    const extracted = findCompleteHtmlDocument(match[1].trim());
+    if (extracted.html) return extracted;
+    lastFailure = extracted;
   }
 
-  log.error('Could not extract HTML from response');
-  log.error('Response preview:', response.substring(0, 200));
-  return null;
+  return sawFence
+    ? (lastFailure ?? withHtmlFailure(diagnostics, 'HTML_FENCE_EXTRACTION_FAILED'))
+    : null;
+}
+
+/**
+ * Extract a complete HTML document from an AI response while accepting common
+ * LLM wrappers. Deliberately rejects fragments and truncated documents.
+ */
+function extractHtml(response: string): HtmlExtractionResult {
+  const diagnostics = baseHtmlDiagnostics(response);
+  const jsonResult = extractHtmlFromJsonWrapper(response, diagnostics);
+  if (jsonResult) return jsonResult;
+
+  const fencedResult = extractHtmlFromMarkdownFence(response);
+  if (fencedResult?.html) return fencedResult;
+
+  const documentResult = findCompleteHtmlDocument(response.trim());
+  if (documentResult.html) return documentResult;
+
+  if (fencedResult) {
+    return withHtmlFailure(
+      {
+        ...diagnostics,
+        failureCategory: fencedResult.diagnostics.failureCategory,
+      },
+      fencedResult.diagnostics.failureCategory ?? 'HTML_FENCE_EXTRACTION_FAILED',
+    );
+  }
+
+  return documentResult;
 }
 
 // ==================== Ultra Mode Widget Generation ====================
@@ -1201,36 +1332,83 @@ export async function generateWidgetContent(
 
   log.info(`Generating ${widgetType} widget for: ${outline.title}`);
   const response = await aiCall(prompts.system, prompts.user);
-  const html = extractHtml(response);
+  const htmlResult = extractHtml(response);
+  const html = htmlResult.html;
 
   if (!html) {
-    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      ...htmlResult.diagnostics,
+      responsePreview: response.slice(0, 120),
+    });
     return null;
   }
 
   // Extract widget config from HTML if present
-  const widgetConfig = extractWidgetConfig(html);
+  const widgetConfigResult = extractWidgetConfig(html, widgetType);
+  if (widgetConfigResult.status === 'mismatch') {
+    log.error(`Widget config type mismatch for ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      actualType: widgetConfigResult.actualType,
+      failureCategory: 'WIDGET_TYPE_MISMATCH',
+    });
+    return null;
+  }
+  if (widgetConfigResult.status === 'invalid') {
+    log.warn(`Invalid widget config in ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      reason: widgetConfigResult.reason,
+      failureCategory: 'WIDGET_CONFIG_INVALID',
+    });
+  }
+  if (widgetConfigResult.status === 'missing') {
+    log.warn(`Widget config missing in ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      failureCategory: 'WIDGET_CONFIG_MISSING',
+    });
+  }
 
   return {
     html: postProcessInteractiveHtml(html),
     widgetType,
-    widgetConfig,
+    widgetConfig: widgetConfigResult.config,
   };
 }
 
 /**
  * Extract widget config from embedded JSON in HTML
  */
-function extractWidgetConfig(html: string): WidgetConfig | undefined {
-  const match = html.match(
-    /<script type="application\/json" id="widget-config">([\s\S]*?)<\/script>/,
-  );
-  if (!match) return undefined;
+function extractWidgetConfig(html: string, widgetType: WidgetType): WidgetConfigExtractionResult {
+  const match = html.match(WIDGET_CONFIG_RE);
+  if (!match) return { status: 'missing' };
 
   try {
-    return JSON.parse(match[1]);
+    const parsed: unknown = JSON.parse(match[1]);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { status: 'invalid', reason: 'config is not an object' };
+    }
+
+    const config = parsed as Record<string, unknown>;
+    if (typeof config.type === 'string' && config.type !== widgetType) {
+      return { status: 'mismatch', actualType: config.type };
+    }
+    if (config.type !== undefined && typeof config.type !== 'string') {
+      return { status: 'invalid', reason: 'config type must be a string when present' };
+    }
+
+    return {
+      status: 'ok',
+      config: {
+        ...config,
+        type: widgetType,
+      } as WidgetConfig,
+    };
   } catch {
-    return undefined;
+    return { status: 'invalid', reason: 'config JSON could not be parsed' };
   }
 }
 
