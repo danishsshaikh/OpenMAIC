@@ -31,6 +31,10 @@ import {
 } from '@/lib/generation/generation-retry';
 
 const log = createLogger('SceneGenerator');
+const SCENE_CONTENT_JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_SCENE_CONTENT_JOB_POLL_INTERVAL_MS = 3000;
+
+type SceneContentJobStatus = 'queued' | 'generating' | 'completed' | 'failed';
 
 interface SceneContentResult {
   success: boolean;
@@ -39,6 +43,11 @@ interface SceneContentResult {
   error?: string;
   errorCode?: string;
   statusCode?: number;
+  async?: boolean;
+  jobId?: string;
+  status?: SceneContentJobStatus;
+  pollIntervalMs?: number;
+  jobTerminal?: boolean;
 }
 
 interface SceneActionsResult {
@@ -125,6 +134,130 @@ function errorMeta(error: unknown): Pick<SceneContentResult, 'errorCode' | 'stat
   };
 }
 
+function isAsyncSceneContentStart(result: SceneContentResult): result is SceneContentResult & {
+  async: true;
+  jobId: string;
+} {
+  return result.async === true && typeof result.jobId === 'string' && result.jobId.length > 0;
+}
+
+function shouldRetrySceneContentResult(result: SceneContentResult): boolean {
+  if (result.jobTerminal) return false;
+  return !result.success || !result.content;
+}
+
+const defaultPollSleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+
+async function pollSceneContentJob(
+  initial: SceneContentResult & { async: true; jobId: string },
+  signal?: AbortSignal,
+  retryOptions?: ClientRetryOptions<SceneContentResult>,
+): Promise<SceneContentResult> {
+  if (initial.status === 'completed' && initial.content) {
+    return {
+      success: true,
+      content: initial.content,
+      effectiveOutline: initial.effectiveOutline,
+      jobId: initial.jobId,
+      status: initial.status,
+      jobTerminal: true,
+    };
+  }
+  if (initial.status === 'failed') {
+    return {
+      success: false,
+      error: initial.error || 'Scene content generation failed',
+      errorCode: 'GENERATION_FAILED',
+      jobId: initial.jobId,
+      status: initial.status,
+      jobTerminal: true,
+    };
+  }
+
+  const sleep = retryOptions?.sleep ?? defaultPollSleep;
+  const startedAt = Date.now();
+  const pollIntervalMs = Math.max(
+    1000,
+    Math.min(initial.pollIntervalMs ?? DEFAULT_SCENE_CONTENT_JOB_POLL_INTERVAL_MS, 10000),
+  );
+
+  while (Date.now() - startedAt < SCENE_CONTENT_JOB_TIMEOUT_MS) {
+    await sleep(pollIntervalMs, signal);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const response = await fetch(
+      `/api/generate/scene-content/status?jobId=${encodeURIComponent(initial.jobId)}`,
+      {
+        method: 'GET',
+        headers: getApiHeaders(),
+        signal,
+      },
+    );
+    const data = (await readJsonResponse(response)) as unknown as SceneContentResult;
+    if (!response.ok) {
+      throw createHttpError(response, data, 'Scene content job status request failed');
+    }
+
+    if (data.status === 'completed') {
+      if (data.content) {
+        return {
+          success: true,
+          content: data.content,
+          effectiveOutline: data.effectiveOutline,
+          jobId: initial.jobId,
+          status: data.status,
+          jobTerminal: true,
+        };
+      }
+      return {
+        success: false,
+        error: 'Scene content job completed without content',
+        errorCode: 'GENERATION_FAILED',
+        jobId: initial.jobId,
+        status: data.status,
+        jobTerminal: true,
+      };
+    }
+
+    if (data.status === 'failed') {
+      return {
+        success: false,
+        error: data.error || 'Scene content generation failed',
+        errorCode: data.errorCode || 'GENERATION_FAILED',
+        jobId: initial.jobId,
+        status: data.status,
+        jobTerminal: true,
+      };
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Scene content generation timed out. Please try again.',
+    errorCode: 'GENERATION_FAILED',
+    jobId: initial.jobId,
+    status: initial.status,
+    jobTerminal: true,
+  };
+}
+
 /** Call POST /api/generate/scene-content (step 1) */
 export async function fetchSceneContent(
   params: {
@@ -161,11 +294,16 @@ export async function fetchSceneContent(
           throw createHttpError(response, data, 'Scene content request failed');
         }
 
-        return data as unknown as SceneContentResult;
+        const result = data as unknown as SceneContentResult;
+        if (isAsyncSceneContentStart(result)) {
+          return pollSceneContentJob(result, signal, retryOptions);
+        }
+
+        return result;
       },
       {
         label: `scene content "${params.outline.title}"`,
-        shouldRetryResult: (result) => !result.success || !result.content,
+        shouldRetryResult: shouldRetrySceneContentResult,
         ...retryOptions,
         signal,
       },

@@ -6,7 +6,7 @@
  * Does NOT generate actions — use /api/generate/scene-actions for that.
  */
 
-import { NextRequest } from 'next/server';
+import { after, NextRequest } from 'next/server';
 import { callLLM } from '@/lib/ai/llm';
 import {
   applyOutlineFallbacks,
@@ -26,8 +26,16 @@ import { llmApiError } from '@/lib/server/llm-error-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { resolveVocationalActive } from '@/lib/config/feature-flags';
 import { sortDocumentImagesForVision } from '@/lib/document/bundle';
+import { requireSessionUser } from '@/lib/auth/server';
+import { buildRequestOrigin } from '@/lib/server/classroom-storage';
+import {
+  createOrReuseSceneContentJob,
+  createSceneContentDedupeKey,
+  runSceneContentJob,
+} from '@/lib/server/scene-content-jobs';
 
 const log = createLogger('Scene Content API');
+const SIMULATION_CONTENT_JOB_POLL_INTERVAL_MS = 3000;
 
 export const maxDuration = 300;
 
@@ -162,42 +170,121 @@ export async function POST(req: NextRequest) {
     // resolveImageIds() in generation-pipeline.ts will keep these placeholders in elements.
     const generatedMediaMapping: ImageMapping = {};
 
-    // ── Generate content ──
-    log.info(
-      `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
-    );
-
     const userLocale = req.headers?.get('x-user-locale') ?? '';
 
-    const content = await generateSceneContent(effectiveOutline, aiCall, {
-      assignedImages,
-      imageMapping,
-      languageModel: effectiveOutline.type === 'pbl' ? languageModel : undefined,
-      visionEnabled: hasVision,
-      generatedMediaMapping,
-      agents,
-      languageDirective,
-      thinkingConfig,
-      targetLanguage: userLocale || undefined,
-      userRequirements: requirements,
-      allowProceduralSkill: vocationalActive,
-    });
-
-    if (!content) {
-      log.error(
-        `Failed to generate content for: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
+    const generateResolvedContent = async () => {
+      log.info(
+        `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
       );
 
+      const content = await generateSceneContent(effectiveOutline, aiCall, {
+        assignedImages,
+        imageMapping,
+        languageModel: effectiveOutline.type === 'pbl' ? languageModel : undefined,
+        visionEnabled: hasVision,
+        generatedMediaMapping,
+        agents,
+        languageDirective,
+        thinkingConfig,
+        targetLanguage: userLocale || undefined,
+        userRequirements: requirements,
+        allowProceduralSkill: vocationalActive,
+      });
+
+      if (!content) {
+        log.error(
+          `Failed to generate content for: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
+        );
+        return { content: null, effectiveOutline };
+      }
+
+      log.info(
+        `Content generated successfully: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
+      );
+
+      return { content, effectiveOutline };
+    };
+
+    if (effectiveOutline.type === 'interactive' && effectiveOutline.widgetType === 'simulation') {
+      const user = await requireSessionUser(req);
+      if (user instanceof Response) return user;
+
+      const dedupeKey = createSceneContentDedupeKey({
+        ownerUserId: user.id,
+        stageId,
+        outline: effectiveOutline,
+        allOutlines,
+        assignedImages,
+        imageMapping,
+        agents,
+        languageDirective,
+        requirements,
+        modelString,
+        thinkingConfig,
+        userLocale,
+        hasVision,
+      });
+      const { job, reused } = createOrReuseSceneContentJob({
+        ownerUserId: user.id,
+        dedupeKey,
+        stageId,
+        outlineId: effectiveOutline.id,
+        outlineTitle: effectiveOutline.title,
+        widgetType: effectiveOutline.widgetType,
+        modelString,
+      });
+
+      if (!reused) {
+        after(() =>
+          runSceneContentJob(job.id, async () => {
+            const result = await generateResolvedContent();
+            if (!result.content) {
+              throw new Error(`Failed to generate content: ${effectiveOutline.title}`);
+            }
+            return {
+              content: result.content,
+              effectiveOutline: result.effectiveOutline,
+            };
+          }),
+        );
+      }
+
+      log.info(`Simulation content job ${reused ? 'reused' : 'created'}: ${job.id}`, {
+        stageId,
+        outlineId: effectiveOutline.id,
+        widgetType: effectiveOutline.widgetType,
+        model: modelString,
+        status: job.status,
+      });
+
+      return apiSuccess(
+        {
+          async: true,
+          jobId: job.id,
+          status: job.status,
+          pollUrl: `${buildRequestOrigin(req)}/api/generate/scene-content/status?jobId=${job.id}`,
+          pollIntervalMs: SIMULATION_CONTENT_JOB_POLL_INTERVAL_MS,
+          done: job.status === 'completed' || job.status === 'failed',
+          ...(job.status === 'completed' && job.result
+            ? {
+                content: job.result.content,
+                effectiveOutline: job.result.effectiveOutline,
+              }
+            : {}),
+          ...(job.status === 'failed' && job.error ? { error: job.error } : {}),
+        },
+        job.status === 'completed' ? 200 : 202,
+      );
+    }
+
+    const { content } = await generateResolvedContent();
+    if (!content) {
       return apiError(
         'GENERATION_FAILED',
         500,
         `Failed to generate content: ${effectiveOutline.title}`,
       );
     }
-
-    log.info(
-      `Content generated successfully: "${effectiveOutline.title}" [durationMs=${Date.now() - startedAt}]`,
-    );
 
     return apiSuccess({ content, effectiveOutline });
   } catch (error) {

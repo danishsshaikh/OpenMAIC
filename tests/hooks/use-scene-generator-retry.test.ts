@@ -65,6 +65,17 @@ const outline = {
   order: 2,
 } as SceneOutline;
 
+const simulationOutline = {
+  id: 'outline-sim',
+  type: 'interactive',
+  title: 'Long Simulation',
+  description: 'Generate a long-running simulation.',
+  keyPoints: ['simulate'],
+  order: 3,
+  widgetType: 'simulation',
+  widgetOutline: { concept: 'long_simulation' },
+} as SceneOutline;
+
 const retryOptions = {
   maxRetries: 1,
   sleep: async () => undefined,
@@ -175,6 +186,136 @@ describe('browser scene generation retry wrappers', () => {
       errorCode: 'RATE_LIMITED',
       statusCode: 429,
     });
+  });
+
+  it('polls async simulation content until the job completes', async () => {
+    const { fetchSceneContent } = await import('@/lib/hooks/use-scene-generator');
+    mockFetch
+      .mockResolvedValueOnce(
+        jsonResponse(202, {
+          success: true,
+          async: true,
+          jobId: 'job-1',
+          status: 'queued',
+          pollIntervalMs: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          async: true,
+          jobId: 'job-1',
+          status: 'generating',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          async: true,
+          jobId: 'job-1',
+          status: 'completed',
+          content: { html: '<html>Simulation</html>', widgetType: 'simulation' },
+          effectiveOutline: simulationOutline,
+        }),
+      );
+
+    const result = await fetchSceneContent(
+      {
+        outline: simulationOutline,
+        allOutlines: [simulationOutline],
+        stageId: 'stage-1',
+        stageInfo: { name: 'Retry Course' },
+      },
+      undefined,
+      retryOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      content: { html: '<html>Simulation</html>', widgetType: 'simulation' },
+      jobId: 'job-1',
+      status: 'completed',
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/generate/scene-content/status?jobId=job-1');
+  });
+
+  it('stops polling async simulation content after a failed job', async () => {
+    const { fetchSceneContent } = await import('@/lib/hooks/use-scene-generator');
+    mockFetch
+      .mockResolvedValueOnce(
+        jsonResponse(202, {
+          success: true,
+          async: true,
+          jobId: 'job-failed',
+          status: 'queued',
+          pollIntervalMs: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          async: true,
+          jobId: 'job-failed',
+          status: 'failed',
+          error: 'Simulation generation failed',
+        }),
+      );
+
+    const result = await fetchSceneContent(
+      {
+        outline: simulationOutline,
+        allOutlines: [simulationOutline],
+        stageId: 'stage-1',
+        stageInfo: { name: 'Retry Course' },
+      },
+      undefined,
+      retryOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'Simulation generation failed',
+      jobId: 'job-failed',
+      status: 'failed',
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rethrows aborts while polling async simulation content', async () => {
+    const { fetchSceneContent } = await import('@/lib/hooks/use-scene-generator');
+    const controller = new AbortController();
+    const abort = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(202, {
+        success: true,
+        async: true,
+        jobId: 'job-abort',
+        status: 'queued',
+        pollIntervalMs: 1,
+      }),
+    );
+
+    await expect(
+      fetchSceneContent(
+        {
+          outline: simulationOutline,
+          allOutlines: [simulationOutline],
+          stageId: 'stage-1',
+          stageInfo: { name: 'Retry Course' },
+        },
+        controller.signal,
+        {
+          ...retryOptions,
+          sleep: async () => {
+            controller.abort();
+            throw abort;
+          },
+        },
+      ),
+    ).rejects.toBe(abort);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('preserves internal scene content errors for localized fallback messages', async () => {
