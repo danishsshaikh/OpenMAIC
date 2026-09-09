@@ -65,6 +65,52 @@ const INTERACTIVE_WIDGET_ACTIONS = [
   'widget_reveal',
 ];
 const SLIDE_ACTIONS_WITHOUT_DISCUSSION = ['spotlight', 'laser'];
+const HTML_OPEN_TAG_RE = /<html\b[^>]*>/i;
+const HTML_CLOSE_TAG_RE = /<\/html\s*>/gi;
+const HTML_DOCTYPE_RE = /<!doctype\s+html\b[^>]*>/i;
+const MARKDOWN_FENCE_RE = /```(?:html)?\s*([\s\S]*?)```/gi;
+const WIDGET_CONFIG_RE =
+  /<script\b(?=[^>]*\btype=["']application\/json["'])(?=[^>]*\bid=["']widget-config["'])[^>]*>([\s\S]*?)<\/script>/i;
+const CJK_TEXT_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+const ENGLISH_LOCALE_RE = /^en(?:[-_]|$)/i;
+const ENGLISH_DIRECTIVE_RE = /\benglish\b|\ben[-_]?(?:us|gb|in|au|ca)?\b/i;
+const MULTILINGUAL_DIRECTIVE_RE =
+  /\b(?:bilingual|multilingual|dual[-\s]?language|mixed[-\s]?language|mix languages|both languages)\b|中英|双语/i;
+
+type HtmlExtractionFailureCategory =
+  | 'NO_HTML_DOCUMENT'
+  | 'INCOMPLETE_HTML_DOCUMENT'
+  | 'HTML_FENCE_EXTRACTION_FAILED'
+  | 'INVALID_JSON_HTML_WRAPPER';
+
+interface HtmlExtractionDiagnostics {
+  responseChars: number;
+  hasDoctype: boolean;
+  hasHtmlOpen: boolean;
+  hasHtmlClose: boolean;
+  hasMarkdownFence: boolean;
+  hasJsonWrapper: boolean;
+  failureCategory?: HtmlExtractionFailureCategory;
+}
+
+interface HtmlExtractionResult {
+  html: string | null;
+  diagnostics: HtmlExtractionDiagnostics;
+}
+
+export interface SimulationLanguageValidationResult {
+  requestedLanguage: string;
+  enforceEnglishCjkGuard: boolean;
+  hasUnexpectedCjk: boolean;
+  suspiciousSpans: string[];
+  suspiciousSpanCount: number;
+}
+
+type WidgetConfigExtractionResult =
+  | { status: 'missing'; config?: undefined }
+  | { status: 'invalid'; reason: string; config?: undefined }
+  | { status: 'mismatch'; actualType: string; config?: undefined }
+  | { status: 'ok'; config: WidgetConfig };
 
 // ── Options interfaces for scene generation functions ──
 
@@ -259,7 +305,10 @@ export async function generateSceneContent(
     }
 
     // Route to widget generation (handles all 5 types)
-    return generateWidgetContent(outline, aiCall, languageDirective, { allowProceduralSkill });
+    return generateWidgetContent(outline, aiCall, languageDirective, {
+      allowProceduralSkill,
+      targetLanguage,
+    });
   }
 
   switch (outline.type) {
@@ -1039,41 +1088,139 @@ async function generatePBLSceneContent(
   }
 }
 
-/**
- * Extract HTML document from AI response.
- * Tries to find <!DOCTYPE html>...</html> first, then falls back to code block extraction.
- */
-function extractHtml(response: string): string | null {
-  // Strategy 1: Find complete HTML document
-  const doctypeStart = response.indexOf('<!DOCTYPE html>');
-  const htmlTagStart = response.indexOf('<html');
-  const start = doctypeStart !== -1 ? doctypeStart : htmlTagStart;
+function baseHtmlDiagnostics(response: string): HtmlExtractionDiagnostics {
+  return {
+    responseChars: response.length,
+    hasDoctype: HTML_DOCTYPE_RE.test(response),
+    hasHtmlOpen: HTML_OPEN_TAG_RE.test(response),
+    hasHtmlClose: /<\/html\s*>/i.test(response),
+    hasMarkdownFence: /```/i.test(response),
+    hasJsonWrapper: false,
+  };
+}
 
-  if (start !== -1) {
-    const htmlEnd = response.lastIndexOf('</html>');
-    if (htmlEnd !== -1) {
-      return response.substring(start, htmlEnd + 7);
-    }
+function withHtmlFailure(
+  diagnostics: HtmlExtractionDiagnostics,
+  failureCategory: HtmlExtractionFailureCategory,
+): HtmlExtractionResult {
+  return {
+    html: null,
+    diagnostics: {
+      ...diagnostics,
+      failureCategory,
+    },
+  };
+}
+
+function findCompleteHtmlDocument(input: string): HtmlExtractionResult {
+  const diagnostics = baseHtmlDiagnostics(input);
+  const doctypeMatch = HTML_DOCTYPE_RE.exec(input);
+  const htmlOpenMatch = HTML_OPEN_TAG_RE.exec(input);
+  const starts = [doctypeMatch?.index, htmlOpenMatch?.index].filter(
+    (index): index is number => typeof index === 'number',
+  );
+  const start = starts.length ? Math.min(...starts) : -1;
+
+  if (start === -1) {
+    return withHtmlFailure(diagnostics, 'NO_HTML_DOCUMENT');
   }
 
-  // Strategy 2: Extract from code block
-  const codeBlockMatch = response.match(/```(?:html)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    const content = codeBlockMatch[1].trim();
-    if (content.includes('<html') || content.includes('<!DOCTYPE')) {
-      return content;
-    }
+  HTML_CLOSE_TAG_RE.lastIndex = 0;
+  let lastClose: RegExpExecArray | null = null;
+  let closeMatch: RegExpExecArray | null;
+  while ((closeMatch = HTML_CLOSE_TAG_RE.exec(input)) !== null) {
+    lastClose = closeMatch;
   }
 
-  // Strategy 3: If response itself looks like HTML
+  if (!lastClose || lastClose.index < start) {
+    return withHtmlFailure(diagnostics, 'INCOMPLETE_HTML_DOCUMENT');
+  }
+
+  return {
+    html: input.substring(start, lastClose.index + lastClose[0].length).trim(),
+    diagnostics,
+  };
+}
+
+function extractHtmlFromJsonWrapper(
+  response: string,
+  diagnostics: HtmlExtractionDiagnostics,
+): HtmlExtractionResult | null {
   const trimmed = response.trim();
-  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
-    return trimmed;
+  if (!trimmed.startsWith('{')) return null;
+
+  const jsonDiagnostics = { ...diagnostics, hasJsonWrapper: true };
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+    }
+
+    const htmlValue = (parsed as Record<string, unknown>).html;
+    if (typeof htmlValue !== 'string' || htmlValue.trim() === '') {
+      return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+    }
+
+    const extracted = findCompleteHtmlDocument(htmlValue);
+    return {
+      html: extracted.html,
+      diagnostics: {
+        ...extracted.diagnostics,
+        hasJsonWrapper: true,
+        failureCategory: extracted.diagnostics.failureCategory,
+      },
+    };
+  } catch {
+    return withHtmlFailure(jsonDiagnostics, 'INVALID_JSON_HTML_WRAPPER');
+  }
+}
+
+function extractHtmlFromMarkdownFence(response: string): HtmlExtractionResult | null {
+  const diagnostics = baseHtmlDiagnostics(response);
+  if (!diagnostics.hasMarkdownFence) return null;
+
+  MARKDOWN_FENCE_RE.lastIndex = 0;
+  let sawFence = false;
+  let lastFailure: HtmlExtractionResult | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = MARKDOWN_FENCE_RE.exec(response)) !== null) {
+    sawFence = true;
+    const extracted = findCompleteHtmlDocument(match[1].trim());
+    if (extracted.html) return extracted;
+    lastFailure = extracted;
   }
 
-  log.error('Could not extract HTML from response');
-  log.error('Response preview:', response.substring(0, 200));
-  return null;
+  return sawFence
+    ? (lastFailure ?? withHtmlFailure(diagnostics, 'HTML_FENCE_EXTRACTION_FAILED'))
+    : null;
+}
+
+/**
+ * Extract a complete HTML document from an AI response while accepting common
+ * LLM wrappers. Deliberately rejects fragments and truncated documents.
+ */
+function extractHtml(response: string): HtmlExtractionResult {
+  const diagnostics = baseHtmlDiagnostics(response);
+  const jsonResult = extractHtmlFromJsonWrapper(response, diagnostics);
+  if (jsonResult) return jsonResult;
+
+  const fencedResult = extractHtmlFromMarkdownFence(response);
+  if (fencedResult?.html) return fencedResult;
+
+  const documentResult = findCompleteHtmlDocument(response.trim());
+  if (documentResult.html) return documentResult;
+
+  if (fencedResult) {
+    return withHtmlFailure(
+      {
+        ...diagnostics,
+        failureCategory: fencedResult.diagnostics.failureCategory,
+      },
+      fencedResult.diagnostics.failureCategory ?? 'HTML_FENCE_EXTRACTION_FAILED',
+    );
+  }
+
+  return documentResult;
 }
 
 // ==================== Ultra Mode Widget Generation ====================
@@ -1085,7 +1232,7 @@ export async function generateWidgetContent(
   outline: SceneOutline,
   aiCall: AICallFn,
   languageDirective?: string,
-  options: { allowProceduralSkill?: boolean } = {},
+  options: { allowProceduralSkill?: boolean; targetLanguage?: string } = {},
 ): Promise<GeneratedInteractiveContent | null> {
   const widgetType = outline.widgetType;
   const widgetOutline = outline.widgetOutline;
@@ -1108,6 +1255,10 @@ export async function generateWidgetContent(
         keyPoints: (outline.keyPoints || []).join('\n'),
         variables: widgetOutline.keyVariables?.join(', ') || '',
         designIdea: '',
+        requestedLanguage: describeRequestedSimulationLanguage(
+          languageDirective,
+          options.targetLanguage,
+        ),
         languageDirective: languageDirective || '',
       };
       break;
@@ -1201,36 +1352,271 @@ export async function generateWidgetContent(
 
   log.info(`Generating ${widgetType} widget for: ${outline.title}`);
   const response = await aiCall(prompts.system, prompts.user);
-  const html = extractHtml(response);
+  const htmlResult = extractHtml(response);
+  const html = htmlResult.html;
 
   if (!html) {
-    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      ...htmlResult.diagnostics,
+      responsePreview: response.slice(0, 120),
+    });
     return null;
   }
 
-  // Extract widget config from HTML if present
-  const widgetConfig = extractWidgetConfig(html);
+  let acceptedHtml = html;
+  let widgetConfigResult = validateWidgetConfigForGeneratedHtml(html, widgetType, outline);
+  if (!widgetConfigResult) return null;
+
+  if (widgetType === 'simulation') {
+    const languageSafeHtml = await enforceSimulationLanguageContract({
+      html,
+      outline,
+      widgetType,
+      aiCall,
+      languageDirective,
+      targetLanguage: options.targetLanguage,
+    });
+    if (!languageSafeHtml) return null;
+
+    if (languageSafeHtml !== html) {
+      acceptedHtml = languageSafeHtml;
+      widgetConfigResult = validateWidgetConfigForGeneratedHtml(acceptedHtml, widgetType, outline);
+      if (!widgetConfigResult) return null;
+    }
+  }
 
   return {
-    html: postProcessInteractiveHtml(html),
+    html: postProcessInteractiveHtml(acceptedHtml),
     widgetType,
-    widgetConfig,
+    widgetConfig: widgetConfigResult.config,
   };
+}
+
+function validateWidgetConfigForGeneratedHtml(
+  html: string,
+  widgetType: WidgetType,
+  outline: SceneOutline,
+): WidgetConfigExtractionResult | null {
+  const widgetConfigResult = extractWidgetConfig(html, widgetType);
+  if (widgetConfigResult.status === 'mismatch') {
+    log.error(`Widget config type mismatch for ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      actualType: widgetConfigResult.actualType,
+      failureCategory: 'WIDGET_TYPE_MISMATCH',
+    });
+    return null;
+  }
+  if (widgetConfigResult.status === 'invalid') {
+    log.warn(`Invalid widget config in ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      reason: widgetConfigResult.reason,
+      failureCategory: 'WIDGET_CONFIG_INVALID',
+    });
+  }
+  if (widgetConfigResult.status === 'missing') {
+    log.warn(`Widget config missing in ${widgetType} response: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      failureCategory: 'WIDGET_CONFIG_MISSING',
+    });
+  }
+
+  return widgetConfigResult;
+}
+
+function describeRequestedSimulationLanguage(
+  languageDirective?: string,
+  targetLanguage?: string,
+): string {
+  const locale = targetLanguage?.trim();
+  if (locale && ENGLISH_LOCALE_RE.test(locale)) return `English (${locale})`;
+  if (locale) return locale;
+  if (isEnglishSimulationRequested(languageDirective, targetLanguage)) return 'English';
+  return languageDirective?.trim() || 'the requested teaching language';
+}
+
+function isEnglishSimulationRequested(
+  languageDirective?: string,
+  targetLanguage?: string,
+): boolean {
+  const locale = targetLanguage?.trim();
+  if (locale && ENGLISH_LOCALE_RE.test(locale)) return true;
+
+  const directive = languageDirective?.trim();
+  if (!directive) return false;
+  return ENGLISH_DIRECTIVE_RE.test(directive) && !MULTILINGUAL_DIRECTIVE_RE.test(directive);
+}
+
+function collectCjkSpans(value: string): string[] {
+  const spans = new Set<string>();
+  for (const match of value.matchAll(CJK_TEXT_RE)) {
+    spans.add(match[0]);
+    if (spans.size >= 20) break;
+  }
+  return [...spans];
+}
+
+export function validateSimulationOutputLanguage(
+  html: string,
+  options: { languageDirective?: string; targetLanguage?: string } = {},
+): SimulationLanguageValidationResult {
+  const requestedLanguage = describeRequestedSimulationLanguage(
+    options.languageDirective,
+    options.targetLanguage,
+  );
+  const enforceEnglishCjkGuard = isEnglishSimulationRequested(
+    options.languageDirective,
+    options.targetLanguage,
+  );
+  const suspiciousSpans = enforceEnglishCjkGuard ? collectCjkSpans(html) : [];
+
+  return {
+    requestedLanguage,
+    enforceEnglishCjkGuard,
+    hasUnexpectedCjk: suspiciousSpans.length > 0,
+    suspiciousSpans,
+    suspiciousSpanCount: suspiciousSpans.length,
+  };
+}
+
+async function enforceSimulationLanguageContract({
+  html,
+  outline,
+  widgetType,
+  aiCall,
+  languageDirective,
+  targetLanguage,
+}: {
+  html: string;
+  outline: SceneOutline;
+  widgetType: WidgetType;
+  aiCall: AICallFn;
+  languageDirective?: string;
+  targetLanguage?: string;
+}): Promise<string | null> {
+  const initialValidation = validateSimulationOutputLanguage(html, {
+    languageDirective,
+    targetLanguage,
+  });
+  if (!initialValidation.enforceEnglishCjkGuard || !initialValidation.hasUnexpectedCjk) {
+    log.info(`Simulation language validation passed: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: initialValidation.requestedLanguage,
+      cjkDetected: false,
+      suspiciousSpanCount: 0,
+      repairAttempted: false,
+    });
+    return html;
+  }
+
+  log.warn(`Simulation language drift detected: ${outline.title}`, {
+    sceneType: outline.type,
+    widgetType,
+    requestedLanguage: initialValidation.requestedLanguage,
+    cjkDetected: true,
+    suspiciousSpanCount: initialValidation.suspiciousSpanCount,
+    repairAttempted: true,
+  });
+
+  const repairResponse = await aiCall(
+    [
+      'You repair generated simulation HTML without changing behavior.',
+      'Return exactly one complete HTML document and nothing else.',
+      'Preserve HTML structure, CSS, JavaScript logic, IDs, element relationships, widget config, and educational meaning.',
+      'Translate only user-facing natural-language UI strings to the requested language.',
+      'Do not translate JavaScript keywords, variable names, HTML tags, CSS properties, mathematical notation, symbols, or technical syntax.',
+    ].join('\n'),
+    [
+      `Requested output language: ${initialValidation.requestedLanguage}`,
+      languageDirective ? `Language directive: ${languageDirective}` : '',
+      '',
+      'The simulation below is structurally valid but contains unexpected CJK/Japanese/Korean natural-language UI text.',
+      'Repair it by translating only user-facing labels, buttons, controls, status text, tooltips, alerts, placeholders, legends, aria-labels, title attributes, and dynamically assigned JavaScript UI strings into the requested language.',
+      'Do not add explanations or markdown fences.',
+      '',
+      html,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+
+  const repairedHtmlResult = extractHtml(repairResponse);
+  const repairedHtml = repairedHtmlResult.html;
+  if (!repairedHtml) {
+    log.error(`Simulation language repair produced invalid HTML: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: initialValidation.requestedLanguage,
+      repairSucceeded: false,
+      ...repairedHtmlResult.diagnostics,
+      responsePreview: repairResponse.slice(0, 120),
+    });
+    return null;
+  }
+
+  const repairedValidation = validateSimulationOutputLanguage(repairedHtml, {
+    languageDirective,
+    targetLanguage,
+  });
+  if (repairedValidation.hasUnexpectedCjk) {
+    log.error(`Simulation language repair still contains unexpected CJK: ${outline.title}`, {
+      sceneType: outline.type,
+      widgetType,
+      requestedLanguage: repairedValidation.requestedLanguage,
+      cjkDetected: true,
+      suspiciousSpanCount: repairedValidation.suspiciousSpanCount,
+      repairSucceeded: false,
+    });
+    return null;
+  }
+
+  log.info(`Simulation language repair passed: ${outline.title}`, {
+    sceneType: outline.type,
+    widgetType,
+    requestedLanguage: repairedValidation.requestedLanguage,
+    cjkDetected: true,
+    suspiciousSpanCount: initialValidation.suspiciousSpanCount,
+    repairSucceeded: true,
+  });
+
+  return repairedHtml;
 }
 
 /**
  * Extract widget config from embedded JSON in HTML
  */
-function extractWidgetConfig(html: string): WidgetConfig | undefined {
-  const match = html.match(
-    /<script type="application\/json" id="widget-config">([\s\S]*?)<\/script>/,
-  );
-  if (!match) return undefined;
+function extractWidgetConfig(html: string, widgetType: WidgetType): WidgetConfigExtractionResult {
+  const match = html.match(WIDGET_CONFIG_RE);
+  if (!match) return { status: 'missing' };
 
   try {
-    return JSON.parse(match[1]);
+    const parsed: unknown = JSON.parse(match[1]);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { status: 'invalid', reason: 'config is not an object' };
+    }
+
+    const config = parsed as Record<string, unknown>;
+    if (typeof config.type === 'string' && config.type !== widgetType) {
+      return { status: 'mismatch', actualType: config.type };
+    }
+    if (config.type !== undefined && typeof config.type !== 'string') {
+      return { status: 'invalid', reason: 'config type must be a string when present' };
+    }
+
+    return {
+      status: 'ok',
+      config: {
+        ...config,
+        type: widgetType,
+      } as WidgetConfig,
+    };
   } catch {
-    return undefined;
+    return { status: 'invalid', reason: 'config JSON could not be parsed' };
   }
 }
 

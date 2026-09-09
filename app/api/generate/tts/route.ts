@@ -22,12 +22,16 @@ import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
+import { synthesizeFacultyVoice } from '@/lib/voice-cloning/synthesis';
+import { requireSessionUser } from '@/lib/auth/server';
 
 const log = createLogger('TTS API');
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   let ttsProviderId: string | undefined;
   let ttsVoice: string | undefined;
   let audioId: string | undefined;
@@ -43,10 +47,21 @@ export async function POST(req: NextRequest) {
       ttsApiKey?: string;
       ttsBaseUrl?: string;
       ttsProviderOptions?: Record<string, unknown>;
+      teacherVoiceProfileId?: string;
+      ttsLanguageCode?: string;
+      language?: string;
     };
     ttsProviderId = body.ttsProviderId;
     ttsVoice = body.ttsVoice;
     audioId = body.audioId;
+    const teacherVoiceProfileId =
+      typeof body.teacherVoiceProfileId === 'string' ? body.teacherVoiceProfileId.trim() : '';
+    const ttsLanguageCode =
+      typeof body.ttsLanguageCode === 'string'
+        ? body.ttsLanguageCode
+        : typeof body.language === 'string'
+          ? body.language
+          : undefined;
 
     // Validate required fields
     if (!text || !audioId || !ttsProviderId || !ttsVoice) {
@@ -55,6 +70,17 @@ export async function POST(req: NextRequest) {
         400,
         'Missing required fields: text, audioId, ttsProviderId, ttsVoice',
       );
+    }
+
+    if (teacherVoiceProfileId) {
+      const { audio, format } = await synthesizeFacultyVoice({
+        profileId: teacherVoiceProfileId,
+        ownerId: user.id,
+        text,
+        language: ttsLanguageCode,
+      });
+      const base64 = Buffer.from(audio).toString('base64');
+      return apiSuccess({ audioId, base64, format });
     }
 
     // Reject browser-native TTS — must be handled client-side

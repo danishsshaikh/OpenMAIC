@@ -66,10 +66,13 @@ import { useImportClassroom } from '@/lib/import/use-import-classroom';
 import {
   isInteractiveScenesEnabled,
   isPptxImportEnabled,
+  isVoiceCloningEnabled,
   shouldShowVocationalTestUi,
 } from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { InteractiveModeButton } from '@/components/generation/interactive-mode-button';
+import { TeachingVoiceCard } from '@/components/voice-cloning/teaching-voice-card';
+import { AccountMenu } from '@/components/auth/account-menu';
 
 const log = createLogger('Home');
 
@@ -88,6 +91,7 @@ interface FormState {
   webSearch: boolean;
   interactiveMode: boolean;
   vocationalTestMode: boolean;
+  teacherVoiceProfileId?: string;
 }
 
 const initialFormState: FormState = {
@@ -96,6 +100,7 @@ const initialFormState: FormState = {
   webSearch: false,
   interactiveMode: false,
   vocationalTestMode: false,
+  teacherVoiceProfileId: undefined,
 };
 
 function HomePage() {
@@ -104,6 +109,7 @@ function HomePage() {
   const router = useRouter();
   const showVocationalTestUi = shouldShowVocationalTestUi();
   const interactiveScenesEnabled = isInteractiveScenesEnabled();
+  const voiceCloningEnabled = isVoiceCloningEnabled();
   const [form, setForm] = useState<FormState>(initialFormState);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
@@ -406,6 +412,7 @@ function HomePage() {
         pdfProviderConfig,
         sceneOutlines: null,
         currentStep: 'generating' as const,
+        teacherVoiceProfileId: form.teacherVoiceProfileId,
       };
       sessionStorage.setItem('generationSession', JSON.stringify(sessionState));
 
@@ -524,6 +531,10 @@ function HomePage() {
             </div>
           )}
         </div>
+
+        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+
+        <AccountMenu />
 
         <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
 
@@ -681,6 +692,15 @@ function HomePage() {
             </div>
           </div>
         </motion.div>
+
+        {voiceCloningEnabled && (
+          <TeachingVoiceCard
+            selectedProfileId={form.teacherVoiceProfileId}
+            onSelectedProfileIdChange={(profileId) =>
+              updateForm('teacherVoiceProfileId', profileId)
+            }
+          />
+        )}
 
         {showVocationalTestUi && (
           <motion.div

@@ -11,6 +11,7 @@ import {
   withPlainJsonDocumentWrites,
 } from './plain-json-store';
 import { validateAppScene, validateAppStage } from './validators';
+import { getBrowserStorageNamespace } from '@/lib/auth/client-storage';
 
 export {
   configureDocumentStorage,
@@ -24,6 +25,11 @@ export type {
 } from './config';
 
 const DOCUMENT_DB_NAME = 'maic-documents';
+
+function documentDbName(): string {
+  if (typeof window === 'undefined') return DOCUMENT_DB_NAME;
+  return `${DOCUMENT_DB_NAME}-${getBrowserStorageNamespace()}`;
+}
 
 export interface DocumentStoreDeps {
   /** A complete store override takes precedence over browser construction. */
@@ -52,7 +58,7 @@ function createBrowserStore(
   return withPlainJsonDocumentWrites(
     new BrowserDocumentStore<AppScene, AppStage>({
       indexedDB: deps.indexedDB,
-      dbName: deps.dbName ?? DOCUMENT_DB_NAME,
+      dbName: deps.dbName ?? documentDbName(),
       validateScene: validateAppScene,
       validateStage: validateAppStage,
     }),

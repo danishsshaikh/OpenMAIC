@@ -578,6 +578,7 @@ function GenerationPreviewContent() {
         updatedAt: Date.now(),
         interactiveMode: !!currentSession.requirements.interactiveMode,
         taskEngineMode: currentSession.taskEngineMode === true,
+        teacherVoiceProfileId: currentSession.teacherVoiceProfileId,
       };
 
       // ── Generate outlines first (infers languageDirective) ──
@@ -1030,12 +1031,13 @@ function GenerationPreviewContent() {
 
       // Generate TTS for first scene (part of actions step — blocking)
       if (
-        settings.ttsEnabled &&
-        settings.ttsProviderId !== 'browser-native-tts' &&
-        isTTSProviderEnabled(
-          settings.ttsProviderId,
-          settings.ttsProvidersConfig?.[settings.ttsProviderId],
-        )
+        stage.teacherVoiceProfileId ||
+        (settings.ttsEnabled &&
+          settings.ttsProviderId !== 'browser-native-tts' &&
+          isTTSProviderEnabled(
+            settings.ttsProviderId,
+            settings.ttsProvidersConfig?.[settings.ttsProviderId],
+          ))
       ) {
         const speechActions = (firstScene.actions || []).filter(
           (a: {

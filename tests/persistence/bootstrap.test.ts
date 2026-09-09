@@ -33,7 +33,6 @@ describe('persistence client bootstrap', () => {
 
   it('configures both HTTP stores and passes app validators through', async () => {
     vi.stubEnv('NEXT_PUBLIC_PERSISTENCE', '1');
-    vi.stubEnv('NEXT_PUBLIC_PERSISTENCE_TOKEN', 'test-dev-token');
     vi.stubGlobal('window', {});
     vi.stubGlobal('localStorage', memoryStorage());
 
@@ -64,8 +63,9 @@ describe('persistence client bootstrap', () => {
         headersHook: (context: { method: string; path: string }) => Promise<HeadersInit>;
       }
     ).headersHook({ method: 'GET', path: '/runtime/sessions/example' });
-    expect(new Headers(runtimeHeaders).get('authorization')).toBe('Bearer test-dev-token');
-    expect(new Headers(runtimeHeaders).get('x-learner-key')).toMatch(/^anon:/);
+    expect(new Headers(runtimeHeaders).get('authorization')).toBeNull();
+    expect(new Headers(runtimeHeaders).get('x-learner-key')).toBeNull();
+    expect(new Headers(runtimeHeaders).get('x-openmaic-storage-namespace')).toBe('anonymous');
 
     runtime.resetRuntimeStorageForTests();
     documents.resetDocumentStorageForTests();

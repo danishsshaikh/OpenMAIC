@@ -6,12 +6,15 @@ import {
 } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { requireSessionUser } from '@/lib/auth/server';
 
 const log = createLogger('ClassroomJob API');
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   let resolvedJobId: string | undefined;
   try {
     const { jobId } = await context.params;
@@ -23,6 +26,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
 
     const job = await readClassroomGenerationJob(jobId);
     if (!job) {
+      return apiError('INVALID_REQUEST', 404, 'Classroom generation job not found');
+    }
+    if (job.ownerUserId !== user.id) {
       return apiError('INVALID_REQUEST', 404, 'Classroom generation job not found');
     }
 

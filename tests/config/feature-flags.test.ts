@@ -16,6 +16,7 @@ const FLAG_KEYS = [
   'NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS',
   'NEXT_PUBLIC_FEATURE_COMPANION_SELECTOR',
   'NEXT_PUBLIC_FEATURE_CLASSROOM_CHAT',
+  'NEXT_PUBLIC_FEATURE_VOICE_CLONING',
   'NEXT_PUBLIC_FEATURE_INTERACTIVE_SCENES',
   'NEXT_PUBLIC_FEATURE_DETERMINISTIC_INTERACTIVES',
   'NEXT_PUBLIC_FEATURE_DISCUSSION_SCENES',
@@ -198,6 +199,7 @@ describe('classroom feature flags', () => {
       companionSelector: false,
       generatedClassroomAgents: false,
       classroomChat: false,
+      voiceCloning: false,
       interactiveScenes: false,
       deterministicInteractives: true,
       discussionScenes: false,
@@ -213,6 +215,15 @@ describe('classroom feature flags', () => {
     process.env.NEXT_PUBLIC_FEATURE_GENERATED_CLASSROOM_AGENTS = 'true';
     flags = await loadFlags();
     expect(flags.isGeneratedClassroomAgentsEnabled()).toBe(true);
+  });
+
+  it('keeps faculty voice cloning opt-in', async () => {
+    let flags = await loadFlags();
+    expect(flags.isVoiceCloningEnabled()).toBe(false);
+
+    process.env.NEXT_PUBLIC_FEATURE_VOICE_CLONING = 'true';
+    flags = await loadFlags();
+    expect(flags.isVoiceCloningEnabled()).toBe(true);
   });
 
   it('enables runtime AI and flow scene flags only behind their precise gates', async () => {

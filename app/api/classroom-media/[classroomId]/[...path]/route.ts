@@ -1,8 +1,9 @@
 import { promises as fs, createReadStream } from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
-import { CLASSROOMS_DIR, isValidClassroomId } from '@/lib/server/classroom-storage';
+import { CLASSROOMS_DIR, isValidClassroomId, readClassroom } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { requireSessionUser } from '@/lib/auth/server';
 
 const log = createLogger('ClassroomMedia');
 
@@ -21,14 +22,20 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ classroomId: string; path: string[] }> },
 ) {
+  const user = await requireSessionUser(req);
+  if (user instanceof Response) return user;
   const { classroomId, path: pathSegments } = await params;
 
   // Validate classroomId
   if (!isValidClassroomId(classroomId)) {
     return NextResponse.json({ error: 'Invalid classroom ID' }, { status: 400 });
+  }
+  const classroom = await readClassroom(classroomId);
+  if (!classroom || classroom.ownerUserId !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   // Validate path segments — no traversal

@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+torch
+torchaudio
+chatterbox-tts==0.1.7
+setuptools<81

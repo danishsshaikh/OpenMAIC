@@ -2,33 +2,44 @@ import type { IncomingMessage } from 'node:http';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { authenticatePersistenceRequest } from '@/lib/persistence/server-auth';
-
 function request(headers: IncomingMessage['headers']): IncomingMessage {
   return { headers } as IncomingMessage;
 }
 
-describe('embedded persistence development authentication', () => {
+describe('embedded persistence session authentication', () => {
   beforeEach(() => {
-    vi.unstubAllEnvs();
-    vi.stubEnv('PERSISTENCE_DEV_TOKEN', 'shared-secret');
+    vi.resetModules();
   });
 
-  it('accepts the configured bearer token and learner partition', async () => {
+  it('derives the storage principal from the opaque session cookie', async () => {
+    vi.doMock('@/lib/auth/server', () => ({
+      AUTH_COOKIE_NAME: 'openmaic_session',
+      getUserBySessionToken: vi.fn(async (token) =>
+        token === 'session-token' ? { id: 'usr_faculty_a' } : null,
+      ),
+    }));
+    const { authenticatePersistenceRequest } = await import('@/lib/persistence/server-auth');
+
     await expect(
       authenticatePersistenceRequest(
         request({
-          authorization: 'Bearer shared-secret',
-          'x-learner-key': 'anon:learner-1',
+          cookie: 'openmaic_session=session-token',
+          'x-learner-key': 'attacker-controlled',
         }),
       ),
-    ).resolves.toEqual({ learnerKey: 'anon:learner-1' });
+    ).resolves.toEqual({ learnerKey: 'user:usr_faculty_a' });
   });
 
-  it('rejects missing and incorrect bearer tokens', async () => {
+  it('rejects missing or invalid session cookies', async () => {
+    vi.doMock('@/lib/auth/server', () => ({
+      AUTH_COOKIE_NAME: 'openmaic_session',
+      getUserBySessionToken: vi.fn(async () => null),
+    }));
+    const { authenticatePersistenceRequest } = await import('@/lib/persistence/server-auth');
+
     await expect(authenticatePersistenceRequest(request({}))).resolves.toBeUndefined();
     await expect(
-      authenticatePersistenceRequest(request({ authorization: 'Bearer shared-secreu' })),
+      authenticatePersistenceRequest(request({ cookie: 'openmaic_session=bad-token' })),
     ).resolves.toBeUndefined();
   });
 });
