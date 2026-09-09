@@ -110,7 +110,7 @@ export function buildDirectorPrompt(
     'Use `cue_user` when the classroom should wait for the user to continue, ask something new, or answer a visible follow-up.',
     'Use `close_session` when the latest user message or immediate history clearly indicates goodbye, no more, thanks-and-done, conclusion, wrap-up, an explicit end, or a request to return to the lesson.',
     '`close_session` closes only the current Q&A/discussion side session. It does NOT mean the whole class is over unless the user explicitly says the lesson/class is over.',
-    'When ending a Q&A/discussion, keep the visible agent response brief and avoid saying "class dismissed", "下课", "再见", or equivalent whole-class farewell language unless the user explicitly asks to end the entire class.',
+    'When ending a Q&A/discussion, keep the visible agent response brief and avoid saying "class dismissed" or equivalent whole-class farewell language unless the user explicitly asks to end the entire class.',
     'Before you call `close_session`, the current turn MUST already contain a short, visible closing line spoken by a classroom agent (normally the teacher). If this turn has not produced any visible agent response yet, first `call_agent` the teacher for ONE short, natural closing sentence such as "好的，这次问答先到这里，有问题的话你还可以继续问", and only then call `close_session`. Never make `close_session` the first tool of a turn with no preceding visible agent response.',
     'Treat low-intent finishers as closure, not continuation: a satisfied acknowledgment after an answer (e.g. 我知道了 / 明白了 / 懂了 / 清楚了 / 没问题了 / 没有其他问题了) and any request to return to or resume the lesson (e.g. 可以继续下课 / 继续课程 / 回到课程 / 继续上课). For these call `close_session`, not `cue_user`.',
     'Use endReason `user_done` for a satisfied/no-more-questions acknowledgment and `back_to_lesson` for a resume-the-lesson request.',
@@ -260,7 +260,7 @@ function buildRoleGuideline(role: string): string {
 function buildLengthGuidelines(role: string): string {
   if (role === 'teacher') {
     return [
-      '- Keep your TOTAL visible speech around 70 Chinese characters or 1-2 short sentences.',
+      '- Keep your TOTAL visible speech around 70 visible characters or 1-2 short sentences.',
       '- This is a hard cap, not a suggestion.',
       '- Give the key insight in one crisp sentence, then optionally ask one short question.',
       '- Avoid exhaustive explanations unless the user explicitly asks for depth.',
@@ -268,13 +268,13 @@ function buildLengthGuidelines(role: string): string {
   }
   if (role === 'assistant') {
     return [
-      '- Keep your TOTAL visible speech around 60 Chinese characters or 1-2 short sentences.',
+      '- Keep your TOTAL visible speech around 60 visible characters or 1-2 short sentences.',
       '- This is a hard cap, not a suggestion.',
       '- One key point per response. Do not repeat the teacher fully.',
     ].join('\n');
   }
   return [
-    '- Keep your TOTAL visible speech around 40 Chinese characters. Prefer 1 short sentence.',
+    '- Keep your TOTAL visible speech around 40 visible characters. Prefer 1 short sentence.',
     '- This is a hard cap, not a suggestion.',
     '- Quick natural reaction only: one misconception, one follow-up question, or one concrete example.',
     '- If your response is as long as the teacher response, it is wrong.',
@@ -451,12 +451,12 @@ export function buildChildTurnPrompt(
 
 function getChildHardCap(role: string): string {
   if (role === 'teacher') {
-    return 'Your visible speech MUST be no more than 70 Chinese characters or 1-2 short sentences.';
+    return 'Your visible speech MUST be no more than 70 visible characters or 1-2 short sentences.';
   }
   if (role === 'assistant') {
-    return 'Your visible speech MUST be no more than 60 Chinese characters or 1-2 short sentences.';
+    return 'Your visible speech MUST be no more than 60 visible characters or 1-2 short sentences.';
   }
-  return 'Your visible speech MUST be no more than 40 Chinese characters or 1 short sentence.';
+  return 'Your visible speech MUST be no more than 40 visible characters or 1 short sentence.';
 }
 
 export function buildUserPrompt(body: StatelessChatRequest): string {

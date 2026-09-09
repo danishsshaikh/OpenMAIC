@@ -16,6 +16,7 @@ import { CHROME_DURATION_MS, CHROME_EASE, CHROME_EASE_CSS } from '@/lib/edit/tra
 import type { Scene } from '@/lib/types/stage';
 import { ThumbItem } from './ThumbItem';
 import { InsertionZone } from './InsertionZone';
+import { BrandWordmark } from '@/components/branding/brand-wordmark';
 
 const RAIL_COLLAPSED_PX = 56;
 const RAIL_MIN_PX = 180;
@@ -367,7 +368,7 @@ export function SlideNavRail() {
           <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-violet-400 dark:group-hover:bg-violet-500 transition-colors" />
         </div>
       )}
-      {/* Header band — mirrors playback `SceneSidebar`: OpenMAIC logo
+      {/* Header band — mirrors playback `SceneSidebar`: product logo
           on the left (click → home), action cluster on the right.
           Height (h-10 + mt-3 mb-1 = ~56px) matches playback so the
           chrome top edge stays at the same screen pixel across the
@@ -385,7 +386,7 @@ export function SlideNavRail() {
             title={t('generation.backToHome')}
             className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
           >
-            <img src="/logo-horizontal.png" alt="OpenMAIC" className="h-6" />
+            <BrandWordmark markClassName="h-6 w-6" textClassName="max-w-[116px]" />
           </button>
         )}
         <div className={cn('flex items-center gap-1', collapsed && 'flex-col')}>

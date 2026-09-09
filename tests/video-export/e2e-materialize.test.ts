@@ -16,6 +16,7 @@ import {
   getVideoExportCoverLabels,
   resolveVideoExportCta,
 } from '@/lib/video-export-app/cover-config';
+import { brandConfig } from '@/lib/branding/brand-config';
 import { NO_ASSETS, NO_PROBE, slide, speech } from './helpers';
 
 /**
@@ -260,7 +261,7 @@ const COMPLETE_PROJECT_FILES = [
   'README.md',
   'assets/vendor/gsap.min.js',
   'index.html',
-  'openmaic-video-manifest.json',
+  brandConfig.export.manifestFileName,
   'subtitles.srt',
   'subtitles.vtt',
 ].sort();
@@ -381,7 +382,7 @@ describe.skipIf(!OUT_DIR)('materialize a Hyperframes project for real-CLI E2E', 
     const mixedLabels = getVideoExportCoverLabels('en-US');
     const arabicLabels = getVideoExportCoverLabels('ar-SA');
 
-    expect(DEFAULT_SAMPLE_CTA).toEqual({ destination: 'open.maic.chat' });
+    expect(DEFAULT_SAMPLE_CTA).toEqual({ destination: brandConfig.export.ctaDestination });
     for (const expected of [
       mixedLabels.quizCtaPrompt,
       mixedLabels.pblCtaPrompt,

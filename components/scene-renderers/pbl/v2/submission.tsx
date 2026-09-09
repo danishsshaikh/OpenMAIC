@@ -79,6 +79,7 @@ import {
 } from '@/lib/pbl/v2/operations/kernel/task-completion';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import i18n from '@/lib/i18n/config';
+import { resolveDeploymentLocale } from '@/lib/i18n/deployment';
 import {
   assertNotStreamError,
   isToleratedReactionStreamError,
@@ -175,7 +176,7 @@ function newClientMessageId(): string {
 }
 
 function submissionReceiptText(submission: PBLSubmission, language?: string): string {
-  const lng = language || 'zh-CN';
+  const lng = resolveDeploymentLocale(language);
   const label =
     submission.kind === 'file' && submission.filename
       ? i18n.t('pbl.v2.submission.receiptFile', { lng, filename: submission.filename })
@@ -458,7 +459,7 @@ export function PBLV2SubmissionPanel({
         if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
         try {
           const stored = localStorage.getItem('locale');
-          if (stored) headers['x-user-locale'] = stored;
+          headers['x-user-locale'] = resolveDeploymentLocale(stored);
         } catch {
           /* noop */
         }

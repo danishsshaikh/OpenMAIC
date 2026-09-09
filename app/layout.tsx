@@ -10,6 +10,7 @@ import { I18nProvider } from '@/lib/hooks/use-i18n';
 import { Toaster } from '@/components/ui/sonner';
 import { ServerProvidersInit } from '@/components/server-providers-init';
 import { StorageHealthNotice } from '@/components/storage-health-notice';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 // The UI font is loaded from @fontsource's stylesheet rather than next/font,
 // because only the stylesheet carries the per-subset `unicode-range`
@@ -27,9 +28,12 @@ import { StorageHealthNotice } from '@/components/storage-health-notice';
 import '@fontsource-variable/inter';
 
 export const metadata: Metadata = {
-  title: 'OpenMAIC',
-  description:
-    'The open-source AI interactive classroom. Upload a PDF to instantly generate an immersive, multi-agent learning experience.',
+  title: brandConfig.productName,
+  description: brandConfig.productDescription,
+  icons: {
+    icon: brandConfig.assets.productMark,
+    apple: brandConfig.assets.productMark,
+  },
 };
 
 export default function RootLayout({

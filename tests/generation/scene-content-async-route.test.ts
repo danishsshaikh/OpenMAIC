@@ -191,7 +191,10 @@ describe('scene-content async simulation route', () => {
     await mocks.afterCallbacks[0]();
 
     const request = mocks.callLLM.mock.calls[0][0] as { system?: string; prompt?: string };
-    expect(request.system).toContain('The requested output language is: **English (en-US)**');
+    expect(request.system).toContain('The deployment output language is English.');
+    expect(request.system).toContain(
+      'The upstream requested-language value is: **English (en-US)**',
+    );
     expect(request.prompt).toContain('Requested output language: English (en-US)');
     expect(request.prompt).toContain('Teach in English.');
   });

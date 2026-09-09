@@ -45,7 +45,7 @@ export const maxDuration = 300;
 /**
  * Extract the languageDirective from the streamed wrapper JSON.
  * Matches `"languageDirective":"<value>"` in partial JSON like:
- *   {"languageDirective":"用中文授课...","outlines":[...
+ *   {"languageDirective":"Teach in English...","outlines":[...
  */
 function extractLanguageDirective(buffer: string): string | null {
   // The directive is the first key of the wrapper object, so it can only ever

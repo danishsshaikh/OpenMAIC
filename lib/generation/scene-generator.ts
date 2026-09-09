@@ -72,10 +72,7 @@ const MARKDOWN_FENCE_RE = /```(?:html)?\s*([\s\S]*?)```/gi;
 const WIDGET_CONFIG_RE =
   /<script\b(?=[^>]*\btype=["']application\/json["'])(?=[^>]*\bid=["']widget-config["'])[^>]*>([\s\S]*?)<\/script>/i;
 const CJK_TEXT_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
-const ENGLISH_LOCALE_RE = /^en(?:[-_]|$)/i;
-const ENGLISH_DIRECTIVE_RE = /\benglish\b|\ben[-_]?(?:us|gb|in|au|ca)?\b/i;
-const MULTILINGUAL_DIRECTIVE_RE =
-  /\b(?:bilingual|multilingual|dual[-\s]?language|mixed[-\s]?language|mix languages|both languages)\b|中英|双语/i;
+const DEPLOYMENT_SIMULATION_LANGUAGE = 'English (en-US)';
 
 type HtmlExtractionFailureCategory =
   | 'NO_HTML_DOCUMENT'
@@ -1429,26 +1426,17 @@ function validateWidgetConfigForGeneratedHtml(
 }
 
 function describeRequestedSimulationLanguage(
-  languageDirective?: string,
-  targetLanguage?: string,
+  _languageDirective?: string,
+  _targetLanguage?: string,
 ): string {
-  const locale = targetLanguage?.trim();
-  if (locale && ENGLISH_LOCALE_RE.test(locale)) return `English (${locale})`;
-  if (locale) return locale;
-  if (isEnglishSimulationRequested(languageDirective, targetLanguage)) return 'English';
-  return languageDirective?.trim() || 'the requested teaching language';
+  return DEPLOYMENT_SIMULATION_LANGUAGE;
 }
 
 function isEnglishSimulationRequested(
-  languageDirective?: string,
-  targetLanguage?: string,
+  _languageDirective?: string,
+  _targetLanguage?: string,
 ): boolean {
-  const locale = targetLanguage?.trim();
-  if (locale && ENGLISH_LOCALE_RE.test(locale)) return true;
-
-  const directive = languageDirective?.trim();
-  if (!directive) return false;
-  return ENGLISH_DIRECTIVE_RE.test(directive) && !MULTILINGUAL_DIRECTIVE_RE.test(directive);
+  return true;
 }
 
 function collectCjkSpans(value: string): string[] {

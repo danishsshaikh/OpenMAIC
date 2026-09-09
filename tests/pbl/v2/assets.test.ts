@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 function expectPng(path: string) {
   const bytes = readFileSync(path);
@@ -13,7 +14,8 @@ describe('PBL v2 static assets', () => {
     expectPng('public/avatars/instructor.png');
   });
 
-  test('ships the OpenMAIC mark used in the workspace header', () => {
-    expectPng('public/openmaic-mark.png');
+  test('ships the configured product mark used in the workspace header', () => {
+    const svg = readFileSync(`public${brandConfig.assets.productMark}`, 'utf8');
+    expect(svg).toContain('MIT ADT Teaching AI mark');
   });
 });

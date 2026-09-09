@@ -198,13 +198,16 @@ describe('simulation output language contract', () => {
       targetLanguage: 'en-US',
     });
 
-    expect(capturedSystem).toContain('The requested output language is: **English (en-US)**');
+    expect(capturedSystem).toContain('The deployment output language is English.');
+    expect(capturedSystem).toContain(
+      'The upstream requested-language value is: **English (en-US)**',
+    );
     expect(capturedSystem).toContain('JavaScript string');
     expect(capturedUser).toContain('Requested output language: English (en-US)');
     expect(capturedUser).toContain('Deliver the entire course in English.');
   });
 
-  test('does not hardcode English-only rejection for explicitly Chinese simulations', async () => {
+  test('enforces English even for stale explicit Chinese simulation targets', async () => {
     const chineseHtml = englishSimulationHtml({
       controls: '<button>继续</button><button>重置</button><span>已暂停</span>',
       script: 'document.getElementById("status").textContent = "已暂停";',
@@ -221,9 +224,10 @@ describe('simulation output language contract', () => {
       { targetLanguage: 'zh-CN' },
     );
 
-    expect(validation.enforceEnglishCjkGuard).toBe(false);
-    expect(validation.hasUnexpectedCjk).toBe(false);
-    expect(content).not.toBeNull();
+    expect(validation.requestedLanguage).toBe('English (en-US)');
+    expect(validation.enforceEnglishCjkGuard).toBe(true);
+    expect(validation.hasUnexpectedCjk).toBe(true);
+    expect(content).toBeNull();
   });
 });
 

@@ -4,6 +4,7 @@ import {
   resolveVideoExportCta,
 } from '@/lib/video-export-app/cover-config';
 import type { Locale } from '@/lib/i18n';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 const BIDI_CONTROL_CASES = [
   ['U+061C', '\u061c', '%D8%9C'],
@@ -22,7 +23,7 @@ const BIDI_CONTROL_CASES = [
 
 describe('resolveVideoExportCta', () => {
   it.each([undefined, '', '   '])('defaults an absent or blank value (%j)', (raw) => {
-    expect(resolveVideoExportCta(raw)).toEqual({ destination: 'open.maic.chat' });
+    expect(resolveVideoExportCta(raw)).toEqual({ destination: brandConfig.export.ctaDestination });
   });
 
   it.each(['off', 'OFF', ' Off '])('disables the CTA for %j', (raw) => {

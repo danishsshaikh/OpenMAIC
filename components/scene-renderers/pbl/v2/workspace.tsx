@@ -29,6 +29,7 @@ import { PBLV2RightPanelTabs } from './right-panel-tabs';
 import { shouldShowScenarioBriefing } from './scenario-briefing-gate';
 import { cn } from '@/lib/utils/cn';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { brandConfig } from '@/lib/branding/brand-config';
 import type { CSSProperties } from 'react';
 import { runOneStream, type StreamDisplayState, type StreamStatus } from './use-instructor-stream';
 import type { PBLProjectPatch } from '@/lib/pbl/v2/api/sse';
@@ -442,8 +443,8 @@ function WorkspaceTopBar({
       <div className="relative flex min-w-0 flex-1 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200/25 bg-violet-100/[0.08] shadow-[0_0_24px_rgba(157,140,255,0.18)]">
           <Image
-            src="/openmaic-mark.png"
-            alt="OpenMAIC"
+            src={brandConfig.assets.productMark}
+            alt={brandConfig.productName}
             width={28}
             height={28}
             className="h-6 w-6"

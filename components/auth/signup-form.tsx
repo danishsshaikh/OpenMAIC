@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 export function SignupForm() {
   const [name, setName] = useState('');
@@ -71,7 +72,9 @@ export function SignupForm() {
           autoComplete="email"
           required
         />
-        <FieldDescription>Use your @mituniversity.edu.in email address.</FieldDescription>
+        <FieldDescription>
+          Use your @{brandConfig.approvedEmailDomain} email address.
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor="signup-password">Password</FieldLabel>

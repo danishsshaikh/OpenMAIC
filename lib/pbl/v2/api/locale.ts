@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
 
-import { supportedLocales } from '@/lib/i18n/locales';
+import { deploymentExposedLocales } from '@/lib/i18n/deployment';
 import type { PBLProjectV2 } from '../types';
 
-const supportedLocaleCodes = new Set<string>(supportedLocales.map((locale) => locale.code));
+const exposedLocaleCodes = new Set<string>(deploymentExposedLocales.map((locale) => locale.code));
 
 /** Sync `project.language` (BCP-47 fallback locale) with the user's
  *  UI language. Does NOT touch `project.languageDirective` — the
@@ -16,6 +16,6 @@ const supportedLocaleCodes = new Set<string>(supportedLocales.map((locale) => lo
  *  updated project. */
 export function applyRequestLocaleToProject(req: NextRequest, project: PBLProjectV2): void {
   const locale = req.headers.get('x-user-locale')?.trim();
-  if (!locale || !supportedLocaleCodes.has(locale)) return;
+  if (!locale || !exposedLocaleCodes.has(locale)) return;
   project.language = locale;
 }

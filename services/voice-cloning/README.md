@@ -1,6 +1,6 @@
-# OpenMAIC Chatterbox Voice-Cloning Service
+# Teaching Voice Chatterbox Voice-Cloning Service
 
-This service is intentionally separate from the Next.js app. OpenMAIC talks to it
+This service is intentionally separate from the Next.js app. The application talks to it
 through the voice-cloning provider interface and never imports Chatterbox,
 PyTorch, or CUDA libraries.
 
@@ -18,7 +18,7 @@ CHATTERBOX_T3_MODEL=v3 VOICE_CLONING_SERVICE_PORT=8765 python chatterbox_service
 by Chatterbox 0.1.7 in the tested HPC environment. Do not remove it unless the
 installed Chatterbox/Perth versions are upgraded and startup is revalidated.
 
-`CHATTERBOX_T3_MODEL` controls only the service default. Persisted OpenMAIC voice
+`CHATTERBOX_T3_MODEL` controls only the service default. Persisted Teaching Voice
 profiles send their selected `v2` or `v3` model variant with each trusted
 server-to-service request, so per-profile choice overrides the service default.
 
@@ -30,7 +30,7 @@ bounded compatibility loader for V3.
 
 ## Enrollment Audio
 
-New OpenMAIC enrollments use one short teaching paragraph, targeting about ten
+New Teaching Voice enrollments use one short teaching paragraph, targeting about ten
 seconds of continuous natural speech. Existing profiles made with the older
 three-recording flow remain compatible because they already point at a private
 canonical `reference.wav`.
@@ -50,7 +50,7 @@ cleanliness and playback consistency, but they do not guarantee accent identity
 or speaker similarity and must not be treated as voice conversion.
 
 Generated Chatterbox preview and classroom/editor narration audio pass through
-the same light output mastering stage before OpenMAIC stores or returns it.
+the same light output mastering stage before the application stores or returns it.
 Export should reuse already generated audio and not process it again.
 
 Set the Next.js app environment:

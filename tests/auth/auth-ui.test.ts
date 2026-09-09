@@ -28,6 +28,7 @@ import { AuthShell } from '@/components/auth/auth-shell';
 import { LoginForm } from '@/components/auth/login-form';
 import { SignupForm } from '@/components/auth/signup-form';
 import { ThemeProvider } from '@/lib/hooks/use-theme';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 const TestAuthShell = AuthShell as React.ComponentType<{
   title: string;
@@ -54,7 +55,7 @@ function field(label: string): HTMLInputElement {
   return input;
 }
 
-describe('OpenMAIC auth UI', () => {
+describe('MIT ADT auth UI', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     (
@@ -84,7 +85,7 @@ describe('OpenMAIC auth UI', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders login with OpenMAIC branding, university logos, helper text, links, and theme control', () => {
+  it('renders login with configured product branding, university logos, helper text, links, and theme control', () => {
     renderAuth(
       React.createElement(
         TestAuthShell,
@@ -96,9 +97,9 @@ describe('OpenMAIC auth UI', () => {
       ),
     );
 
-    expect(document.body.textContent).toContain('OpenMAIC');
-    expect(document.body.textContent).toContain('Faculty AI Classroom Platform');
-    expect(document.body.textContent).toContain('Use your @mituniversity.edu.in email address.');
+    expect(document.body.textContent).toContain(brandConfig.productName);
+    expect(document.body.textContent).toContain('Faculty AI classroom platform');
+    expect(document.body.textContent).toContain(`Use your @${brandConfig.approvedEmailDomain}`);
     expect(document.querySelector('img[src="/branding/mit-adt.png"]')).not.toBeNull();
     expect(document.querySelector('img[src="/branding/crieya.jpeg"]')).not.toBeNull();
     expect(document.querySelector('a[href="/signup"]')?.textContent).toContain('Create one');

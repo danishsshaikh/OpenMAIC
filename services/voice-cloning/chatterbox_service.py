@@ -84,7 +84,7 @@ GENERATION_SETTING_RANGES = {
     "repetitionPenalty": (1.0, 3.0),
 }
 
-app = FastAPI(title="OpenMAIC Chatterbox Voice Cloning")
+app = FastAPI(title="Teaching Voice Chatterbox Voice Cloning")
 generation_lock = threading.Semaphore(MAX_CONCURRENCY)
 profiles: Dict[str, Path] = {}
 model = None

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -53,7 +54,9 @@ export function LoginForm() {
           autoComplete="email"
           required
         />
-        <FieldDescription>Use your @mituniversity.edu.in email address.</FieldDescription>
+        <FieldDescription>
+          Use your @{brandConfig.approvedEmailDomain} email address.
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor="login-password">Password</FieldLabel>
@@ -82,7 +85,7 @@ export function LoginForm() {
         Sign in
       </Button>
       <p className="text-center text-sm text-muted-foreground">
-        New to OpenMAIC?{' '}
+        New to {brandConfig.shortName}?{' '}
         <Link
           href="/signup"
           className="font-medium text-primary underline-offset-4 hover:underline"

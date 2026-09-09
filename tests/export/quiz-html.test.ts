@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateStandaloneQuizHtml } from '@/lib/export/quiz-html';
 import type { QuizContent } from '@/lib/types/stage';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 describe('standalone quiz HTML export', () => {
   it('generates an offline quiz sidecar with embedded quiz data', () => {
@@ -10,9 +11,11 @@ describe('standalone quiz HTML export', () => {
     });
 
     expect(result.supported).toBe(true);
-    expect(result.html).toContain('OpenMAIC Quiz Export');
+    expect(result.html).toContain(`${brandConfig.productName} Quiz Export`);
     expect(result.html).toContain('Check answers');
-    expect(result.html).toContain('Short-answer grading does not call OpenMAIC APIs');
+    expect(result.html).toContain(
+      `Short-answer grading does not call ${brandConfig.shortName} APIs`,
+    );
 
     const embedded = parseEmbeddedQuizData(result.html);
     expect(embedded.title).toBe('Robot Helper Quiz');

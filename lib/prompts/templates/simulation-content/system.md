@@ -4,11 +4,11 @@ Generate a self-contained HTML simulation with embedded widget configuration.
 
 ## Language Requirement
 
-The requested output language is: **{{requestedLanguage}}**.
+The deployment output language is English. The upstream requested-language value is: **{{requestedLanguage}}**.
 
-All user-visible natural-language text inside the simulation must be written in the requested language. This includes every button, control, label, status, instruction, tooltip, message, placeholder, legend, counter, aria-label, title attribute, validation/error message, and every JavaScript string that is dynamically inserted into the UI with `textContent`, `innerText`, `innerHTML`, canvas text drawing, alerts, or template strings.
+All user-visible natural-language text inside the simulation must be written in English. This includes every button, control, label, status, instruction, tooltip, message, placeholder, legend, counter, aria-label, title attribute, validation/error message, and every JavaScript string that is dynamically inserted into the UI with `textContent`, `innerText`, `innerHTML`, canvas text drawing, alerts, or template strings.
 
-Do not mix languages. If the requested language is English, all visible UI strings must be English. Do not use Chinese, Japanese, Korean, or another natural language unless the requested language explicitly requires it. HTML, CSS, and JavaScript identifiers may remain normal programming syntax. Mathematical symbols and standard technical notation may remain unchanged.
+Do not mix languages. Do not use another natural language unless it is quoted source material, a target-language learning example, code, a proper noun, or a standard technical symbol. HTML, CSS, and JavaScript identifiers may remain normal programming syntax. Mathematical symbols and standard technical notation may remain unchanged.
 
 ## Output Structure
 

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
+import { BrandWordmark } from '@/components/branding/brand-wordmark';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupInput, InputGroupButton } from '@/components/ui/input-group';
@@ -73,6 +74,8 @@ import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { InteractiveModeButton } from '@/components/generation/interactive-mode-button';
 import { TeachingVoiceCard } from '@/components/voice-cloning/teaching-voice-card';
 import { AccountMenu } from '@/components/auth/account-menu';
+import { brandConfig } from '@/lib/branding/brand-config';
+import { englishOnlyDeployment } from '@/lib/i18n/deployment';
 
 const log = createLogger('Home');
 
@@ -445,7 +448,7 @@ function HomePage() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
+    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
       <input
         ref={fileInputRef}
         type="file"
@@ -467,10 +470,12 @@ function HomePage() {
         ref={toolbarRef}
         className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-2 py-1.5 rounded-full border border-gray-100/50 dark:border-gray-700/50 shadow-sm"
       >
-        {/* Language Selector */}
-        <LanguageSwitcher onOpen={() => setThemeOpen(false)} />
-
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        {englishOnlyDeployment.showLanguageSwitcher && (
+          <>
+            <LanguageSwitcher onOpen={() => setThemeOpen(false)} />
+            <div className="w-[1px] h-4 bg-border" />
+          </>
+        )}
 
         {/* Theme Selector */}
         <div className="relative">
@@ -493,8 +498,7 @@ function HomePage() {
                 }}
                 className={cn(
                   'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'light' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  theme === 'light' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Sun className="w-4 h-4" />
@@ -507,8 +511,7 @@ function HomePage() {
                 }}
                 className={cn(
                   'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'dark' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  theme === 'dark' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Moon className="w-4 h-4" />
@@ -521,8 +524,7 @@ function HomePage() {
                 }}
                 className={cn(
                   'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'system' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  theme === 'system' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Monitor className="w-4 h-4" />
@@ -532,11 +534,11 @@ function HomePage() {
           )}
         </div>
 
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        <div className="w-[1px] h-4 bg-border" />
 
         <AccountMenu />
 
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        <div className="w-[1px] h-4 bg-border" />
 
         {/* Settings Button */}
         <div className="relative">
@@ -559,14 +561,8 @@ function HomePage() {
 
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '4s' }}
-        />
-        <div
-          className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '6s' }}
-        />
+        <div className="absolute inset-x-0 top-0 h-64 bg-[linear-gradient(180deg,var(--brand-wash),transparent)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:96px_96px] opacity-[0.12] dark:opacity-[0.08]" />
       </div>
 
       {/* ═══ Hero section: title + input (centered, wider) ═══ */}
@@ -579,10 +575,8 @@ function HomePage() {
           classrooms.length === 0 ? 'justify-center min-h-[calc(100dvh-8rem)]' : 'mt-[10vh]',
         )}
       >
-        {/* ── Logo ── */}
-        <motion.img
-          src="/logo-horizontal.png"
-          alt="OpenMAIC"
+        {/* ── Brand ── */}
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{
@@ -591,17 +585,19 @@ function HomePage() {
             stiffness: 200,
             damping: 20,
           }}
-          className="h-12 md:h-16 mb-2 -ml-2 md:-ml-3"
-        />
+          className="mb-3"
+        >
+          <BrandWordmark markClassName="h-11 w-11 md:h-12 md:w-12" textClassName="text-left" />
+        </motion.div>
 
         {/* ── Slogan ── */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.25 }}
-          className="text-sm text-muted-foreground/60 mb-8"
+          className="max-w-xl text-center text-sm leading-6 text-muted-foreground mb-8"
         >
-          {t('home.slogan')}
+          {brandConfig.productDescription}
         </motion.p>
 
         {/* ── Unified input area ── */}
@@ -611,7 +607,7 @@ function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-border/60 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-violet-500/[0.06]">
+          <div className="w-full rounded-lg border border-border/70 bg-card/90 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-primary/[0.08]">
             {/* ── Greeting + Profile + Agents ── */}
             <div className="relative z-20 flex items-start justify-between">
               <GreetingBar />
@@ -724,10 +720,10 @@ function HomePage() {
                   )}
                 >
                   <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-cyan-700 dark:bg-cyan-900/45 dark:text-cyan-300">
-                    测试功能
+                    Test
                   </span>
                   <Sparkles className="size-3.5" />
-                  <span>职教任务</span>
+                  <span>Vocational task</span>
                   <span
                     className={cn(
                       'relative h-3.5 w-6 rounded-full transition-colors',
@@ -744,7 +740,7 @@ function HomePage() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                从当前输入框提交职教实操训练测试
+                Submit a vocational practice training test from the current prompt.
               </TooltipContent>
             </Tooltip>
           </motion.div>
@@ -973,8 +969,11 @@ function HomePage() {
       )}
 
       {/* Footer — flows with content, at the very end */}
-      <div className="mt-auto pt-12 pb-4 text-center text-xs text-muted-foreground/40">
-        OpenMAIC Open Source Project
+      <div className="mt-auto pt-12 pb-4 text-center text-xs text-muted-foreground/60">
+        {brandConfig.openSource.attribution}{' '}
+        <a href="/open-source-notices" className="font-medium text-primary hover:underline">
+          Notices
+        </a>
       </div>
     </div>
   );

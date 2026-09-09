@@ -33,6 +33,7 @@ import { toSrt, toVtt } from '../subtitles';
 import { EASE_DEFS, emitEffect } from './effects';
 import { escapeHtml, sec } from './format';
 import { INTER_FONT_FACE_CSS, INTER_OFL_LICENSE } from './inter-font';
+import { brandConfig } from '../../branding/brand-config';
 
 /** A file in the emitted project: a relative path and its text content. */
 export interface EmittedFile {
@@ -89,11 +90,11 @@ export interface EmitHyperframesOptions {
   width?: number;
   /** Render height in px. Default derived from `width` at 16:9. */
   height?: number;
-  /** Composition id used for the root `data-composition-id` and the timeline key. Default `openmaic`. */
+  /** Composition id used for the root `data-composition-id` and the timeline key. */
   compositionId?: string;
   /** Relative path the emitted HTML loads GSAP from. Default `assets/vendor/gsap.min.js`. */
   gsapVendorPath?: string;
-  /** Manifest filename. Default `openmaic-video-manifest.json`. */
+  /** Manifest filename. */
   manifestPath?: string;
   /** Cover-card chrome; each omitted key falls back to its `en-US` default. */
   labels?: Partial<CoverCardLabels>;
@@ -130,7 +131,7 @@ export interface EmittedProject {
 
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_GSAP_PATH = 'assets/vendor/gsap.min.js';
-const DEFAULT_MANIFEST = 'openmaic-video-manifest.json';
+const DEFAULT_MANIFEST = brandConfig.export.manifestFileName;
 const DEFAULT_LOCALE = 'en-US';
 
 /** Language subtags written right-to-left; everything else renders LTR. */
@@ -857,7 +858,7 @@ function renderReadme(project: {
     ),
   );
   const labelsFence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
-  return `# ${project.stageName} — OpenMAIC video export
+  return `# ${project.stageName} — ${brandConfig.productName} video export
 
 Self-contained [Hyperframes](https://github.com/heygen-com/hyperframes) composition
 for the classroom **${project.stageName}**. Everything needed to render is in this
@@ -920,7 +921,7 @@ export function emitHyperframes(
   const width = options.width ?? DEFAULT_WIDTH;
   const height =
     options.height ?? Math.round(width * (ir.canvas.pixelBase.height / ir.canvas.pixelBase.width));
-  const compositionId = options.compositionId ?? 'openmaic';
+  const compositionId = options.compositionId ?? brandConfig.export.compositionId;
   const gsapVendorPath = options.gsapVendorPath ?? DEFAULT_GSAP_PATH;
   const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
   const labels: CoverCardLabels = { ...DEFAULT_COVER_LABELS, ...options.labels };
@@ -977,7 +978,7 @@ export function emitHyperframes(
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(ir.stage.name)} — OpenMAIC video</title>
+<title>${escapeHtml(ir.stage.name)} — ${escapeHtml(brandConfig.productName)} video</title>
 <style>
   ${INTER_FONT_FACE_CSS}
   * { box-sizing: border-box; }

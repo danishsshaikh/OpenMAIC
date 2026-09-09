@@ -566,8 +566,8 @@ async function generateAzureTTS(
   // Build SSML
   const rate = config.speed ? `${((config.speed - 1) * 100).toFixed(0)}%` : '0%';
   const ssml = `
-    <speak version='1.0' xml:lang='zh-CN'>
-      <voice xml:lang='zh-CN' name='${config.voice}'>
+    <speak version='1.0' xml:lang='en-US'>
+      <voice xml:lang='en-US' name='${config.voice}'>
         <prosody rate='${rate}'>${escapeXml(text)}</prosody>
       </voice>
     </speak>
@@ -660,7 +660,7 @@ async function generateQwenTTS(config: TTSModelConfig, text: string): Promise<TT
       input: {
         text,
         voice: config.voice,
-        language_type: 'Chinese', // Default to Chinese, can be made configurable
+        language_type: 'English',
       },
       parameters: {
         rate, // Speech rate from -500 to 500

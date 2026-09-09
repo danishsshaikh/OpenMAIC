@@ -154,8 +154,7 @@ export function HeaderControls({
               onSelect={() => setTheme('light')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'light' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'light' && 'bg-primary/10 text-primary',
               )}
             >
               <Sun className="w-4 h-4" />
@@ -165,8 +164,7 @@ export function HeaderControls({
               onSelect={() => setTheme('dark')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'dark' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'dark' && 'bg-primary/10 text-primary',
               )}
             >
               <Moon className="w-4 h-4" />
@@ -176,8 +174,7 @@ export function HeaderControls({
               onSelect={() => setTheme('system')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'system' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'system' && 'bg-primary/10 text-primary',
               )}
             >
               <Monitor className="w-4 h-4" />
