@@ -7,6 +7,20 @@ export const brandConfig = {
   institutionFullName: 'MIT Art, Design and Technology University',
   institutionWebsite: 'https://mituniversity.ac.in/',
   approvedEmailDomain: 'mituniversity.edu.in',
+  visualIdentity: {
+    source: 'MIT ADT University public website',
+    palette: {
+      primary: '#5B1FA8',
+      primaryStrong: '#42116F',
+      secondary: '#C02672',
+      secondarySoft: '#F9E7F1',
+      surface: '#FCFAFF',
+      surfaceWarm: '#FFFDF8',
+      charcoal: '#1C1724',
+      border: '#E6DFF0',
+      goldAccent: '#D8A432',
+    },
+  },
   assets: {
     productMark: '/branding/mit-adt-teaching-ai-mark.svg',
     productWordmark: '/branding/mit-adt-teaching-ai-wordmark.svg',

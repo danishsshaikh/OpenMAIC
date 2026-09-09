@@ -1,12 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Asset: MIT ADT Teaching AI product wordmark
+  Provenance: Original project asset created for this repository's MIT ADT deployment.
+  Source: Created in-repository for commit 4414a33b; not downloaded from a third-party source.
+  License: Covered by this repository's MIT License.
+  Not derived from an MIT ADT institutional mark or any third-party SVG asset.
+-->
 <svg width="640" height="160" viewBox="0 0 640 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">MIT ADT Teaching AI</title>
   <desc id="desc">Wordmark for the MIT ADT Teaching AI deployment.</desc>
-  <rect width="640" height="160" rx="24" fill="#FFF8F1"/>
-  <rect x="32" y="32" width="96" height="96" rx="22" fill="#9F172D"/>
-  <path d="M52 56h56v10H52V56Z" fill="#FFF8F1"/>
-  <path d="M52 72h20v32H52V72Z" fill="#FFF8F1"/>
-  <path d="M80 72h28v10H80V72Z" fill="#FFF8F1"/>
-  <path d="M80 88h28v16H80V88Z" fill="#F4B942"/>
-  <text x="152" y="77" fill="#171717" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="700">MIT ADT Teaching AI</text>
-  <text x="154" y="110" fill="#6B7280" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="500">Faculty classroom creation platform</text>
+  <rect width="640" height="160" rx="24" fill="#FCFAFF"/>
+  <rect x="32" y="32" width="96" height="96" rx="22" fill="#42116F"/>
+  <path d="M52 56h56v10H52V56Z" fill="#FCFAFF"/>
+  <path d="M52 72h20v32H52V72Z" fill="#FCFAFF"/>
+  <path d="M80 72h28v10H80V72Z" fill="#FCFAFF"/>
+  <path d="M80 88h28v16H80V88Z" fill="#C02672"/>
+  <path d="M52 112h56" stroke="#D8A432" stroke-width="5" stroke-linecap="round"/>
+  <text x="152" y="77" fill="#1C1724" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="700">MIT ADT Teaching AI</text>
+  <text x="154" y="110" fill="#6C6078" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="500">Faculty classroom creation platform</text>
 </svg>

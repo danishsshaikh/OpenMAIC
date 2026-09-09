@@ -32,7 +32,7 @@ const RAIL_MAX_PX = 360;
  * get a type-icon stub but stay clickable, draggable, and right-clickable
  * so page-level management is uniform across the deck.
  *
- * Visuals: low-chroma zinc surface + single violet brand accent, no
+ * Visuals: low-chroma institutional surface + single primary brand accent, no
  * per-row chrome (rejected `EditModeSidebar` pattern). Drag uses an
  * explicit grip handle on the thumb so the whole tile remains
  * click-to-switch.
@@ -342,9 +342,9 @@ export function SlideNavRail() {
       // arrive too late.
       className={cn(
         'relative flex h-full shrink-0 flex-col overflow-hidden',
-        'border-r border-gray-100 dark:border-gray-800',
-        'bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl',
-        'shadow-[2px_0_24px_rgba(0,0,0,0.02)]',
+        'border-r border-sidebar-border',
+        'bg-sidebar/90 backdrop-blur-xl',
+        'shadow-[2px_0_28px_rgb(var(--brand-shadow)/0.05)]',
       )}
       style={{
         width: collapsed ? RAIL_COLLAPSED_PX : persistedWidth,
@@ -363,9 +363,9 @@ export function SlideNavRail() {
           onPointerMove={handleResizeMove}
           onPointerUp={handleResizeEnd}
           onPointerCancel={handleResizeEnd}
-          className="group absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize touch-none hover:bg-violet-400/30 dark:hover:bg-violet-500/30 active:bg-violet-500/50 transition-colors"
+          className="group absolute bottom-0 right-0 top-0 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-primary/20 active:bg-primary/30"
         >
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-violet-400 dark:group-hover:bg-violet-500 transition-colors" />
+          <div className="absolute right-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-border transition-colors group-hover:bg-primary" />
         </div>
       )}
       {/* Header band — mirrors playback `SceneSidebar`: product logo
@@ -384,9 +384,9 @@ export function SlideNavRail() {
             type="button"
             onClick={() => router.push('/')}
             title={t('generation.backToHome')}
-            className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
+            className="-mx-1.5 -my-1 flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 transition-all duration-150 hover:bg-sidebar-accent active:scale-[0.97]"
           >
-            <BrandWordmark markClassName="h-6 w-6" textClassName="max-w-[116px]" />
+            <BrandWordmark size="sm" textClassName="max-w-[116px]" />
           </button>
         )}
         <div className={cn('flex items-center gap-1', collapsed && 'flex-col')}>
@@ -398,11 +398,9 @@ export function SlideNavRail() {
             aria-label={collapsed ? t('edit.nav.expand') : t('edit.nav.collapse')}
             title={collapsed ? t('edit.nav.expand') : t('edit.nav.collapse')}
             className={cn(
-              'inline-flex h-7 w-7 items-center justify-center rounded-lg',
-              'bg-gray-100/80 text-gray-500 ring-1 ring-black/[0.04]',
-              'dark:bg-gray-800/80 dark:text-gray-400 dark:ring-white/[0.06]',
-              'hover:bg-gray-200/90 hover:text-gray-700',
-              'dark:hover:bg-gray-700/90 dark:hover:text-gray-200',
+              'inline-flex h-7 w-7 items-center justify-center rounded-md',
+              'bg-sidebar-accent text-sidebar-foreground/60 ring-1 ring-sidebar-border',
+              'hover:text-sidebar-foreground',
               'active:scale-90 transition-all duration-200',
             )}
           >
@@ -501,9 +499,9 @@ function CollapsedList({ scenes, currentSceneId, onActivate }: CollapsedListProp
                 'group/cl flex h-7 w-full items-center justify-center rounded-md',
                 'font-mono text-[10px] leading-none tabular-nums tracking-wide transition-colors',
                 active
-                  ? 'bg-violet-500 text-white shadow-sm shadow-violet-500/40'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-800 dark:hover:text-zinc-200',
-                !isSlide && !active && 'text-zinc-400/80 dark:text-zinc-500/80',
+                  ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                  : 'text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                !isSlide && !active && 'text-sidebar-foreground/40',
               )}
             >
               {String(index + 1).padStart(2, '0')}

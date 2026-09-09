@@ -8,6 +8,8 @@ describe('MIT ADT brand config', () => {
     expect(brandConfig.productName).toBe('MIT ADT Teaching AI');
     expect(brandConfig.institutionFullName).toBe('MIT Art, Design and Technology University');
     expect(brandConfig.productDescription).toContain('faculty-facing');
+    expect(brandConfig.visualIdentity.palette.primary).toBe('#5B1FA8');
+    expect(brandConfig.visualIdentity.palette.secondary).toBe('#C02672');
   });
 
   it('wires major visible product identity through the brand layer', () => {

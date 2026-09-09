@@ -98,7 +98,8 @@ describe('MIT ADT auth UI', () => {
     );
 
     expect(document.body.textContent).toContain(brandConfig.productName);
-    expect(document.body.textContent).toContain('Faculty AI classroom platform');
+    expect(document.body.textContent).toContain('Teaching AI for faculty-led classrooms');
+    expect(document.body.textContent).toContain('Faculty access');
     expect(document.body.textContent).toContain(`Use your @${brandConfig.approvedEmailDomain}`);
     expect(document.querySelector('img[src="/branding/mit-adt.png"]')).not.toBeNull();
     expect(document.querySelector('img[src="/branding/crieya.jpeg"]')).not.toBeNull();

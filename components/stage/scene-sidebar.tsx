@@ -111,15 +111,15 @@ export function SceneSidebar({
         width: displayWidth,
         transition: isDraggingRef.current ? 'none' : 'width 0.3s ease',
       }}
-      className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-gray-100 dark:border-gray-800 shadow-[2px_0_24px_rgba(0,0,0,0.02)] flex flex-col shrink-0 z-20 relative overflow-visible"
+      className="relative z-20 flex shrink-0 flex-col overflow-visible border-r border-sidebar-border bg-sidebar/90 shadow-[2px_0_28px_rgb(var(--brand-shadow)/0.05)] backdrop-blur-xl"
     >
       {/* Drag handle */}
       {!collapsed && (
         <div
           onMouseDown={handleDragStart}
-          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 group hover:bg-purple-400/30 dark:hover:bg-purple-600/30 active:bg-purple-500/40 dark:active:bg-purple-500/40 transition-colors"
+          className="group absolute bottom-0 right-0 top-0 z-50 w-1.5 cursor-col-resize transition-colors hover:bg-primary/20 active:bg-primary/30"
         >
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-purple-400 dark:group-hover:bg-purple-500 transition-colors" />
+          <div className="absolute right-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-border transition-colors group-hover:bg-primary" />
         </div>
       )}
 
@@ -128,14 +128,14 @@ export function SceneSidebar({
         <div className="h-10 flex items-center justify-between shrink-0 relative mt-3 mb-1 px-3">
           <button
             onClick={() => router.push('/')}
-            className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
+            className="-mx-1.5 -my-1 flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 transition-all duration-150 hover:bg-sidebar-accent active:scale-[0.97]"
             title={t('generation.backToHome')}
           >
-            <BrandWordmark markClassName="h-6 w-6" textClassName="max-w-[128px]" />
+            <BrandWordmark size="sm" textClassName="max-w-[128px]" />
           </button>
           <button
             onClick={() => onCollapseChange(true)}
-            className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 ring-1 ring-black/[0.04] dark:ring-white/[0.06] hover:bg-gray-200/90 dark:hover:bg-gray-700/90 hover:text-gray-700 dark:hover:text-gray-200 active:scale-90 transition-all duration-200"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-sidebar-foreground/60 ring-1 ring-sidebar-border transition-all duration-200 hover:text-sidebar-foreground active:scale-90"
           >
             <PanelLeftClose className="w-4 h-4" />
           </button>
@@ -167,9 +167,7 @@ export function SceneSidebar({
                 }}
                 className={cn(
                   'group relative rounded-lg transition-all duration-200 cursor-pointer flex flex-col gap-1 p-1.5',
-                  isActive
-                    ? 'bg-purple-50 dark:bg-purple-900/20 ring-1 ring-purple-200 dark:ring-purple-700'
-                    : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/50',
+                  isActive ? 'bg-primary/10 ring-1 ring-primary/25' : 'hover:bg-sidebar-accent/70',
                 )}
               >
                 {/* Scene Header */}
@@ -179,7 +177,7 @@ export function SceneSidebar({
                       className={cn(
                         'text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0',
                         isActive
-                          ? 'bg-purple-600 dark:bg-purple-500 text-white shadow-sm shadow-purple-500/30'
+                          ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
                       )}
                     >
@@ -190,7 +188,7 @@ export function SceneSidebar({
                       className={cn(
                         'text-xs font-bold truncate transition-colors',
                         isActive
-                          ? 'text-purple-700 dark:text-purple-300'
+                          ? 'text-primary'
                           : 'text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100',
                       )}
                     >
@@ -277,10 +275,10 @@ export function SceneSidebar({
                       </div>
                     ) : scene.type === 'pbl' ? (
                       /* PBL: kanban board with 3 columns */
-                      <div className="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 p-1.5 flex flex-col">
+                      <div className="flex h-full w-full flex-col bg-[linear-gradient(135deg,var(--brand-secondary-soft),var(--background))] p-1.5">
                         <div className="flex items-center gap-1 mb-1.5">
-                          <div className="w-1.5 h-1.5 rounded bg-blue-300 dark:bg-blue-600" />
-                          <div className="h-1 w-8 bg-blue-200/60 dark:bg-blue-700/30 rounded-full" />
+                          <div className="h-1.5 w-1.5 rounded bg-primary/60" />
+                          <div className="h-1 w-8 rounded-full bg-primary/25" />
                         </div>
                         <div className="flex-1 flex gap-1 overflow-hidden">
                           {[0, 1, 2].map((col) => (
@@ -292,10 +290,10 @@ export function SceneSidebar({
                                 className={cn(
                                   'h-0.5 w-3 rounded-full mb-0.5',
                                   col === 0
-                                    ? 'bg-blue-300/70'
+                                    ? 'bg-primary/55'
                                     : col === 1
-                                      ? 'bg-amber-300/70'
-                                      : 'bg-green-300/70',
+                                      ? 'bg-[var(--brand-gold)]'
+                                      : 'bg-accent/55',
                                 )}
                               />
                               {Array.from({
@@ -303,7 +301,7 @@ export function SceneSidebar({
                               }).map((_, i) => (
                                 <div
                                   key={i}
-                                  className="h-2 w-full bg-blue-100/60 dark:bg-blue-800/20 rounded border border-blue-200/30 dark:border-blue-700/20"
+                                  className="h-2 w-full rounded border border-primary/20 bg-primary/10"
                                 />
                               ))}
                             </div>
@@ -323,9 +321,9 @@ export function SceneSidebar({
                     {isSlide && (
                       <div
                         className={cn(
-                          'absolute inset-0 bg-purple-500/0 transition-colors',
+                          'absolute inset-0 bg-primary/0 transition-colors',
                           isActive
-                            ? 'bg-purple-500/0'
+                            ? 'bg-primary/0'
                             : 'group-hover:bg-black/5 dark:group-hover:bg-white/5',
                         )}
                       />
@@ -360,11 +358,9 @@ export function SceneSidebar({
                     'group relative rounded-lg flex flex-col gap-1 p-1.5 transition-all duration-200',
                     isFailed
                       ? 'opacity-100 cursor-default'
-                      : 'cursor-pointer hover:bg-gray-50/80 dark:hover:bg-gray-800/50',
+                      : 'cursor-pointer hover:bg-sidebar-accent/70',
                     !isFailed && !isActive && 'opacity-60',
-                    isActive &&
-                      !isFailed &&
-                      'bg-purple-50 dark:bg-purple-900/20 ring-1 ring-purple-200 dark:ring-purple-700 opacity-100',
+                    isActive && !isFailed && 'bg-primary/10 ring-1 ring-primary/25 opacity-100',
                   )}
                 >
                   {/* Scene Header */}
@@ -374,7 +370,7 @@ export function SceneSidebar({
                         className={cn(
                           'text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0',
                           isActive && !isFailed
-                            ? 'bg-purple-600 dark:bg-purple-500 text-white shadow-sm shadow-purple-500/30'
+                            ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500',
                         )}
                       >
@@ -384,7 +380,7 @@ export function SceneSidebar({
                         className={cn(
                           'text-xs font-bold truncate transition-colors',
                           isActive && !isFailed
-                            ? 'text-purple-700 dark:text-purple-300'
+                            ? 'text-primary'
                             : isFailed
                               ? 'text-gray-700 dark:text-gray-200'
                               : 'text-gray-400 dark:text-gray-500',
@@ -434,13 +430,13 @@ export function SceneSidebar({
                         <>
                           <div
                             className={cn(
-                              'h-2 w-3/5 bg-gray-200 dark:bg-gray-700 rounded',
+                              'h-2 w-3/5 rounded bg-muted',
                               !isPaused && 'animate-pulse',
                             )}
                           />
                           <div
                             className={cn(
-                              'h-1.5 w-2/5 bg-gray-200 dark:bg-gray-700 rounded',
+                              'h-1.5 w-2/5 rounded bg-muted',
                               !isPaused && 'animate-pulse',
                             )}
                           />

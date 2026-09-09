@@ -1,10 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Asset: MIT ADT Teaching AI product mark
+  Provenance: Original project asset created for this repository's MIT ADT deployment.
+  Source: Created in-repository for commit 4414a33b; not downloaded from a third-party source.
+  License: Covered by this repository's MIT License.
+  Not derived from an MIT ADT institutional mark or any third-party SVG asset.
+-->
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">MIT ADT Teaching AI mark</title>
-  <desc id="desc">A red academic technology mark for the MIT ADT Teaching AI deployment.</desc>
-  <rect width="128" height="128" rx="28" fill="#9F172D"/>
-  <path d="M28 33h72v13H28V33Z" fill="#FFF8F1"/>
-  <path d="M28 54h27v41H28V54Z" fill="#FFF8F1"/>
-  <path d="M64 54h36v13H64V54Z" fill="#FFF8F1"/>
-  <path d="M64 75h36v20H64V75Z" fill="#F4B942"/>
-  <path d="M28 102h72" stroke="#FFF8F1" stroke-width="6" stroke-linecap="round"/>
+  <desc id="desc">A purple and magenta academic technology mark for the MIT ADT Teaching AI deployment.</desc>
+  <rect width="128" height="128" rx="26" fill="#42116F"/>
+  <path d="M28 33h72v13H28V33Z" fill="#FCFAFF"/>
+  <path d="M28 54h27v41H28V54Z" fill="#FCFAFF"/>
+  <path d="M64 54h36v13H64V54Z" fill="#FCFAFF"/>
+  <path d="M64 75h36v20H64V75Z" fill="#C02672"/>
+  <path d="M28 102h72" stroke="#D8A432" stroke-width="6" stroke-linecap="round"/>
 </svg>

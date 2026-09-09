@@ -33,7 +33,8 @@ new UI work on tokens such as `primary`, `background`, `card`, `muted`,
 components.
 
 The current palette is inspired by MIT ADT University's public website:
-institutional red, warm white, charcoal, and gold accent tones.
+institutional purple, magenta accent, clean white surfaces, charcoal text, and a
+small gold accent for university emphasis.
 
 ## English-Only Deployment Policy
 
