@@ -22,8 +22,8 @@ MIT ADT downstream branches.
 - Open source notices: `components/branding/open-source-notices.tsx`
 - Downstream product assets: `public/branding/`
 
-The temporary product name is `MIT ADT Teaching AI`. Replace it in the central
-config when the final approved product name is selected.
+The product name is `Sandipani` and the descriptor is `AI Teaching Studio`.
+Keep both values in the central config so future naming updates remain small.
 
 ## Theme Tokens
 

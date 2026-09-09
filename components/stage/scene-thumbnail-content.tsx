@@ -132,10 +132,10 @@ export function SceneThumbnailContent({
 
   if (scene.type === 'pbl') {
     return (
-      <div className="flex h-full w-full flex-col bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 p-1.5">
+      <div className="flex h-full w-full flex-col bg-[linear-gradient(135deg,var(--brand-secondary-soft),var(--background))] p-1.5">
         <div className="mb-1.5 flex items-center gap-1">
-          <div className="h-1.5 w-1.5 rounded bg-blue-300 dark:bg-blue-600" />
-          <div className="h-1 w-8 rounded-full bg-blue-200/60 dark:bg-blue-700/30" />
+          <div className="h-1.5 w-1.5 rounded bg-primary/60" />
+          <div className="h-1 w-8 rounded-full bg-primary/25" />
         </div>
         <div className="flex flex-1 gap-1 overflow-hidden">
           {[0, 1, 2].map((col) => (
@@ -146,13 +146,17 @@ export function SceneThumbnailContent({
               <div
                 className={cn(
                   'mb-0.5 h-0.5 w-3 rounded-full',
-                  col === 0 ? 'bg-blue-300/70' : col === 1 ? 'bg-amber-300/70' : 'bg-green-300/70',
+                  col === 0
+                    ? 'bg-primary/55'
+                    : col === 1
+                      ? 'bg-[var(--brand-gold)]'
+                      : 'bg-accent/55',
                 )}
               />
               {Array.from({ length: col === 0 ? 3 : col === 1 ? 2 : 1 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-2 w-full rounded border border-blue-200/30 bg-blue-100/60 dark:border-blue-700/20 dark:bg-blue-800/20"
+                  className="h-2 w-full rounded border border-primary/20 bg-primary/10"
                 />
               ))}
             </div>

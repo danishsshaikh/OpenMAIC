@@ -569,7 +569,7 @@ export function PBLV2Chat({
             return (
               <div key={ev.id} className="flex justify-start">
                 <div className="pbl-v2-task-review-shell max-w-[90%] rounded-[22px] px-4 py-3 text-sm text-slate-800">
-                  <div className="mb-1 text-[10px] uppercase tracking-wider text-violet-700">
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-primary">
                     {displayName} · {t('pbl.v2.taskEvalCard.title')}
                   </div>
                   {feedback && (
@@ -677,7 +677,7 @@ export function PBLV2Chat({
             beat. The right panel is the single, act-level source of guidance. */}
         {isRoleplay && !handoverPending && !projectCompleted && (
           <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] leading-snug text-muted-foreground/80">
-            <Lightbulb className="h-3.5 w-3.5 shrink-0 text-violet-200/70" />
+            <Lightbulb className="h-3.5 w-3.5 shrink-0 text-primary" />
             <span>{t('pbl.v2.chat.guidancePointer')}</span>
           </div>
         )}
@@ -737,7 +737,7 @@ export function PBLV2Chat({
       </footer>
       {handoverPending && handoverHintPos && (
         <div
-          className="pointer-events-none fixed z-50 max-w-[220px] rounded-md border border-violet-300/40 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-medium text-violet-100 shadow-[0_8px_24px_rgba(6,16,34,0.45)]"
+          className="pointer-events-none fixed z-50 max-w-[220px] rounded-md border border-primary/25 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-medium text-primary shadow-[0_8px_24px_rgba(6,16,34,0.45)]"
           style={{ left: handoverHintPos.x + 14, top: Math.max(8, handoverHintPos.y - 34) }}
         >
           {t('pbl.v2.chat.handoverHint')}
@@ -851,7 +851,7 @@ function StreamingDraft({
     return (
       <div className="flex justify-start">
         <div className="pbl-v2-task-review-shell max-w-[90%] animate-in fade-in-0 rounded-[22px] px-4 py-3 text-sm text-slate-800 duration-300">
-          <div className="mb-1 text-[10px] uppercase tracking-wider text-violet-700">{label}</div>
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-primary">{label}</div>
           {hasTokens ? (
             <MarkdownText
               content={streamingEvaluationPreview(displayDraft)}
@@ -859,7 +859,7 @@ function StreamingDraft({
             />
           ) : (
             <div className="flex items-start gap-2 text-slate-600">
-              <ThinkingDots tone="violet" />
+              <ThinkingDots tone="brand" />
               <div className="pt-0.5 text-xs leading-relaxed text-slate-500">
                 {submissionMicrotaskTitle
                   ? t('pbl.v2.chat.readingSubmissionWithTitle', { title: submissionMicrotaskTitle })
@@ -867,7 +867,7 @@ function StreamingDraft({
               </div>
             </div>
           )}
-          {isCaughtUpToLatestChunk && <ContinuingDots tone="violet" />}
+          {isCaughtUpToLatestChunk && <ContinuingDots tone="brand" />}
         </div>
       </div>
     );
@@ -875,25 +875,25 @@ function StreamingDraft({
 
   if (status === 'eval-milestone') {
     return (
-      <div className="relative animate-in fade-in-0 overflow-hidden rounded-2xl border border-violet-200/85 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-violet-300/20 duration-300">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-400" />
-        <div className="relative mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700">
+      <div className="relative animate-in fade-in-0 overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-primary/25 duration-300">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-cyan-400" />
+        <div className="relative mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
           {label}
         </div>
         {hasTokens ? (
           <MarkdownText
             content={streamingEvaluationPreview(displayDraft)}
-            className="pbl-v2-light-card-markdown text-slate-700 prose-p:text-slate-700 prose-strong:text-slate-900 prose-li:marker:text-violet-500"
+            className="pbl-v2-light-card-markdown text-slate-700 prose-p:text-slate-700 prose-strong:text-slate-900 prose-li:marker:text-primary"
           />
         ) : (
-          <ThinkingDots tone="violet" />
+          <ThinkingDots tone="brand" />
         )}
         {handover && (
-          <div className="relative mt-3 border-t border-violet-200/80 pt-2 text-xs text-slate-500">
+          <div className="relative mt-3 border-t border-primary/25 pt-2 text-xs text-slate-500">
             {t('pbl.v2.chat.milestoneFeedbackPending')}
           </div>
         )}
-        {isCaughtUpToLatestChunk && <ContinuingDots tone="violet" />}
+        {isCaughtUpToLatestChunk && <ContinuingDots tone="brand" />}
       </div>
     );
   }
@@ -952,24 +952,24 @@ function RoleplayHistoryBlock({
   readonly title: string;
 }) {
   return (
-    <div className="rounded-2xl border border-violet-300/25 bg-violet-500/[0.06]">
+    <div className="rounded-2xl border border-primary/25 bg-primary/10/[0.06]">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-violet-500/[0.10]"
+        className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-primary/10/[0.10]"
       >
-        <Drama className="h-4 w-4 shrink-0 text-violet-200/90" />
-        <span className="flex-1 text-sm font-semibold text-violet-50">{title}</span>
-        <span className="text-[11px] text-violet-200/70">{messages.length}</span>
+        <Drama className="h-4 w-4 shrink-0 text-primary" />
+        <span className="flex-1 text-sm font-semibold text-primary">{title}</span>
+        <span className="text-[11px] text-primary">{messages.length}</span>
         {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-violet-200/80" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-primary" />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-violet-200/80" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-primary" />
         )}
       </button>
       {open && (
-        <div className="space-y-3 border-t border-violet-300/15 px-4 py-4">
+        <div className="space-y-3 border-t border-primary/25 px-4 py-4">
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} agentName="" characters={characters} />
           ))}
@@ -1050,13 +1050,13 @@ function MessageBubble({
     return (
       <div className="flex items-center justify-center py-3" aria-label={label}>
         <div className="flex min-w-[52%] max-w-[90%] items-center gap-3">
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-200/70 to-cyan-200/70" />
-          <div className="relative rounded-full border border-violet-200/70 bg-gradient-to-r from-violet-50/95 via-indigo-50/90 to-cyan-50/95 px-4 py-1.5 text-[11px] font-semibold text-violet-700 shadow-[0_12px_34px_rgba(55,48,163,0.24)]">
-            <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.48)]" />
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary to-cyan-200/70" />
+          <div className="relative rounded-full border border-primary/25 bg-gradient-to-r from-primary via-accent to-cyan-50/95 px-4 py-1.5 text-[11px] font-semibold text-primary shadow-[0_12px_34px_rgba(55,48,163,0.24)]">
+            <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary/10 shadow-[0_0_10px_rgba(167,139,250,0.48)]" />
             <span className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.45)]" />
             {label}
           </div>
-          <div className="h-px flex-1 bg-gradient-to-l from-transparent via-cyan-200/70 to-violet-200/70" />
+          <div className="h-px flex-1 bg-gradient-to-l from-transparent via-cyan-200/70 to-accent" />
         </div>
       </div>
     );
@@ -1089,7 +1089,7 @@ function MessageBubble({
       <div
         className={cn(
           'max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-[0_12px_30px_rgba(6,16,34,0.22)]',
-          'bg-gradient-to-br from-primary to-violet-400 text-primary-foreground shadow-[0_14px_34px_rgba(124,92,255,0.24)]',
+          'bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-[0_14px_34px_rgba(124,92,255,0.24)]',
         )}
       >
         <div className="whitespace-pre-wrap break-words">{displayContent}</div>
@@ -1468,10 +1468,10 @@ function streamStatusLabel(
  *  `animate-bounce` to avoid vertical overlap with the label above.
  *  The swing is intentionally wide so the wave is clearly visible
  *  even on small dots against dark backgrounds. */
-function ThinkingDots({ tone = 'muted' }: { readonly tone?: 'muted' | 'violet' } = {}) {
+function ThinkingDots({ tone = 'muted' }: { readonly tone?: 'muted' | 'brand' } = {}) {
   const dotClass =
-    tone === 'violet'
-      ? 'bg-violet-500/70 shadow-[0_0_10px_rgba(139,92,246,0.28)]'
+    tone === 'brand'
+      ? 'bg-primary shadow-[0_0_10px_rgb(var(--brand-shadow)/0.28)]'
       : 'bg-muted-foreground';
   return (
     <div className="flex items-center gap-1 py-1">
@@ -1509,11 +1509,11 @@ function ThinkingDots({ tone = 'muted' }: { readonly tone?: 'muted' | 'violet' }
   );
 }
 
-function ContinuingDots({ tone = 'muted' }: { readonly tone?: 'muted' | 'violet' } = {}) {
+function ContinuingDots({ tone = 'muted' }: { readonly tone?: 'muted' | 'brand' } = {}) {
   const { t } = useI18n();
   const dotClass =
-    tone === 'violet'
-      ? 'bg-violet-500/65 shadow-[0_0_10px_rgba(139,92,246,0.24)]'
+    tone === 'brand'
+      ? 'bg-primary shadow-[0_0_10px_rgb(var(--brand-shadow)/0.24)]'
       : 'bg-muted-foreground/55';
   return (
     <div className="mt-1 flex items-center gap-1" aria-label={t('pbl.v2.chat.stillTyping')}>

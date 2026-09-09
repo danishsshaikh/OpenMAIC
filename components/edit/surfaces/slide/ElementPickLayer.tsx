@@ -237,7 +237,7 @@ export function ElementPickLayer() {
       {outlines.map((o) => (
         <div
           key={o.id}
-          className="pointer-events-none absolute rounded-[3px] ring-1 ring-violet-400/40 bg-violet-400/[0.04]"
+          className="pointer-events-none absolute rounded-[3px] ring-1 ring-primary/35 bg-primary/[0.04]"
           style={{ left: o.box.left, top: o.box.top, width: o.box.width, height: o.box.height }}
         />
       ))}
@@ -245,7 +245,7 @@ export function ElementPickLayer() {
       {/* hovered element — solid ring */}
       {hover && hover.box.width > 0 && (
         <div
-          className="pointer-events-none absolute rounded-md ring-2 ring-violet-500 bg-violet-500/[0.06]"
+          className="pointer-events-none absolute rounded-md ring-2 ring-primary bg-primary/[0.06]"
           style={{
             left: hover.box.left - 2,
             top: hover.box.top - 2,
@@ -256,11 +256,9 @@ export function ElementPickLayer() {
       )}
 
       {/* instruction banner */}
-      <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-violet-300/60 bg-popover/95 px-3.5 py-1.5 text-[12px] font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur">
-        <span className="text-violet-600 dark:text-violet-400">
-          {t('edit.pick.pickFor', { label: typeLabel })}
-        </span>{' '}
-        · {t('edit.pick.pickHint')}
+      <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-primary/30 bg-popover/95 px-3.5 py-1.5 text-[12px] font-medium text-foreground shadow-lg shadow-black/10 backdrop-blur">
+        <span className="text-primary">{t('edit.pick.pickFor', { label: typeLabel })}</span> ·{' '}
+        {t('edit.pick.pickHint')}
       </div>
 
       {/* draggable + collapsible element panel, inside the canvas */}
@@ -310,9 +308,7 @@ export function ElementPickLayer() {
                   }}
                   onClick={() => bind(el.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted ${
-                    el.id === currentBound
-                      ? 'bg-violet-50 ring-1 ring-violet-200 dark:bg-violet-500/10 dark:ring-violet-500/30'
-                      : ''
+                    el.id === currentBound ? 'bg-primary/10 ring-1 ring-primary/25' : ''
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate text-foreground/90">

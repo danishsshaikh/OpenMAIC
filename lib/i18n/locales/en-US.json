@@ -58,13 +58,13 @@
       "exportSuccess": "Video artifact exported",
       "exportFailed": "Video artifact export failed",
       "noScenes": "No classroom scenes available to export.",
-      "placeholderBrand": "MIT ADT Teaching AI Video Artifact",
+      "placeholderBrand": "Sandipani Video Artifact",
       "placeholderScene": "Scene {{index}}",
       "placeholderHeading": "{{sceneType}} scene placeholder",
-      "placeholderMessage": "This scene requires Teaching AI interactive playback.",
+      "placeholderMessage": "This scene requires Sandipani interactive playback.",
       "placeholderHtmlMessage": "Open the HTML sidecar for interactive playback.",
       "placeholderHtmlHint": "See {{file}} in this export.",
-      "placeholderHint": "Open in Teaching AI for the full interactive experience."
+      "placeholderHint": "Open in Sandipani for the full interactive experience."
     },
     "videoMp4": {
       "title": "Export MP4 video",

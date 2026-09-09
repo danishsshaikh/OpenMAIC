@@ -123,7 +123,7 @@ function ThumbItemComponent({
           'group/thumb relative flex cursor-pointer select-none flex-col gap-1 rounded-lg p-1.5',
           'outline-none transition-colors duration-150',
           active
-            ? 'bg-violet-50 ring-1 ring-violet-200 dark:bg-violet-900/20 dark:ring-violet-700'
+            ? 'bg-primary/10 ring-1 ring-primary/25 dark:bg-primary/10 dark:ring-primary/25'
             : 'hover:bg-zinc-50/80 dark:hover:bg-zinc-800/50',
         )}
       >
@@ -145,7 +145,7 @@ function ThumbItemComponent({
               className={cn(
                 'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-black leading-none tabular-nums',
                 active
-                  ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/30 dark:bg-violet-500'
+                  ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgb(var(--brand-shadow)/0.44)]'
                   : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400',
               )}
             >
@@ -173,8 +173,8 @@ function ThumbItemComponent({
                 aria-label={t('edit.nav.rename')}
                 className={cn(
                   'min-w-0 flex-1 truncate rounded-sm bg-white px-1 py-0 text-xs font-bold outline-none',
-                  'ring-1 ring-violet-400 focus:ring-violet-500',
-                  'text-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-violet-500',
+                  'ring-1 ring-primary/25 focus:ring-primary/25',
+                  'text-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-primary/25',
                 )}
               />
             ) : (
@@ -187,7 +187,7 @@ function ThumbItemComponent({
                 className={cn(
                   'truncate text-xs font-bold transition-colors',
                   active
-                    ? 'text-violet-700 dark:text-violet-300'
+                    ? 'text-primary dark:text-primary'
                     : 'text-zinc-600 group-hover/thumb:text-zinc-900 dark:text-zinc-300 dark:group-hover/thumb:text-zinc-100',
                 )}
                 title={scene.title}

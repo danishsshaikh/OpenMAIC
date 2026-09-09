@@ -6,6 +6,7 @@ interface BrandWordmarkProps {
   className?: string;
   markClassName?: string;
   textClassName?: string;
+  showDescriptor?: boolean;
   showInstitution?: boolean;
   size?: 'sm' | 'md' | 'lg';
   tone?: 'default' | 'onDark';
@@ -15,7 +16,8 @@ export function BrandWordmark({
   className,
   markClassName,
   textClassName,
-  showInstitution = true,
+  showDescriptor = true,
+  showInstitution = false,
   size = 'md',
   tone = 'default',
 }: BrandWordmarkProps) {
@@ -23,19 +25,22 @@ export function BrandWordmark({
     sm: {
       root: 'gap-2',
       mark: 'h-7 w-7 rounded-md',
-      product: 'text-xs',
+      product: 'text-sm',
+      descriptor: 'text-[9px]',
       institution: 'text-[9px]',
     },
     md: {
       root: 'gap-2.5',
       mark: 'h-9 w-9 rounded-md',
-      product: 'text-sm',
+      product: 'text-base',
+      descriptor: 'text-[11px]',
       institution: 'text-[10px]',
     },
     lg: {
       root: 'gap-3',
       mark: 'h-12 w-12 rounded-lg',
-      product: 'text-xl sm:text-2xl',
+      product: 'text-2xl sm:text-3xl',
+      descriptor: 'text-xs sm:text-sm',
       institution: 'text-[11px] sm:text-xs',
     },
   }[size];
@@ -69,6 +74,17 @@ export function BrandWordmark({
         >
           {brandConfig.productName}
         </div>
+        {showDescriptor && (
+          <div
+            className={cn(
+              'mt-1 truncate font-semibold tracking-normal',
+              sizeClasses.descriptor,
+              onDark ? 'text-white/78' : 'text-primary',
+            )}
+          >
+            {brandConfig.productDescriptor}
+          </div>
+        )}
         {showInstitution && (
           <div
             className={cn(

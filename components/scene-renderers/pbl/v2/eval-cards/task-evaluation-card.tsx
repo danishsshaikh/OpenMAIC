@@ -52,13 +52,13 @@ export function TaskEvaluationCard({ evaluation, className }: Props) {
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-700">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
           <ClipboardCheck className="h-3 w-3" />
           {t('pbl.v2.taskEvalCard.title')}
         </span>
         {score !== undefined && (
           <span
-            className="rounded-md border border-violet-200/70 bg-violet-100/90 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-violet-700 shadow-sm"
+            className="rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-primary shadow-sm"
             aria-label={`Score ${score} out of 100`}
           >
             {score} / 100
@@ -68,14 +68,14 @@ export function TaskEvaluationCard({ evaluation, className }: Props) {
 
       {strengths.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-indigo-700 mb-1.5 font-medium">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-primary mb-1.5 font-medium">
             <Sparkles className="w-3 h-3" />
             {t('pbl.v2.taskEvalCard.strengths')}
           </div>
           <ul className="space-y-1 text-sm leading-snug text-slate-700">
             {strengths.map((s, i) => (
               <li key={i} className="flex gap-1.5">
-                <span className="shrink-0 text-indigo-600">✓</span>
+                <span className="shrink-0 text-primary">✓</span>
                 <span>{s}</span>
               </li>
             ))}

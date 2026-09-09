@@ -1307,7 +1307,7 @@ function SpeechClip({
   return (
     <div
       className={cn(
-        'group/clip relative flex h-full w-[228px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/85 bg-white/75 shadow-sm transition-colors focus-within:border-violet-400 hover:border-violet-300/70 dark:bg-slate-800/50 dark:hover:border-violet-500/40',
+        'group/clip relative flex h-full w-[228px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/85 bg-white/75 shadow-sm transition-colors focus-within:border-primary/25 hover:border-primary/25 dark:bg-slate-800/50 dark:hover:border-primary/25',
         needsText && INCOMPLETE_CLIP,
       )}
     >
@@ -1566,7 +1566,7 @@ function CueMarker({
       className={cn(
         'group/cue relative flex h-full w-[108px] shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-white/65 shadow-sm transition-colors dark:border-gray-700/60 dark:bg-slate-800/40',
         bound
-          ? 'cursor-pointer hover:border-violet-300/70 dark:hover:border-violet-500/40'
+          ? 'cursor-pointer hover:border-primary/25 dark:hover:border-primary/25'
           : 'cursor-grab active:cursor-grabbing',
         needsTarget && cn('border-dashed', m.dash),
       )}
@@ -2497,9 +2497,9 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           onPointerMove={onResizeMove}
           onPointerUp={onResizeEnd}
           onPointerCancel={onResizeEnd}
-          className="group absolute inset-x-0 top-0 z-10 h-1.5 cursor-row-resize touch-none transition-colors hover:bg-violet-400/30 active:bg-violet-500/50 dark:hover:bg-violet-500/30"
+          className="group absolute inset-x-0 top-0 z-10 h-1.5 cursor-row-resize touch-none transition-colors hover:bg-primary/10 active:bg-primary/10 dark:hover:bg-primary/10"
         >
-          <div className="absolute left-1/2 top-[3px] h-0.5 w-9 -translate-x-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-violet-400 dark:bg-gray-600 dark:group-hover:bg-violet-500" />
+          <div className="absolute left-1/2 top-[3px] h-0.5 w-9 -translate-x-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-primary/10 dark:bg-gray-600 dark:group-hover:bg-primary/10" />
         </div>
       )}
 

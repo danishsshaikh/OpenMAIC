@@ -1,8 +1,9 @@
 export const brandConfig = {
-  productName: 'MIT ADT Teaching AI',
-  shortName: 'Teaching AI',
+  productName: 'Sandipani',
+  shortName: 'Sandipani',
+  productDescriptor: 'AI Teaching Studio',
   productDescription:
-    'A faculty-facing AI teaching platform for creating slides, quizzes, simulations, narrated lessons, and interactive classroom content.',
+    'AI Teaching Studio for MIT Art, Design and Technology University faculty to create slides, quizzes, simulations, narrated lessons, and interactive classroom content.',
   institutionName: 'MIT ADT University',
   institutionFullName: 'MIT Art, Design and Technology University',
   institutionWebsite: 'https://mituniversity.ac.in/',
@@ -22,15 +23,15 @@ export const brandConfig = {
     },
   },
   assets: {
-    productMark: '/branding/mit-adt-teaching-ai-mark.svg',
-    productWordmark: '/branding/mit-adt-teaching-ai-wordmark.svg',
+    productMark: '/branding/sandipani-mark.svg',
+    productWordmark: '/branding/sandipani-wordmark.svg',
     institutionLogo: '/branding/mit-adt.png',
     innovationCenterLogo: '/branding/crieya.jpeg',
   },
   export: {
     ctaDestination: 'mituniversity.ac.in',
-    compositionId: 'mit-adt-teaching-ai',
-    manifestFileName: 'mit-adt-teaching-ai-video-manifest.json',
+    compositionId: 'sandipani',
+    manifestFileName: 'sandipani-video-manifest.json',
   },
   openSource: {
     upstreamName: 'OpenMAIC',

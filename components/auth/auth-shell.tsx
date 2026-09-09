@@ -32,11 +32,11 @@ export function AuthShell({
             <div className="max-w-2xl">
               <p className="text-sm font-semibold text-primary">{brandConfig.institutionName}</p>
               <h1 className="mt-4 max-w-xl text-5xl font-semibold leading-[1.04] tracking-normal text-foreground">
-                Teaching AI for faculty-led classrooms
+                {brandConfig.productDescriptor} for faculty-led classrooms
               </h1>
               <p className="mt-6 max-w-lg text-base leading-7 text-muted-foreground">
                 Create classroom material, narrated lessons, simulations, and private faculty
-                workspaces under a university-branded teaching environment.
+                workspaces in {brandConfig.productName}, a university-branded teaching environment.
               </p>
             </div>
 
@@ -61,6 +61,7 @@ export function AuthShell({
               <BrandWordmark
                 size="sm"
                 tone="onDark"
+                showInstitution={false}
                 markClassName="bg-white/12 ring-1 ring-white/20"
                 textClassName="max-w-[290px]"
               />

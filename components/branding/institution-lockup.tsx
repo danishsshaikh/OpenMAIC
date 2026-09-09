@@ -12,23 +12,27 @@ export function InstitutionLockup({
   if (variant === 'compact') {
     return (
       <div className={cn('flex min-w-0 items-center gap-3', className)}>
-        <Image
-          src={brandConfig.assets.institutionLogo}
-          alt={brandConfig.institutionFullName}
-          width={150}
-          height={54}
-          className="h-9 w-auto max-w-[58%] object-contain"
-          priority
-        />
-        <div className="h-8 w-px shrink-0 bg-border" />
-        <Image
-          src={brandConfig.assets.innovationCenterLogo}
-          alt="CRiEYA"
-          width={108}
-          height={48}
-          className="h-8 w-auto max-w-[34%] object-contain"
-          priority
-        />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary shadow-[0_14px_30px_-20px_rgb(var(--brand-shadow))]">
+          <Image
+            src={brandConfig.assets.productMark}
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 object-contain"
+            priority
+          />
+        </div>
+        <div className="min-w-0">
+          <p className="text-base font-semibold leading-tight text-foreground">
+            {brandConfig.productName}
+          </p>
+          <p className="mt-0.5 text-xs font-semibold text-primary">
+            {brandConfig.productDescriptor}
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            {brandConfig.institutionName}
+          </p>
+        </div>
       </div>
     );
   }
@@ -41,34 +45,46 @@ export function InstitutionLockup({
       )}
     >
       <div className="h-1 bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary),var(--brand-gold))]" />
-      <div className="flex items-center gap-4 px-4 py-3 sm:gap-5 sm:px-5">
-        <div className="flex min-w-0 flex-1 items-center">
+      <div className="grid gap-4 px-4 py-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-lg bg-primary shadow-[0_16px_34px_-22px_rgb(var(--brand-shadow))]">
+            <Image
+              src={brandConfig.assets.productMark}
+              alt=""
+              width={56}
+              height={56}
+              className="h-14 w-14 object-contain"
+              priority
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="text-2xl font-semibold leading-none text-[var(--brand-band-foreground)]">
+              {brandConfig.productName}
+            </p>
+            <p className="mt-1.5 text-sm font-semibold text-primary">
+              {brandConfig.productDescriptor}
+            </p>
+            <p className="mt-1.5 text-xs leading-snug text-muted-foreground">
+              {brandConfig.institutionFullName}
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-muted-foreground">Supported by</p>
+            <p className="mt-0.5 text-xs font-semibold leading-snug text-foreground">
+              Centre for Research, Innovation and Entrepreneurship
+            </p>
+          </div>
           <Image
-            src={brandConfig.assets.institutionLogo}
-            alt={brandConfig.institutionFullName}
-            width={188}
-            height={68}
-            className="h-10 w-auto max-w-full object-contain sm:h-11"
+            src={brandConfig.assets.innovationCenterLogo}
+            alt="CRiEYA"
+            width={108}
+            height={48}
+            className="h-8 w-auto max-w-[120px] object-contain opacity-75"
             priority
           />
         </div>
-        <div className="h-10 w-px shrink-0 bg-border" />
-        <div className="hidden min-w-0 flex-1 sm:block">
-          <p className="text-[11px] font-semibold uppercase tracking-normal text-primary">
-            Centre for research, innovation and entrepreneurship
-          </p>
-          <p className="mt-1 truncate text-xs font-medium text-muted-foreground">
-            University-backed classroom AI platform
-          </p>
-        </div>
-        <Image
-          src={brandConfig.assets.innovationCenterLogo}
-          alt="CRiEYA"
-          width={132}
-          height={58}
-          className="h-9 w-auto max-w-[34%] shrink-0 object-contain sm:h-10 sm:max-w-[22%]"
-          priority
-        />
       </div>
     </div>
   );

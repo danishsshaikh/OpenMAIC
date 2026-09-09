@@ -125,9 +125,9 @@ export function RightRailTabs({
       <aside
         onClick={() => setCollapsed(false)}
         title={t('edit.agent.expand')}
-        className="group/rail relative flex h-full w-11 shrink-0 cursor-pointer flex-col items-center gap-3 border-l border-gray-100 bg-white/80 pt-3 backdrop-blur-xl transition-colors hover:bg-violet-50/40 dark:border-gray-800 dark:bg-slate-900/80 dark:hover:bg-violet-500/5 shadow-[-2px_0_24px_rgba(0,0,0,0.02)]"
+        className="group/rail relative flex h-full w-11 shrink-0 cursor-pointer flex-col items-center gap-3 border-l border-gray-100 bg-white/80 pt-3 backdrop-blur-xl transition-colors hover:bg-primary/10 dark:border-gray-800 dark:bg-slate-900/80 dark:hover:bg-primary/10 shadow-[-2px_0_24px_rgba(0,0,0,0.02)]"
       >
-        <span className="grid size-8 place-items-center rounded-lg text-[#5b1fa8] transition-colors group-hover/rail:bg-violet-100/70 dark:text-violet-300 dark:group-hover/rail:bg-violet-500/15">
+        <span className="grid size-8 place-items-center rounded-lg text-[#5b1fa8] transition-colors group-hover/rail:bg-primary/10 dark:text-primary dark:group-hover/rail:bg-primary/10">
           <PanelRightOpen className="size-4" />
         </span>
       </aside>
@@ -159,9 +159,9 @@ export function RightRailTabs({
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group absolute left-0 top-0 bottom-0 z-10 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-violet-400/30 active:bg-violet-500/50 dark:hover:bg-violet-500/30"
+        className="group absolute left-0 top-0 bottom-0 z-10 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-primary/10 active:bg-primary/10 dark:hover:bg-primary/10"
       >
-        <div className="absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-violet-400 dark:bg-gray-600 dark:group-hover:bg-violet-500" />
+        <div className="absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-primary/10 dark:bg-gray-600 dark:group-hover:bg-primary/10" />
       </div>
 
       {/* Tab strip — single header row, no nested header */}
