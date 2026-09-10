@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { brandConfig } from '@/lib/branding/brand-config';
 
 describe('MIT ADT brand config', () => {
-  it('centralizes the Sandipani product name and institution identity', () => {
-    expect(brandConfig.productName).toBe('Sandipani');
-    expect(brandConfig.shortName).toBe('Sandipani');
+  it('centralizes the Sahaya product name and institution identity', () => {
+    expect(brandConfig.productName).toBe('Sahaya');
+    expect(brandConfig.shortName).toBe('Sahaya');
     expect(brandConfig.productDescriptor).toBe('AI Teaching Studio');
     expect(brandConfig.institutionFullName).toBe('MIT Art, Design and Technology University');
     expect(brandConfig.productDescription).toContain('AI Teaching Studio');
@@ -27,7 +27,7 @@ describe('MIT ADT brand config', () => {
   });
 
   it('records dome product asset provenance', () => {
-    const mark = readFileSync(join(process.cwd(), 'public/branding/sandipani-mark.svg'), 'utf8');
+    const mark = readFileSync(join(process.cwd(), 'public/branding/sahaya-mark.svg'), 'utf8');
     expect(mark).toContain('Dome of the Rock');
     expect(mark).toContain('https://www.svgrepo.com/svg/82472/dome-of-the-rock');
     expect(mark).toContain('License: CC0');

@@ -16,7 +16,7 @@ describe('PBL v2 static assets', () => {
 
   test('ships the configured product mark used in the workspace header', () => {
     const svg = readFileSync(`public${brandConfig.assets.productMark}`, 'utf8');
-    expect(svg).toContain('Sandipani product mark');
+    expect(svg).toContain('Sahaya product mark');
     expect(svg).toContain('License: CC0');
   });
 });

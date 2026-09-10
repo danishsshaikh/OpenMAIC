@@ -1,9 +1,9 @@
 export const brandConfig = {
-  productName: 'Sandipani',
-  shortName: 'Sandipani',
+  productName: 'Sahaya',
+  shortName: 'Sahaya',
   productDescriptor: 'AI Teaching Studio',
   productDescription:
-    'AI Teaching Studio for MIT Art, Design and Technology University faculty to create slides, quizzes, simulations, narrated lessons, and interactive classroom content.',
+    'AI Teaching Studio for MIT Art, Design and Technology University faculty. The teacher leads. Sahaya assists.',
   institutionName: 'MIT ADT University',
   institutionFullName: 'MIT Art, Design and Technology University',
   institutionWebsite: 'https://mituniversity.ac.in/',
@@ -23,15 +23,15 @@ export const brandConfig = {
     },
   },
   assets: {
-    productMark: '/branding/sandipani-mark.svg',
-    productWordmark: '/branding/sandipani-wordmark.svg',
+    productMark: '/branding/sahaya-mark.svg',
+    productWordmark: '/branding/sahaya-wordmark.svg',
     institutionLogo: '/branding/mit-adt.png',
     innovationCenterLogo: '/branding/crieya.jpeg',
   },
   export: {
     ctaDestination: 'mituniversity.ac.in',
-    compositionId: 'sandipani',
-    manifestFileName: 'sandipani-video-manifest.json',
+    compositionId: 'sahaya',
+    manifestFileName: 'sahaya-video-manifest.json',
   },
   openSource: {
     upstreamName: 'OpenMAIC',

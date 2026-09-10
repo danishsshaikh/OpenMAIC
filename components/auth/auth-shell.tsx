@@ -30,7 +30,14 @@ export function AuthShell({
           <section className="hidden min-w-0 lg:block">
             <InstitutionLockup className="mb-10 max-w-2xl" />
             <div className="max-w-2xl">
-              <p className="text-sm font-semibold text-primary">{brandConfig.institutionName}</p>
+              <a
+                href={brandConfig.institutionWebsite}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+              >
+                {brandConfig.institutionName}
+              </a>
               <h1 className="mt-4 max-w-xl text-5xl font-semibold leading-[1.04] tracking-normal text-foreground">
                 {brandConfig.productDescriptor} for faculty-led classrooms
               </h1>

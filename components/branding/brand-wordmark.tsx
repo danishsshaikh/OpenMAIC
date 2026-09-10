@@ -86,15 +86,18 @@ export function BrandWordmark({
           </div>
         )}
         {showInstitution && (
-          <div
+          <a
+            href={brandConfig.institutionWebsite}
+            target="_blank"
+            rel="noopener noreferrer"
             className={cn(
-              'mt-1 truncate font-medium tracking-normal',
+              'mt-1 block truncate font-medium tracking-normal underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
               sizeClasses.institution,
               onDark ? 'text-white/68' : 'text-muted-foreground',
             )}
           >
             {brandConfig.institutionName}
-          </div>
+          </a>
         )}
       </div>
     </div>
