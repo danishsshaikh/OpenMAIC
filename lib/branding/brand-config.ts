@@ -2,6 +2,7 @@ export const brandConfig = {
   productName: 'Sahaya',
   shortName: 'Sahaya',
   productDescriptor: 'AI Teaching Studio',
+  heroEyebrow: 'Built for faculty, shaped for teaching',
   productDescription:
     'AI Teaching Studio for MIT Art, Design and Technology University faculty. The teacher leads. Sahaya assists.',
   institutionName: 'MIT ADT University',

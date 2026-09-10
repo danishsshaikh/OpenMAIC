@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
-import { BrandWordmark } from '@/components/branding/brand-wordmark';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupInput, InputGroupButton } from '@/components/ui/input-group';
@@ -576,7 +575,7 @@ function HomePage() {
           classrooms.length === 0 ? 'justify-center min-h-[calc(100dvh-8rem)]' : 'mt-[10vh]',
         )}
       >
-        {/* ── Brand ── */}
+        {/* ── Hero wordmark ── */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -586,9 +585,14 @@ function HomePage() {
             stiffness: 200,
             damping: 20,
           }}
-          className="mb-4"
+          className="mb-5 flex flex-col items-center"
         >
-          <BrandWordmark size="lg" textClassName="text-left" />
+          <div className="mb-3 rounded-full border border-primary/20 bg-card/80 px-3.5 py-1.5 text-[11px] font-semibold text-primary shadow-[0_10px_26px_-22px_rgb(var(--brand-shadow)/0.32)] backdrop-blur dark:shadow-none">
+            {brandConfig.heroEyebrow}
+          </div>
+          <h1 className="font-[family-name:var(--font-display-serif)] text-6xl font-semibold leading-none tracking-normal text-foreground sm:text-7xl md:text-8xl lg:text-9xl">
+            {brandConfig.productName}
+          </h1>
         </motion.div>
 
         {/* ── Slogan ── */}

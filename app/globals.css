@@ -96,6 +96,9 @@
      a single latin-only file, which left Cyrillic and Vietnamese text to OS
      fallback fonts. */
   --font-sans: 'Geist Sans', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display-serif:
+    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia,
+    serif;
   --brand-primary: #5b1fa8;
   --brand-primary-strong: #42116f;
   --brand-secondary: #c02672;

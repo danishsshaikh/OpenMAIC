@@ -8,6 +8,7 @@ describe('MIT ADT brand config', () => {
     expect(brandConfig.productName).toBe('Sahaya');
     expect(brandConfig.shortName).toBe('Sahaya');
     expect(brandConfig.productDescriptor).toBe('AI Teaching Studio');
+    expect(brandConfig.heroEyebrow).toBe('Built for faculty, shaped for teaching');
     expect(brandConfig.institutionFullName).toBe('MIT Art, Design and Technology University');
     expect(brandConfig.productDescription).toContain('AI Teaching Studio');
     expect(brandConfig.visualIdentity.palette.primary).toBe('#5B1FA8');
@@ -22,7 +23,9 @@ describe('MIT ADT brand config', () => {
 
     expect(layout).toContain('brandConfig.productName');
     expect(authShell).toContain('BrandWordmark');
-    expect(home).toContain('BrandWordmark');
+    expect(home).toContain('brandConfig.heroEyebrow');
+    expect(home).toContain('brandConfig.productName');
+    expect(home).not.toContain('for faculty-led classrooms');
     expect(sidebar).toContain('BrandWordmark');
   });
 
