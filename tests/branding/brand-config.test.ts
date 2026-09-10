@@ -23,8 +23,9 @@ describe('MIT ADT brand config', () => {
     const sidebar = readFileSync(join(process.cwd(), 'components/stage/scene-sidebar.tsx'), 'utf8');
 
     expect(layout).toContain('brandConfig.productName');
-    expect(layout).toContain('@fontsource/source-serif-4/500.css');
+    expect(layout).toContain('@fontsource/source-serif-4/500-italic.css');
     expect(globals).toContain('font-family: var(--font-display-serif)');
+    expect(globals).toContain('font-style: italic');
     expect(authShell).toContain('BrandWordmark');
     expect(home).toContain('brandConfig.heroEyebrow');
     expect(home).toContain('brandConfig.productName');
