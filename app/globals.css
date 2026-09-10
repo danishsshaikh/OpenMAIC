@@ -144,6 +144,14 @@
   --sidebar-ring: #6e2ec4;
 }
 
+.sahaya-hero-title {
+  font-family: var(--font-display-serif);
+  font-style: normal;
+  font-weight: 500;
+  font-optical-sizing: auto;
+  letter-spacing: 0;
+}
+
 .dark {
   --brand-primary: #c7b0ee;
   --brand-primary-strong: #e4d8ff;

@@ -590,7 +590,7 @@ function HomePage() {
           <div className="mb-3 rounded-full border border-primary/20 bg-card/80 px-3.5 py-1.5 text-[11px] font-semibold text-primary shadow-[0_10px_26px_-22px_rgb(var(--brand-shadow)/0.32)] backdrop-blur dark:shadow-none">
             {brandConfig.heroEyebrow}
           </div>
-          <h1 className="font-[family-name:var(--font-display-serif)] text-6xl font-semibold leading-none tracking-normal text-foreground sm:text-7xl md:text-8xl lg:text-9xl">
+          <h1 className="sahaya-hero-title text-6xl leading-none text-foreground sm:text-7xl md:text-8xl lg:text-9xl">
             {brandConfig.productName}
           </h1>
         </motion.div>
