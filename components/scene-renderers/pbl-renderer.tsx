@@ -570,7 +570,7 @@ function PBLV2WorkspaceLayer({
             to leave true fullscreen (Esc still works, handled by OpenMAIC).
             `document.exitFullscreen()` triggers OpenMAIC's own fullscreenchange
             cleanup (keyboard unlock etc.) — we never touch OpenMAIC code. The
-            violet, borderless-ish treatment mirrors OpenMAIC's native control
+            brand-accented, borderless-ish treatment mirrors OpenMAIC's native control
             so it reads differently from the neutral web-fullscreen buttons. */}
         {nativeFullscreen ? (
           <button

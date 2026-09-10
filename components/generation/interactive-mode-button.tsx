@@ -34,17 +34,17 @@ export const InteractiveModeButton = forwardRef<HTMLButtonElement, InteractiveMo
           if (!event.defaultPrevented) onPressedChange(!pressed);
         }}
         className={cn(
-          'relative inline-flex h-8 shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 motion-reduce:transition-none motion-reduce:active:scale-100 dark:focus-visible:outline-cyan-300',
+          'relative inline-flex h-8 shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:active:scale-100',
           pressed
-            ? 'border-cyan-400 bg-cyan-100 text-cyan-900 shadow-sm shadow-cyan-200/60 dark:border-cyan-200 dark:bg-cyan-400 dark:text-slate-950 dark:shadow-[0_0_18px_rgba(34,211,238,0.45)]'
-            : 'border-cyan-600 bg-transparent text-cyan-700 hover:bg-cyan-50 dark:border-cyan-700 dark:text-cyan-300 dark:hover:bg-cyan-950/50',
+            ? 'border-primary/35 bg-primary text-primary-foreground shadow-[0_10px_22px_-18px_rgb(var(--brand-shadow)/0.42)] dark:shadow-none'
+            : 'border-primary/30 bg-transparent text-primary hover:bg-primary/10 dark:hover:bg-primary/10',
           className,
         )}
       >
         {pressed && (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-[-4px] rounded-full border border-cyan-300/40 dark:border-cyan-300/60 motion-safe:dark:animate-[interactive-mode-breathe_2s_ease-in-out_infinite]"
+            className="pointer-events-none absolute inset-[-4px] rounded-full border border-primary/25 motion-safe:dark:animate-[interactive-mode-breathe_2s_ease-in-out_infinite]"
           />
         )}
         {pressed ? (

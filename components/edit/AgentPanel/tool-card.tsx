@@ -4,7 +4,7 @@
  * Shared tool-call card for the AgentBar, in the AgentSidebar design board's
  * `.ae-tool` language: a bordered row with a leading glyph, truncating title, an
  * optional `@scene` pill, an optional inline bar-action (always visible on the
- * row — e.g. a Restore button), an icon-only status mark (running = violet
+ * row - e.g. a Restore button), an icon-only status mark (running = brand
  * spinner, done = emerald check ✓, failed = amber cross ✗; the text label is a
  * hover tooltip). Tool cards are intentionally NOT expandable. Every tool card
  * (regenerate / read / future) renders through this

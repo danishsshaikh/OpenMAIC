@@ -212,7 +212,7 @@ function CueTooltip({ tip }: { tip: TooltipState }) {
 
 // Native HTML5 drag snapshots the element's square bounding box, so a round
 // icon chip drags with white corners ("白边"). Suppress the ghost with a 1×1
-// transparent image — the violet drop indicator carries the feedback instead.
+// transparent image - the brand drop indicator carries the feedback instead.
 let blankDragImg: HTMLImageElement | null = null;
 function setBlankDragImage(e: React.DragEvent) {
   if (typeof document === 'undefined') return;

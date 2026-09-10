@@ -16,8 +16,8 @@ export function AuthShell({
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[linear-gradient(120deg,var(--background)_0%,var(--brand-secondary-soft)_42%,var(--background)_78%)] opacity-80 dark:opacity-55" />
-        <div className="absolute inset-x-0 top-0 h-56 bg-[linear-gradient(180deg,var(--brand-wash),transparent)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,var(--background)_0%,var(--brand-secondary-soft)_42%,var(--background)_78%)] opacity-80 dark:hidden" />
+        <div className="absolute inset-x-0 top-0 h-56 bg-[linear-gradient(180deg,var(--brand-wash),transparent)] dark:hidden" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:84px_84px] opacity-[0.16] dark:opacity-[0.08]" />
       </div>
 
@@ -56,8 +56,8 @@ export function AuthShell({
             </div>
           </section>
 
-          <section className="w-full max-w-[456px] overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-[0_28px_90px_-56px_rgb(var(--brand-shadow))] backdrop-blur-xl">
-            <div className="border-b border-border bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] px-5 py-4 text-white sm:px-6">
+          <section className="w-full max-w-[456px] overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-[0_28px_90px_-56px_rgb(var(--brand-shadow))] backdrop-blur-xl dark:shadow-none">
+            <div className="border-b border-border bg-primary px-5 py-4 text-primary-foreground sm:px-6">
               <BrandWordmark
                 size="sm"
                 tone="onDark"

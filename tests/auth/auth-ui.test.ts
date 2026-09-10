@@ -103,6 +103,7 @@ describe('MIT ADT auth UI', () => {
     expect(document.body.textContent).toContain('Faculty access');
     expect(document.body.textContent).toContain(`Use your @${brandConfig.approvedEmailDomain}`);
     expect(document.querySelector('img[src="/branding/sandipani-mark.svg"]')).not.toBeNull();
+    expect(document.querySelector('img[src="/branding/mit-adt.png"]')).not.toBeNull();
     expect(document.querySelector('img[src="/branding/crieya.jpeg"]')).not.toBeNull();
     expect(document.querySelector('a[href="/signup"]')?.textContent).toContain('Create one');
     expect(document.querySelector('button[aria-label="Change theme"]')).not.toBeNull();

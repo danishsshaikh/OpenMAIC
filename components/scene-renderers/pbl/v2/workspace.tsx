@@ -612,11 +612,10 @@ function Panel({ slot, children }: { readonly slot: PanelSlot; readonly children
       className={cn(
         'relative row-start-2 h-full min-w-0 overflow-hidden backdrop-blur-[2px]',
         slot === 'sidebar' &&
-          'bg-[linear-gradient(180deg,rgba(28,39,71,0.96)_0%,rgba(22,34,62,0.94)_100%)] shadow-[inset_-18px_0_38px_rgba(5,12,28,0.10)]',
-        slot === 'chat' &&
-          'bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.10),transparent_34%),linear-gradient(180deg,rgba(15,27,51,0.78)_0%,rgba(11,23,43,0.82)_100%)]',
+          'bg-[rgba(28,35,50,0.96)] shadow-[inset_-18px_0_38px_rgba(5,12,28,0.10)]',
+        slot === 'chat' && 'bg-[rgba(16,24,38,0.82)]',
         slot === 'submission' &&
-          'bg-[linear-gradient(180deg,rgba(18,43,65,0.94)_0%,rgba(18,32,58,0.94)_100%)] shadow-[inset_18px_0_38px_rgba(5,12,28,0.10)]',
+          'bg-[rgba(22,35,50,0.94)] shadow-[inset_18px_0_38px_rgba(5,12,28,0.10)]',
       )}
     >
       <div className="relative z-10 h-full">{children}</div>

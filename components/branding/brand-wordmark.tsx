@@ -50,7 +50,7 @@ export function BrandWordmark({
     <div className={cn('flex min-w-0 items-center', sizeClasses.root, className)}>
       <div
         className={cn(
-          'grid shrink-0 place-items-center bg-primary shadow-[0_10px_24px_-14px_rgb(var(--brand-shadow))]',
+          'grid shrink-0 place-items-center border border-primary/15 bg-card shadow-[0_10px_24px_-18px_rgb(var(--brand-shadow)/0.28)]',
           sizeClasses.mark,
           markClassName,
         )}

@@ -54,7 +54,7 @@ function PdfScanVisualizer() {
   return (
     <div className="size-32 relative flex items-center justify-center">
       <motion.div
-        className="absolute inset-2 bg-cyan-500/5 rounded-2xl blur-lg"
+        className="absolute inset-2 bg-primary/5 rounded-2xl blur-lg"
         animate={{ opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 2, repeat: Infinity }}
       />
@@ -72,7 +72,7 @@ function PdfScanVisualizer() {
         </div>
         {/* Scanning laser */}
         <motion.div
-          className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_rgba(34,211,238,0.6)]"
+          className="absolute inset-x-0 h-[2px] bg-primary/45 shadow-[0_0_12px_rgb(var(--brand-shadow)/0.24)]"
           animate={{ top: ['5%', '90%', '5%'] }}
           transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -82,7 +82,7 @@ function PdfScanVisualizer() {
         animate={{ rotate: [0, 10, -10, 0] }}
         transition={{ duration: 3, repeat: Infinity }}
       >
-        <ScanLine className="size-6 text-cyan-500/70" />
+        <ScanLine className="size-6 text-primary/70" />
       </motion.div>
     </div>
   );

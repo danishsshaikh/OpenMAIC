@@ -3,12 +3,12 @@
 /**
  * MAIC Agent — editor AI sidebar (right rail), "Edit with AI" Cursor-style
  * surface per the OpenMAIC AgentSidebar design board:
- * - user messages are right-aligned solid-violet bubbles (radius 14/14/4/14);
+ * - user messages are right-aligned solid brand bubbles (radius 14/14/4/14);
  * - assistant output is full-width markdown with design-language tool cards in
  *   chronological order;
- * - the composer is a bordered shell with a violet focus glow, an @-context
+ * - the composer is a bordered shell with a brand focus glow, an @-context
  *   chip for the active scene, horizontally-scrolling quick-prompt chips, and a
- *   square violet send button.
+ *   square brand send button.
  * Only design aspects with real V0 backing are implemented — the model picker,
  * Agent/Ask mode, checkpoints/Restore, reasoning blocks and per-element @-chips
  * from the board are intentionally omitted (no runtime support yet).
@@ -68,7 +68,7 @@ const CAPABILITY_KEYS = [
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="flex justify-end">
-      {/* Solid brand-violet bubble, right-aligned, with a tail toward the user
+      {/* Solid brand bubble, right-aligned, with a tail toward the user
           (radius 14/14/4/14) — per the design board's .ae-user. */}
       <div className="min-w-0 max-w-[88%] rounded-[14px] rounded-br-[4px] bg-primary px-3.5 py-2 text-[13px] leading-relaxed text-white [overflow-wrap:anywhere]">
         <MessagePrimitive.Parts />
@@ -399,7 +399,7 @@ export function AgentPanel({
         <div className="absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-primary/10 dark:bg-gray-600 dark:group-hover:bg-primary/10" />
       </div>
 
-      {/* Header — "Edit with AI" with a violet sparkles mark (design .ae-head). */}
+      {/* Header - "Edit with AI" with a brand sparkles mark (design .ae-head). */}
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-gray-100 px-4 pl-5 dark:border-gray-800">
         <Sparkles className="size-3.5 text-[#5b1fa8] dark:text-primary" />
         <span className="text-[13px] font-semibold text-[#5b1fa8] dark:text-primary">
@@ -524,7 +524,7 @@ export function AgentPanel({
           </ThreadPrimitive.ScrollToBottom>
 
           {/* Composer (design .ae-composer): a bordered input shell with an
-              @-scene context chip, a voice-input mic, and a square violet send. */}
+              @-scene context chip, a voice-input mic, and a square brand send. */}
           <div className="px-3 pb-3 pt-1">
             {!canSend ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">

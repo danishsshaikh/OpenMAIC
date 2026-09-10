@@ -119,6 +119,9 @@ export function UsageDashboard() {
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() ||
       (isDark ? '#b99cff' : '#5b1fa8');
+    const brandShadow =
+      getComputedStyle(document.documentElement).getPropertyValue('--brand-shadow').trim() ||
+      '76 35 128';
 
     chart.setOption({
       tooltip: { trigger: 'axis' },
@@ -154,8 +157,8 @@ export function UsageDashboard() {
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: isDark ? 'rgba(167,139,250,0.35)' : 'rgba(124,58,237,0.25)' },
-                { offset: 1, color: isDark ? 'rgba(167,139,250,0.02)' : 'rgba(124,58,237,0.02)' },
+                { offset: 0, color: `rgb(${brandShadow} / ${isDark ? 0.16 : 0.22})` },
+                { offset: 1, color: `rgb(${brandShadow} / 0.02)` },
               ],
             },
           },

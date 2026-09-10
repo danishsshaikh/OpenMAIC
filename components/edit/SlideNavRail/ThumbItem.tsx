@@ -115,7 +115,7 @@ function ThumbItemComponent({
         }}
         // Matches playback `SceneSidebar` tile family — index badge +
         // title header row above an aspect-video thumbnail card, whole
-        // tile flipped to violet-50 + ring when active. Differences from
+        // tile flipped to a brand wash + ring when active. Differences from
         // playback: inline title edit via the more-actions menu, and a
         // hover-revealed three-dot menu (the only editor affordance
         // overlaid on the playback shape).
@@ -263,7 +263,7 @@ function ThumbItemComponent({
 /**
  * One tile in the Pro mode rail. Visual structure deliberately mirrors
  * playback `SceneSidebar` — index badge + title row above an aspect-
- * video thumbnail card, whole tile rounded with a violet background +
+ * video thumbnail card, whole tile rounded with a brand background +
  * ring when active — so the two sidebars read as the same component
  * family across mode toggle. Editor-only additions: hover-revealed
  * three-dot menu (Rename / Duplicate / Delete) and inline title rename

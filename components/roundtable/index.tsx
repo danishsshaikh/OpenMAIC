@@ -1506,7 +1506,7 @@ export function Roundtable({
                           'absolute w-24 h-24 rounded-full blur-2xl',
                           asrEnabled
                             ? 'bg-amber-400/[0.08] dark:bg-amber-500/[0.06]'
-                            : 'bg-primary/10/[0.08] dark:bg-primary/10/[0.06]',
+                            : 'bg-primary/[0.08] dark:bg-primary/[0.06]',
                         )}
                       />
 

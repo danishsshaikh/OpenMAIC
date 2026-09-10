@@ -15,13 +15,13 @@ interface InsertionZoneProps {
  * `space-y-2` density (no layout shift, ever). On hover the `+` badge
  * pops out to the right side of the gap with a small overshoot, sitting
  * on its own z-layer with a solid background + soft drop shadow so it
- * clearly floats above any adjacent violet ring.
+ * clearly floats above any adjacent brand ring.
  */
 export function InsertionZone({ label, onInsert }: InsertionZoneProps) {
   // `z-20` lifts the whole zone above adjacent `Reorder.Item` siblings.
   // Without this, the next-in-DOM-order ThumbItem (which has a `transform`
   // via motion's Reorder, creating its own stacking context) paints on
-  // top, and its violet ring clips through the `+` badge regardless of
+  // top, and its brand ring clips through the `+` badge regardless of
   // any z-index applied inside the InsertionZone itself.
   return (
     <div className="group/insert relative isolate z-20 h-2 cursor-pointer overflow-visible">

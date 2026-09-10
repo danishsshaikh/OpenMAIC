@@ -231,7 +231,7 @@ export function PBLV2Sidebar({
 
 /** SCENARIO ONLY. A small section header marking a three-act boundary. The
  *  prep & wrapup labels share a neutral look; the roleplay label is set apart
- *  (indented + drama marker + violet) to telegraph the immersive stretch. */
+ *  (indented + drama marker + brand accent) to telegraph the immersive stretch. */
 function StageLabel({ stage }: { readonly stage: ScenarioStage }) {
   const { t } = useI18n();
   const labelKey =
@@ -244,7 +244,7 @@ function StageLabel({ stage }: { readonly stage: ScenarioStage }) {
   if (stage === 'roleplay') {
     return (
       <div className="ml-3 mt-2 mb-0.5 flex items-center px-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 ring-1 ring-primary/25 shadow-[0_4px_14px_rgba(124,92,255,0.25)]">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 ring-1 ring-primary/25 shadow-[0_4px_14px_-10px_rgb(var(--brand-shadow)/0.32)] dark:shadow-none">
           <Drama className="h-3 w-3 text-primary" />
           <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
             {t(labelKey)}
@@ -393,7 +393,7 @@ function MilestoneNode({
             disabled={sceneBusy}
             className={cn(
               'flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors',
-              'bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-[0_8px_22px_rgba(124,92,255,0.30)] hover:brightness-110',
+              'bg-primary text-primary-foreground shadow-[0_8px_22px_-16px_rgb(var(--brand-shadow)/0.38)] hover:bg-primary/90 dark:shadow-none',
               'disabled:cursor-not-allowed disabled:opacity-60',
             )}
           >

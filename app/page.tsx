@@ -561,8 +561,8 @@ function HomePage() {
 
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute inset-x-0 top-0 h-72 bg-[linear-gradient(180deg,var(--brand-wash),transparent)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,var(--brand-secondary-soft)_44%,transparent_72%)] opacity-70 dark:opacity-35" />
+        <div className="absolute inset-x-0 top-0 h-72 bg-[linear-gradient(180deg,var(--brand-wash),transparent)] dark:hidden" />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,var(--brand-secondary-soft)_44%,transparent_72%)] opacity-70 dark:hidden" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:104px_104px] opacity-[0.11] dark:opacity-[0.07]" />
       </div>
 
@@ -608,8 +608,7 @@ function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full overflow-hidden rounded-lg border border-border bg-card/95 shadow-[0_28px_76px_-54px_rgb(var(--brand-shadow))] backdrop-blur-xl transition-shadow focus-within:border-primary/40 focus-within:shadow-[0_34px_90px_-56px_rgb(var(--brand-shadow))]">
-            <div className="h-1 bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary),var(--brand-gold))]" />
+          <div className="w-full overflow-hidden rounded-lg border border-border bg-card/95 shadow-[0_28px_76px_-54px_rgb(var(--brand-shadow))] backdrop-blur-xl transition-shadow focus-within:border-primary/40 focus-within:shadow-[0_34px_90px_-56px_rgb(var(--brand-shadow))] dark:shadow-none">
             {/* ── Greeting + Profile + Agents ── */}
             <div className="relative z-20 flex items-start justify-between">
               <GreetingBar />
@@ -680,7 +679,7 @@ function HomePage() {
                 className={cn(
                   'flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 transition-all',
                   canGenerate
-                    ? 'cursor-pointer bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_12px_24px_-18px_rgb(var(--brand-shadow))] hover:opacity-95 active:scale-[0.98]'
+                    ? 'cursor-pointer bg-primary text-primary-foreground shadow-[0_12px_24px_-18px_rgb(var(--brand-shadow))] hover:bg-primary/90 active:scale-[0.98] dark:shadow-none'
                     : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
                 )}
               >

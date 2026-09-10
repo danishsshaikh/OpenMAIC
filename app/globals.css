@@ -142,30 +142,30 @@
 }
 
 .dark {
-  --brand-primary: #b99cff;
-  --brand-primary-strong: #d9ccff;
-  --brand-secondary: #f06aa9;
+  --brand-primary: #c7b0ee;
+  --brand-primary-strong: #e4d8ff;
+  --brand-secondary: #e76aa4;
   --brand-secondary-soft: rgb(240 106 169 / 0.16);
   --brand-gold: #e6bd62;
-  --brand-surface: #181020;
-  --brand-surface-warm: #201626;
-  --brand-band: #20142d;
+  --brand-surface: #17141b;
+  --brand-surface-warm: #201b25;
+  --brand-band: #211c27;
   --brand-band-foreground: #f8f2ff;
   --brand-shadow: 0 0 0;
-  --brand-wash: rgb(185 156 255 / 0.14);
-  --background: #181020;
+  --brand-wash: rgb(199 176 238 / 0.1);
+  --background: #17141b;
   --foreground: #fbf7ff;
-  --card: #21162d;
+  --card: #211c27;
   --card-foreground: oklch(0.985 0 0);
-  --popover: #21162d;
+  --popover: #211c27;
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #b99cff;
+  --primary: #c7b0ee;
   --primary-foreground: #1b0f2a;
-  --secondary: #33233f;
+  --secondary: #302936;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: #2d2038;
-  --muted-foreground: #c8bdd4;
-  --accent: #f06aa9;
+  --muted: #2a2530;
+  --muted-foreground: #cfc6d6;
+  --accent: #e76aa4;
   --accent-foreground: #210a18;
   --destructive: oklch(0.704 0.191 22.216);
   --border: rgb(251 247 255 / 0.13);
@@ -176,11 +176,11 @@
   --chart-3: #e6bd62;
   --chart-4: #80bdd6;
   --chart-5: #73c7a4;
-  --sidebar: #1c1328;
+  --sidebar: #1d1822;
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #b99cff;
+  --sidebar-primary: #c7b0ee;
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: #30213c;
+  --sidebar-accent: #2a2530;
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: rgb(251 247 255 / 0.13);
   --sidebar-ring: #cbb8ff;
@@ -480,23 +480,18 @@ body[data-maic-editor='true'] .editable-element-text li,
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-markdown :where(li)::marker {
-  color: rgb(99 102 241 / 0.65);
+  color: var(--primary);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgb(147 197 253 / 0.2);
-  background:
-    radial-gradient(circle at 8% 0%, rgb(157 140 255 / 0.16), transparent 34%),
-    radial-gradient(circle at 96% 15%, rgb(34 211 238 / 0.1), transparent 30%),
-    linear-gradient(145deg, rgb(22 35 62 / 0.78), rgb(17 31 56 / 0.72) 58%, rgb(15 28 50 / 0.8));
+  border: 1px solid rgb(251 247 255 / 0.14);
+  background: rgb(255 255 255 / 0.055);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.1),
-    inset 0 0 0 1px rgb(255 255 255 / 0.025),
-    0 18px 42px rgb(3 10 26 / 0.32),
-    0 0 34px rgb(96 165 250 / 0.08);
-  backdrop-filter: blur(18px);
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 18px 42px rgb(3 10 26 / 0.24);
+  backdrop-filter: blur(14px);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble::before {
@@ -504,13 +499,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(165 180 252 / 0.55),
-    rgb(103 232 249 / 0.34),
-    transparent
-  );
+  background: rgb(255 255 255 / 0.08);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble::after {
@@ -521,7 +510,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   height: 120px;
   width: 120px;
   border-radius: 999px;
-  background: rgb(125 211 252 / 0.08);
+  background: rgb(255 255 255 / 0.045);
   filter: blur(20px);
 }
 
@@ -531,29 +520,19 @@ body[data-maic-editor='true'] .editable-element-text li,
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-label {
-  color: rgb(165 180 252 / 0.82);
+  color: var(--primary);
   letter-spacing: 0.04em;
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgb(199 210 254 / 0.55);
-  background:
-    radial-gradient(circle at 12% 0%, rgb(167 139 250 / 0.26), transparent 34%),
-    radial-gradient(circle at 92% 12%, rgb(103 232 249 / 0.2), transparent 28%),
-    linear-gradient(
-      145deg,
-      rgb(245 243 255 / 0.7),
-      rgb(239 246 255 / 0.5) 54%,
-      rgb(236 254 255 / 0.56)
-    );
+  border: 1px solid rgb(251 247 255 / 0.16);
+  background: rgb(255 255 255 / 0.08);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.65),
-    0 20px 54px rgb(3 10 26 / 0.3),
-    0 0 0 1px rgb(139 92 246 / 0.12),
-    0 0 42px rgb(99 102 241 / 0.14);
-  backdrop-filter: blur(20px) saturate(1.08);
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 20px 54px rgb(3 10 26 / 0.24);
+  backdrop-filter: blur(16px);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell::before {
@@ -561,10 +540,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(135deg, rgb(255 255 255 / 0.5), transparent 34%),
-    linear-gradient(90deg, rgb(167 139 250 / 0.72), rgb(103 232 249 / 0.42), transparent) top / 100%
-      1px no-repeat;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.08), transparent 34%);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell > * {

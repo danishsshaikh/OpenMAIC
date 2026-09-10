@@ -71,13 +71,10 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
   return (
     <div
       className={cn(
-        'relative space-y-4 overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-primary/25',
+        'relative space-y-4 overflow-hidden rounded-2xl border border-primary/25 bg-card p-5 text-card-foreground shadow-[0_22px_58px_-42px_rgb(var(--brand-shadow)/0.34)] dark:shadow-none',
         className,
       )}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-cyan-400" />
-      <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-cyan-200/35 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
       {/* Header */}
       <div className="relative flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
@@ -148,7 +145,7 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
                 'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all',
                 consumed
                   ? 'cursor-default border border-slate-300 bg-slate-100 text-slate-500 shadow-none'
-                  : 'bg-gradient-to-r from-primary to-cyan-500 text-white shadow-[0_12px_28px_rgba(99,102,241,0.30),0_0_22px_rgba(34,211,238,0.18)] hover:from-primary hover:to-cyan-400 hover:shadow-[0_16px_34px_rgba(99,102,241,0.38),0_0_28px_rgba(34,211,238,0.24)]',
+                  : 'bg-primary text-primary-foreground shadow-[0_12px_28px_-20px_rgb(var(--brand-shadow)/0.42)] hover:bg-primary/90 dark:shadow-none',
               )}
             >
               {consumed ? (
