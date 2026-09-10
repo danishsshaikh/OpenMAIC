@@ -57,7 +57,7 @@ export function AuthShell({
           </section>
 
           <section className="w-full max-w-[456px] overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-[0_28px_90px_-56px_rgb(var(--brand-shadow))] backdrop-blur-xl dark:shadow-none">
-            <div className="border-b border-border bg-primary px-5 py-4 text-primary-foreground sm:px-6">
+            <div className="border-b border-border bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] px-5 py-4 text-white sm:px-6 dark:bg-primary dark:bg-none dark:text-primary-foreground">
               <BrandWordmark
                 size="sm"
                 tone="onDark"

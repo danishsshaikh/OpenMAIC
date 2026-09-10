@@ -609,6 +609,7 @@ function HomePage() {
           className="w-full"
         >
           <div className="w-full overflow-hidden rounded-lg border border-border bg-card/95 shadow-[0_28px_76px_-54px_rgb(var(--brand-shadow))] backdrop-blur-xl transition-shadow focus-within:border-primary/40 focus-within:shadow-[0_34px_90px_-56px_rgb(var(--brand-shadow))] dark:shadow-none">
+            <div className="h-1 bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary),var(--brand-gold))] dark:hidden" />
             {/* ── Greeting + Profile + Agents ── */}
             <div className="relative z-20 flex items-start justify-between">
               <GreetingBar />
@@ -679,7 +680,7 @@ function HomePage() {
                 className={cn(
                   'flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 transition-all',
                   canGenerate
-                    ? 'cursor-pointer bg-primary text-primary-foreground shadow-[0_12px_24px_-18px_rgb(var(--brand-shadow))] hover:bg-primary/90 active:scale-[0.98] dark:shadow-none'
+                    ? 'cursor-pointer bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_12px_24px_-18px_rgb(var(--brand-shadow))] hover:opacity-95 active:scale-[0.98] dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:opacity-100'
                     : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
                 )}
               >

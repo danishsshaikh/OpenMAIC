@@ -875,7 +875,8 @@ function StreamingDraft({
 
   if (status === 'eval-milestone') {
     return (
-      <div className="relative animate-in fade-in-0 overflow-hidden rounded-2xl border border-primary/25 bg-card p-5 text-card-foreground shadow-[0_22px_58px_-42px_rgb(var(--brand-shadow)/0.34)] duration-300 dark:shadow-none">
+      <div className="relative animate-in fade-in-0 overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-primary/25 duration-300 dark:bg-card dark:bg-none dark:text-card-foreground dark:shadow-none dark:ring-0">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-cyan-400 dark:hidden" />
         <div className="relative mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
           {label}
         </div>

@@ -86,7 +86,7 @@ export function LoginForm() {
         type="submit"
         disabled={submitting}
         size="lg"
-        className="mt-2 h-11 w-full bg-primary text-primary-foreground shadow-[0_16px_32px_-20px_rgb(var(--brand-shadow))] hover:bg-primary/90 dark:shadow-none"
+        className="mt-2 h-11 w-full bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_16px_32px_-20px_rgb(var(--brand-shadow))] hover:opacity-95 dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:opacity-100"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
         Sign in

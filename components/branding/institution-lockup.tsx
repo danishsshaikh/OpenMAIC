@@ -42,6 +42,7 @@ export function InstitutionLockup({
     <div
       className={cn('relative overflow-hidden rounded-lg border border-border bg-card', className)}
     >
+      <div className="h-1 bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary),var(--brand-gold))] dark:hidden" />
       <div className="grid gap-4 px-4 py-4 sm:px-5">
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="flex min-w-0 items-center gap-3">
