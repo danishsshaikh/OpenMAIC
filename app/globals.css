@@ -44,6 +44,39 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-violet-50: var(--secondary);
+  --color-violet-100: var(--secondary);
+  --color-violet-200: var(--border);
+  --color-violet-300: var(--brand-primary);
+  --color-violet-400: var(--brand-secondary);
+  --color-violet-500: var(--primary);
+  --color-violet-600: var(--primary);
+  --color-violet-700: var(--secondary-foreground);
+  --color-violet-800: var(--border);
+  --color-violet-900: var(--secondary);
+  --color-violet-950: var(--brand-surface-warm);
+  --color-purple-50: var(--secondary);
+  --color-purple-100: var(--secondary);
+  --color-purple-200: var(--border);
+  --color-purple-300: var(--brand-primary);
+  --color-purple-400: var(--brand-secondary);
+  --color-purple-500: var(--primary);
+  --color-purple-600: var(--primary);
+  --color-purple-700: var(--secondary-foreground);
+  --color-purple-800: var(--border);
+  --color-purple-900: var(--secondary);
+  --color-purple-950: var(--brand-surface-warm);
+  --color-indigo-50: var(--secondary);
+  --color-indigo-100: var(--secondary);
+  --color-indigo-200: var(--border);
+  --color-indigo-300: var(--brand-primary);
+  --color-indigo-400: var(--brand-secondary);
+  --color-indigo-500: var(--primary);
+  --color-indigo-600: var(--primary);
+  --color-indigo-700: var(--secondary-foreground);
+  --color-indigo-800: var(--border);
+  --color-indigo-900: var(--secondary);
+  --color-indigo-950: var(--brand-surface-warm);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -62,73 +95,106 @@
      @font-face per unicode subset. Previously this came from next/font wrapping
      a single latin-only file, which left Cyrillic and Vietnamese text to OS
      fallback fonts. */
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #722ed1;
+  --font-sans: 'Geist Sans', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display-serif:
+    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia,
+    serif;
+  --brand-primary: #5b1fa8;
+  --brand-primary-strong: #42116f;
+  --brand-secondary: #c02672;
+  --brand-secondary-soft: #f9e7f1;
+  --brand-gold: #d8a432;
+  --brand-surface: #fcfaff;
+  --brand-surface-warm: #fffdf8;
+  --brand-band: #ffffff;
+  --brand-band-foreground: #2c1749;
+  --brand-shadow: 76 35 128;
+  --brand-wash: rgb(91 31 168 / 0.11);
+  --background: #fcfaff;
+  --foreground: #1c1724;
+  --card: #ffffff;
+  --card-foreground: #1c1724;
+  --popover: #ffffff;
+  --popover-foreground: #1c1724;
+  --primary: #5b1fa8;
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --secondary: #f9e7f1;
+  --secondary-foreground: #42116f;
+  --muted: #f3edf8;
+  --muted-foreground: #6c6078;
+  --accent: #c02672;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --border: #e6dff0;
+  --input: #ddd3ea;
+  --ring: #6e2ec4;
+  --chart-1: #5b1fa8;
+  --chart-2: #c02672;
+  --chart-3: #d8a432;
+  --chart-4: #3b6c8c;
+  --chart-5: #2d7a62;
+  --radius: 0.5rem;
+  --sidebar: #fbf8ff;
+  --sidebar-foreground: #1c1724;
+  --sidebar-primary: #5b1fa8;
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent: #f3edf8;
+  --sidebar-accent-foreground: #42116f;
+  --sidebar-border: #e6dff0;
+  --sidebar-ring: #6e2ec4;
+}
+
+.sahaya-hero-title {
+  font-family: var(--font-display-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-optical-sizing: auto;
+  letter-spacing: 0;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --brand-primary: #c7b0ee;
+  --brand-primary-strong: #e4d8ff;
+  --brand-secondary: #e76aa4;
+  --brand-secondary-soft: rgb(240 106 169 / 0.16);
+  --brand-gold: #e6bd62;
+  --brand-surface: #17141b;
+  --brand-surface-warm: #201b25;
+  --brand-band: #211c27;
+  --brand-band-foreground: #f8f2ff;
+  --brand-shadow: 0 0 0;
+  --brand-wash: rgb(199 176 238 / 0.1);
+  --background: #17141b;
+  --foreground: #fbf7ff;
+  --card: #211c27;
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: #211c27;
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #8b47ea;
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --primary: #c7b0ee;
+  --primary-foreground: #1b0f2a;
+  --secondary: #302936;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --muted: #2a2530;
+  --muted-foreground: #cfc6d6;
+  --accent: #e76aa4;
+  --accent-foreground: #210a18;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
+  --border: rgb(251 247 255 / 0.13);
+  --input: rgb(251 247 255 / 0.18);
+  --ring: #cbb8ff;
+  --chart-1: #b99cff;
+  --chart-2: #f06aa9;
+  --chart-3: #e6bd62;
+  --chart-4: #80bdd6;
+  --chart-5: #73c7a4;
+  --sidebar: #1d1822;
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: #c7b0ee;
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: #2a2530;
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-border: rgb(251 247 255 / 0.13);
+  --sidebar-ring: #cbb8ff;
 }
 
 @layer base {
@@ -425,23 +491,18 @@ body[data-maic-editor='true'] .editable-element-text li,
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-markdown :where(li)::marker {
-  color: rgb(99 102 241 / 0.65);
+  color: var(--primary);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgb(147 197 253 / 0.2);
-  background:
-    radial-gradient(circle at 8% 0%, rgb(157 140 255 / 0.16), transparent 34%),
-    radial-gradient(circle at 96% 15%, rgb(34 211 238 / 0.1), transparent 30%),
-    linear-gradient(145deg, rgb(22 35 62 / 0.78), rgb(17 31 56 / 0.72) 58%, rgb(15 28 50 / 0.8));
+  border: 1px solid rgb(251 247 255 / 0.14);
+  background: rgb(255 255 255 / 0.055);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.1),
-    inset 0 0 0 1px rgb(255 255 255 / 0.025),
-    0 18px 42px rgb(3 10 26 / 0.32),
-    0 0 34px rgb(96 165 250 / 0.08);
-  backdrop-filter: blur(18px);
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 18px 42px rgb(3 10 26 / 0.24);
+  backdrop-filter: blur(14px);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble::before {
@@ -449,13 +510,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(165 180 252 / 0.55),
-    rgb(103 232 249 / 0.34),
-    transparent
-  );
+  background: rgb(255 255 255 / 0.08);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-bubble::after {
@@ -466,7 +521,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   height: 120px;
   width: 120px;
   border-radius: 999px;
-  background: rgb(125 211 252 / 0.08);
+  background: rgb(255 255 255 / 0.045);
   filter: blur(20px);
 }
 
@@ -476,29 +531,19 @@ body[data-maic-editor='true'] .editable-element-text li,
 }
 
 [data-pbl-workspace='true'] .pbl-v2-instructor-label {
-  color: rgb(165 180 252 / 0.82);
+  color: var(--primary);
   letter-spacing: 0.04em;
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgb(199 210 254 / 0.55);
-  background:
-    radial-gradient(circle at 12% 0%, rgb(167 139 250 / 0.26), transparent 34%),
-    radial-gradient(circle at 92% 12%, rgb(103 232 249 / 0.2), transparent 28%),
-    linear-gradient(
-      145deg,
-      rgb(245 243 255 / 0.7),
-      rgb(239 246 255 / 0.5) 54%,
-      rgb(236 254 255 / 0.56)
-    );
+  border: 1px solid rgb(251 247 255 / 0.16);
+  background: rgb(255 255 255 / 0.08);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.65),
-    0 20px 54px rgb(3 10 26 / 0.3),
-    0 0 0 1px rgb(139 92 246 / 0.12),
-    0 0 42px rgb(99 102 241 / 0.14);
-  backdrop-filter: blur(20px) saturate(1.08);
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 20px 54px rgb(3 10 26 / 0.24);
+  backdrop-filter: blur(16px);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell::before {
@@ -506,10 +551,7 @@ body[data-maic-editor='true'] .editable-element-text li,
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(135deg, rgb(255 255 255 / 0.5), transparent 34%),
-    linear-gradient(90deg, rgb(167 139 250 / 0.72), rgb(103 232 249 / 0.42), transparent) top / 100%
-      1px no-repeat;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.08), transparent 34%);
 }
 
 [data-pbl-workspace='true'] .pbl-v2-task-review-shell > * {

@@ -14,6 +14,7 @@ import {
   VIDEO_FRAME_TARGET_RENDERER,
 } from '@/lib/export/video-frame-types';
 import type { CollectedMedia } from '@/lib/export/classroom-zip-utils';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 describe('video frame export planner', () => {
   it('sorts scenes by order and writes ordered frame names', () => {
@@ -189,8 +190,7 @@ describe('video frame export planner', () => {
       },
       {
         family: 'pbl',
-        reason:
-          'PBL scenes require OpenMAIC task runtime; this artifact preserves scene JSON for future renderer support.',
+        reason: `PBL scenes require ${brandConfig.shortName} task runtime; this artifact preserves scene JSON for future renderer support.`,
       },
     ]);
   });

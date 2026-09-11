@@ -27,7 +27,7 @@ export function AuthThemeToggle() {
         onClick={() => setOpen((value) => !value)}
         aria-label="Change theme"
         aria-expanded={open}
-        className="rounded-full bg-background/70 shadow-sm"
+        className="rounded-lg border-border bg-card/80 shadow-[0_8px_20px_-18px_rgb(var(--brand-shadow)/0.32)] backdrop-blur hover:bg-muted"
       >
         <ActiveIcon className="h-4 w-4" />
       </Button>

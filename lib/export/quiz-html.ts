@@ -1,4 +1,5 @@
 import type { QuizContent, QuizOption, QuizQuestion } from '@/lib/types/stage';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 export interface GenerateQuizHtmlInput {
   sceneTitle: string;
@@ -64,13 +65,13 @@ export function generateStandaloneQuizHtml({
 <body>
   <main>
     <header>
-      <div class="eyebrow">OpenMAIC Quiz Export</div>
+      <div class="eyebrow">${escapeHtml(brandConfig.productName)} Quiz Export</div>
       <h1 id="quiz-title"></h1>
-      <p class="hint">Standalone quiz sidecar. Choice questions are graded locally when an answer key is available. Short-answer grading does not call OpenMAIC APIs.</p>
+      <p class="hint">Standalone quiz sidecar. Choice questions are graded locally when an answer key is available. Short-answer grading does not call ${escapeHtml(brandConfig.shortName)} APIs.</p>
     </header>
     <section id="quiz-root"></section>
     <button id="check-answers" type="button">Check answers</button>
-    <footer>This file is an exported fallback sidecar, not a full OpenMAIC classroom playback recording.</footer>
+    <footer>This file is an exported fallback sidecar, not a full ${escapeHtml(brandConfig.shortName)} classroom playback recording.</footer>
   </main>
   <script type="application/json" id="quiz-data">${escapeJsonForScript(quizData)}</script>
   <script>

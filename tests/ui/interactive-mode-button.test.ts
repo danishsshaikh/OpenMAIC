@@ -22,8 +22,8 @@ describe('InteractiveModeButton markup contract', () => {
     const html = renderButton(true);
 
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('border-cyan-400 bg-cyan-100 text-cyan-900');
-    expect(html).toContain('dark:border-cyan-200 dark:bg-cyan-400');
+    expect(html).toContain('border-primary/35 bg-primary text-primary-foreground');
+    expect(html).toContain('dark:shadow-none');
     expect(html).toContain('lucide-check');
   });
 
@@ -31,8 +31,8 @@ describe('InteractiveModeButton markup contract', () => {
     const html = renderButton(false);
 
     expect(html).toContain('aria-pressed="false"');
-    expect(html).toContain('border-cyan-600 bg-transparent text-cyan-700');
-    expect(html).toContain('dark:border-cyan-700 dark:text-cyan-300');
+    expect(html).toContain('border-primary/30 bg-transparent text-primary');
+    expect(html).toContain('dark:hover:bg-primary/10');
     expect(html).toContain('lucide-atom');
     expect(html).not.toContain('bg-cyan-100');
     expect(html).not.toContain('dark:bg-cyan-400');

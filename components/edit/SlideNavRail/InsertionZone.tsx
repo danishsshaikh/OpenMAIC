@@ -15,13 +15,13 @@ interface InsertionZoneProps {
  * `space-y-2` density (no layout shift, ever). On hover the `+` badge
  * pops out to the right side of the gap with a small overshoot, sitting
  * on its own z-layer with a solid background + soft drop shadow so it
- * clearly floats above any adjacent violet ring.
+ * clearly floats above any adjacent brand ring.
  */
 export function InsertionZone({ label, onInsert }: InsertionZoneProps) {
   // `z-20` lifts the whole zone above adjacent `Reorder.Item` siblings.
   // Without this, the next-in-DOM-order ThumbItem (which has a `transform`
   // via motion's Reorder, creating its own stacking context) paints on
-  // top, and its violet ring clips through the `+` badge regardless of
+  // top, and its brand ring clips through the `+` badge regardless of
   // any z-index applied inside the InsertionZone itself.
   return (
     <div className="group/insert relative isolate z-20 h-2 cursor-pointer overflow-visible">
@@ -43,10 +43,10 @@ export function InsertionZone({ label, onInsert }: InsertionZoneProps) {
           'pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 z-30',
           'inline-flex h-5 w-5 items-center justify-center rounded-full',
           // Solid background + ring + shadow gives it real visual
-          // elevation against the neighbouring violet ring zones.
-          'bg-white text-violet-600 ring-1 ring-violet-200',
-          'dark:bg-zinc-900 dark:text-violet-300 dark:ring-violet-400/40',
-          'shadow-md shadow-violet-500/15 dark:shadow-violet-500/20',
+          // elevation against the neighbouring brand ring zones.
+          'bg-white text-primary ring-1 ring-primary/25',
+          'dark:bg-zinc-900 dark:text-primary dark:ring-primary/25',
+          'shadow-[0_10px_20px_-16px_rgb(var(--brand-shadow)/0.36)]',
           // Popup motion: start tiny + transparent, end full size with a
           // small overshoot. The custom cubic-bezier is a classic
           // "back-ease-out" giving it a quick, springy reveal.

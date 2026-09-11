@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -42,7 +43,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-5" onSubmit={onSubmit}>
+    <form className="space-y-4" onSubmit={onSubmit}>
       <Field>
         <FieldLabel htmlFor="login-email">University Email</FieldLabel>
         <Input
@@ -52,8 +53,11 @@ export function LoginForm() {
           type="email"
           autoComplete="email"
           required
+          className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
         />
-        <FieldDescription>Use your @mituniversity.edu.in email address.</FieldDescription>
+        <FieldDescription>
+          Use your @{brandConfig.approvedEmailDomain} email address.
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor="login-password">Password</FieldLabel>
@@ -65,6 +69,7 @@ export function LoginForm() {
             type={passwordVisible ? 'text' : 'password'}
             autoComplete="current-password"
             required
+            className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
           />
           <InputGroupButton
             type="button"
@@ -77,15 +82,20 @@ export function LoginForm() {
         </InputGroup>
       </Field>
       {error && <FieldError>{error}</FieldError>}
-      <Button type="submit" disabled={submitting} size="lg" className="w-full">
+      <Button
+        type="submit"
+        disabled={submitting}
+        size="lg"
+        className="mt-2 h-11 w-full bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_16px_32px_-20px_rgb(var(--brand-shadow))] hover:opacity-95 dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:opacity-100"
+      >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
         Sign in
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
-        New to OpenMAIC?{' '}
+      <p className="pt-1 text-center text-sm text-muted-foreground">
+        New to {brandConfig.shortName}?{' '}
         <Link
           href="/signup"
-          className="font-medium text-primary underline-offset-4 hover:underline"
+          className="font-semibold text-primary underline-offset-4 hover:underline"
         >
           Create one
         </Link>

@@ -73,6 +73,8 @@ import { useImportPptx } from '@/lib/import/use-import-pptx';
 import { InteractiveModeButton } from '@/components/generation/interactive-mode-button';
 import { TeachingVoiceCard } from '@/components/voice-cloning/teaching-voice-card';
 import { AccountMenu } from '@/components/auth/account-menu';
+import { brandConfig } from '@/lib/branding/brand-config';
+import { englishOnlyDeployment } from '@/lib/i18n/deployment';
 
 const log = createLogger('Home');
 
@@ -445,7 +447,7 @@ function HomePage() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 pt-16 md:p-8 md:pt-16 overflow-x-hidden">
+    <div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden bg-background p-4 pt-16 md:p-8 md:pt-16">
       <input
         ref={fileInputRef}
         type="file"
@@ -462,15 +464,17 @@ function HomePage() {
           className="hidden"
         />
       )}
-      {/* ═══ Top-right pill (unchanged) ═══ */}
+      {/* ═══ Top-right controls ═══ */}
       <div
         ref={toolbarRef}
-        className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-2 py-1.5 rounded-full border border-gray-100/50 dark:border-gray-700/50 shadow-sm"
+        className="fixed right-4 top-4 z-50 flex items-center gap-1 rounded-lg border border-border bg-card/90 px-2 py-1.5 shadow-[0_14px_34px_-26px_rgb(var(--brand-shadow))] backdrop-blur-md"
       >
-        {/* Language Selector */}
-        <LanguageSwitcher onOpen={() => setThemeOpen(false)} />
-
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        {englishOnlyDeployment.showLanguageSwitcher && (
+          <>
+            <LanguageSwitcher onOpen={() => setThemeOpen(false)} />
+            <div className="w-[1px] h-4 bg-border" />
+          </>
+        )}
 
         {/* Theme Selector */}
         <div className="relative">
@@ -478,23 +482,22 @@ function HomePage() {
             onClick={() => {
               setThemeOpen(!themeOpen);
             }}
-            className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all"
+            className="rounded-md p-2 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
           >
             {theme === 'light' && <Sun className="w-4 h-4" />}
             {theme === 'dark' && <Moon className="w-4 h-4" />}
             {theme === 'system' && <Monitor className="w-4 h-4" />}
           </button>
           {themeOpen && (
-            <div className="absolute top-full mt-2 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden z-50 min-w-[140px]">
+            <div className="absolute right-0 top-full z-50 mt-2 min-w-[140px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
               <button
                 onClick={() => {
                   setTheme('light');
                   setThemeOpen(false);
                 }}
                 className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'light' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  'flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-muted',
+                  theme === 'light' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Sun className="w-4 h-4" />
@@ -506,9 +509,8 @@ function HomePage() {
                   setThemeOpen(false);
                 }}
                 className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'dark' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  'flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-muted',
+                  theme === 'dark' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Moon className="w-4 h-4" />
@@ -520,9 +522,8 @@ function HomePage() {
                   setThemeOpen(false);
                 }}
                 className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'system' &&
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                  'flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-muted',
+                  theme === 'system' && 'bg-primary/10 text-primary',
                 )}
               >
                 <Monitor className="w-4 h-4" />
@@ -532,17 +533,17 @@ function HomePage() {
           )}
         </div>
 
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        <div className="w-[1px] h-4 bg-border" />
 
         <AccountMenu />
 
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        <div className="w-[1px] h-4 bg-border" />
 
         {/* Settings Button */}
         <div className="relative">
           <button
             onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all group"
+            className="group rounded-md p-2 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
           >
             <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
           </button>
@@ -559,14 +560,9 @@ function HomePage() {
 
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '4s' }}
-        />
-        <div
-          className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDuration: '6s' }}
-        />
+        <div className="absolute inset-x-0 top-0 h-72 bg-[linear-gradient(180deg,var(--brand-wash),transparent)] dark:hidden" />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,var(--brand-secondary-soft)_44%,transparent_72%)] opacity-70 dark:hidden" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:104px_104px] opacity-[0.11] dark:opacity-[0.07]" />
       </div>
 
       {/* ═══ Hero section: title + input (centered, wider) ═══ */}
@@ -579,10 +575,8 @@ function HomePage() {
           classrooms.length === 0 ? 'justify-center min-h-[calc(100dvh-8rem)]' : 'mt-[10vh]',
         )}
       >
-        {/* ── Logo ── */}
-        <motion.img
-          src="/logo-horizontal.png"
-          alt="OpenMAIC"
+        {/* ── Hero wordmark ── */}
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{
@@ -591,17 +585,24 @@ function HomePage() {
             stiffness: 200,
             damping: 20,
           }}
-          className="h-12 md:h-16 mb-2 -ml-2 md:-ml-3"
-        />
+          className="mb-5 flex flex-col items-center"
+        >
+          <div className="mb-3 rounded-full border border-primary/20 bg-card/80 px-3.5 py-1.5 text-[11px] font-semibold text-primary shadow-[0_10px_26px_-22px_rgb(var(--brand-shadow)/0.32)] backdrop-blur dark:shadow-none">
+            {brandConfig.heroEyebrow}
+          </div>
+          <h1 className="sahaya-hero-title text-6xl leading-none text-foreground sm:text-7xl md:text-8xl lg:text-9xl">
+            {brandConfig.productName}
+          </h1>
+        </motion.div>
 
         {/* ── Slogan ── */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.25 }}
-          className="text-sm text-muted-foreground/60 mb-8"
+          className="mb-8 max-w-2xl text-center text-sm leading-6 text-muted-foreground"
         >
-          {t('home.slogan')}
+          {brandConfig.productDescription}
         </motion.p>
 
         {/* ── Unified input area ── */}
@@ -611,7 +612,8 @@ function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-border/60 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-violet-500/[0.06]">
+          <div className="w-full overflow-hidden rounded-lg border border-border bg-card/95 shadow-[0_28px_76px_-54px_rgb(var(--brand-shadow))] backdrop-blur-xl transition-shadow focus-within:border-primary/40 focus-within:shadow-[0_34px_90px_-56px_rgb(var(--brand-shadow))] dark:shadow-none">
+            <div className="h-1 bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary),var(--brand-gold))] dark:hidden" />
             {/* ── Greeting + Profile + Agents ── */}
             <div className="relative z-20 flex items-start justify-between">
               <GreetingBar />
@@ -624,7 +626,7 @@ function HomePage() {
             <textarea
               ref={textareaRef}
               placeholder={t('upload.requirementPlaceholder')}
-              className="w-full resize-none border-0 bg-transparent px-4 pt-1 pb-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none min-h-[140px] max-h-[300px]"
+              className="min-h-[140px] max-h-[300px] w-full resize-none border-0 bg-transparent px-4 pb-2 pt-1 text-[13px] leading-relaxed placeholder:text-muted-foreground/45 focus:outline-none"
               value={form.requirement}
               onChange={(e) => updateForm('requirement', e.target.value)}
               onKeyDown={handleKeyDown}
@@ -680,9 +682,9 @@ function HomePage() {
                 onClick={handleGenerate}
                 disabled={!canGenerate}
                 className={cn(
-                  'shrink-0 h-8 rounded-lg flex items-center justify-center gap-1.5 transition-all px-3',
+                  'flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 transition-all',
                   canGenerate
-                    ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm cursor-pointer'
+                    ? 'cursor-pointer bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_12px_24px_-18px_rgb(var(--brand-shadow))] hover:opacity-95 active:scale-[0.98] dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:opacity-100'
                     : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
                 )}
               >
@@ -719,19 +721,19 @@ function HomePage() {
                   className={cn(
                     'inline-flex h-7 items-center gap-2 rounded-full border px-2.5 text-[11px] font-medium transition-colors',
                     form.vocationalTestMode
-                      ? 'border-cyan-400/70 bg-cyan-50 text-cyan-700 shadow-[0_0_10px_rgba(6,182,212,0.16)] dark:bg-cyan-950/40 dark:text-cyan-300'
-                      : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/60 hover:text-cyan-700 dark:hover:text-cyan-300',
+                      ? 'border-primary/35 bg-primary/10 text-primary shadow-[0_10px_24px_-20px_rgb(var(--brand-shadow))]'
+                      : 'border-border bg-background/70 text-muted-foreground hover:border-primary/30 hover:text-primary',
                   )}
                 >
-                  <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-cyan-700 dark:bg-cyan-900/45 dark:text-cyan-300">
-                    测试功能
+                  <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold tracking-normal text-secondary-foreground">
+                    Test
                   </span>
                   <Sparkles className="size-3.5" />
-                  <span>职教任务</span>
+                  <span>Vocational task</span>
                   <span
                     className={cn(
                       'relative h-3.5 w-6 rounded-full transition-colors',
-                      form.vocationalTestMode ? 'bg-cyan-500' : 'bg-muted-foreground/25',
+                      form.vocationalTestMode ? 'bg-primary' : 'bg-muted-foreground/25',
                     )}
                   >
                     <span
@@ -744,7 +746,7 @@ function HomePage() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                从当前输入框提交职教实操训练测试
+                Submit a vocational practice training test from the current prompt.
               </TooltipContent>
             </Tooltip>
           </motion.div>
@@ -973,8 +975,11 @@ function HomePage() {
       )}
 
       {/* Footer — flows with content, at the very end */}
-      <div className="mt-auto pt-12 pb-4 text-center text-xs text-muted-foreground/40">
-        OpenMAIC Open Source Project
+      <div className="mt-auto pt-12 pb-4 text-center text-xs text-muted-foreground/60">
+        {brandConfig.openSource.attribution}{' '}
+        <a href="/open-source-notices" className="font-medium text-primary hover:underline">
+          Notices
+        </a>
       </div>
     </div>
   );
@@ -1075,14 +1080,14 @@ function GreetingBar() {
       {/* ── Collapsed pill (always in flow) ── */}
       {!open && (
         <div
-          className="flex items-center gap-2.5 cursor-pointer transition-all duration-200 group rounded-full px-2.5 py-1.5 border border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 active:scale-[0.97]"
+          className="group flex cursor-pointer items-center gap-2.5 rounded-md border border-border/60 px-2.5 py-1.5 text-muted-foreground/70 transition-all duration-200 hover:bg-muted/60 hover:text-foreground active:scale-[0.97]"
           onClick={() => setOpen(true)}
         >
           <div className="shrink-0 relative">
-            <div className="size-8 rounded-full overflow-hidden ring-[1.5px] ring-border/30 group-hover:ring-violet-400/60 dark:group-hover:ring-violet-400/40 transition-all duration-300">
+            <div className="size-8 overflow-hidden rounded-md ring-[1.5px] ring-border/50 transition-all duration-300 group-hover:ring-primary/50">
               <img src={avatar} alt="" className="size-full object-cover" />
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full bg-white dark:bg-slate-800 border border-border/40 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-opacity">
+            <div className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded bg-card opacity-70 ring-1 ring-border transition-opacity group-hover:opacity-100">
               <Pencil className="size-[7px] text-muted-foreground/70" />
             </div>
           </div>
@@ -1114,7 +1119,7 @@ function GreetingBar() {
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
             className="absolute left-4 top-3.5 z-50 w-64"
           >
-            <div className="rounded-2xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06] shadow-[0_1px_8px_-2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.3)] px-2.5 py-2">
+            <div className="rounded-lg bg-card/95 px-2.5 py-2 shadow-[0_20px_54px_-36px_rgb(var(--brand-shadow))] ring-1 ring-border backdrop-blur-sm">
               {/* ── Row: avatar + name ── */}
               <div
                 className="flex items-center gap-2.5 cursor-pointer transition-all duration-200"
@@ -1132,13 +1137,13 @@ function GreetingBar() {
                     setAvatarPickerOpen(!avatarPickerOpen);
                   }}
                 >
-                  <div className="size-8 rounded-full overflow-hidden ring-[1.5px] ring-violet-300/70 dark:ring-violet-500/40 transition-all duration-300">
+                  <div className="size-8 overflow-hidden rounded-md ring-[1.5px] ring-primary/45 transition-all duration-300">
                     <img src={avatar} alt="" className="size-full object-cover" />
                   </div>
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full bg-white dark:bg-slate-800 border border-border/60 flex items-center justify-center"
+                    className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded bg-card ring-1 ring-border"
                   >
                     <ChevronDown
                       className={cn(
@@ -1170,7 +1175,7 @@ function GreetingBar() {
                       />
                       <button
                         onClick={commitName}
-                        className="shrink-0 size-5 rounded flex items-center justify-center text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/30"
+                        className="flex size-5 shrink-0 items-center justify-center rounded text-primary hover:bg-primary/10"
                       >
                         <Check className="size-3" />
                       </button>
@@ -1222,7 +1227,7 @@ function GreetingBar() {
                               'size-7 rounded-full overflow-hidden bg-gray-50 dark:bg-gray-800 cursor-pointer transition-all duration-150',
                               'hover:scale-110 active:scale-95',
                               avatar === url
-                                ? 'ring-2 ring-violet-400 dark:ring-violet-500 ring-offset-0'
+                                ? 'ring-2 ring-primary ring-offset-0'
                                 : 'hover:ring-1 hover:ring-muted-foreground/30',
                             )}
                           >
@@ -1234,7 +1239,7 @@ function GreetingBar() {
                             'size-7 rounded-full flex items-center justify-center cursor-pointer transition-all duration-150 border border-dashed',
                             'hover:scale-110 active:scale-95',
                             isCustomAvatar(avatar)
-                              ? 'ring-2 ring-violet-400 dark:ring-violet-500 ring-offset-0 border-violet-300 dark:border-violet-600 bg-violet-50 dark:bg-violet-900/30'
+                              ? 'ring-2 ring-primary ring-offset-0 border-primary/40 bg-primary/10'
                               : 'border-muted-foreground/30 text-muted-foreground/50 hover:border-muted-foreground/50',
                           )}
                           onClick={() => avatarInputRef.current?.click()}
@@ -1344,8 +1349,8 @@ function ClassroomCard({
           />
         ) : !slide ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="size-12 rounded-2xl bg-gradient-to-br from-violet-100 to-blue-100 dark:from-violet-900/30 dark:to-blue-900/30 flex items-center justify-center">
-              <span className="text-xl opacity-50">📄</span>
+            <div className="flex size-12 items-center justify-center rounded-lg bg-secondary text-primary">
+              <span className="text-sm font-semibold">AI</span>
             </div>
           </div>
         ) : null}
@@ -1359,8 +1364,8 @@ function ClassroomCard({
                 className={cn(
                   'absolute bottom-2 left-2 inline-flex items-center justify-center size-5 rounded-full bg-white/70 dark:bg-slate-900/60 backdrop-blur-sm shadow-sm z-10',
                   isTaskEngineMode
-                    ? 'text-amber-600 dark:text-amber-300 ring-1 ring-amber-500/35'
-                    : 'text-cyan-600 dark:text-cyan-300 ring-1 ring-cyan-500/30',
+                    ? 'text-[var(--brand-gold)] ring-1 ring-[rgb(216_164_50_/_0.35)]'
+                    : 'text-primary ring-1 ring-primary/30',
                 )}
               >
                 <ModeBadgeIcon className="size-3" />
@@ -1447,7 +1452,7 @@ function ClassroomCard({
 
       {/* Info — outside the thumbnail */}
       <div className="mt-2.5 px-1 flex items-center gap-2">
-        <span className="shrink-0 inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+        <span className="inline-flex shrink-0 items-center rounded bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
           {classroom.sceneCount} {t('classroom.slides')} · {formatDate(classroom.updatedAt)}
         </span>
         {editing ? (
@@ -1463,7 +1468,7 @@ function ClassroomCard({
               onBlur={commitRename}
               maxLength={100}
               placeholder={t('classroom.renamePlaceholder')}
-              className="w-full bg-transparent border-b border-violet-400/60 text-[15px] font-medium text-foreground/90 outline-none placeholder:text-muted-foreground/40"
+              className="w-full border-b border-primary/50 bg-transparent text-[15px] font-medium text-foreground/90 outline-none placeholder:text-muted-foreground/40"
             />
           </div>
         ) : (

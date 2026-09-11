@@ -231,7 +231,7 @@ export function PBLV2Sidebar({
 
 /** SCENARIO ONLY. A small section header marking a three-act boundary. The
  *  prep & wrapup labels share a neutral look; the roleplay label is set apart
- *  (indented + drama marker + violet) to telegraph the immersive stretch. */
+ *  (indented + drama marker + brand accent) to telegraph the immersive stretch. */
 function StageLabel({ stage }: { readonly stage: ScenarioStage }) {
   const { t } = useI18n();
   const labelKey =
@@ -244,9 +244,9 @@ function StageLabel({ stage }: { readonly stage: ScenarioStage }) {
   if (stage === 'roleplay') {
     return (
       <div className="ml-3 mt-2 mb-0.5 flex items-center px-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/20 px-2.5 py-1 ring-1 ring-violet-400/35 shadow-[0_4px_14px_rgba(124,92,255,0.25)]">
-          <Drama className="h-3 w-3 text-violet-100" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-50">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 ring-1 ring-primary/25 shadow-[0_4px_14px_-10px_rgb(var(--brand-shadow)/0.32)] dark:shadow-none">
+          <Drama className="h-3 w-3 text-primary" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
             {t(labelKey)}
           </span>
         </span>
@@ -309,12 +309,10 @@ function MilestoneNode({
     if (milestone.status === 'completed') return <Check className="w-3.5 h-3.5 text-emerald-600" />;
     if (milestone.status === 'active')
       return (
-        <CircleDot className={cn('w-3.5 h-3.5', isRoleplay ? 'text-violet-200' : 'text-primary')} />
+        <CircleDot className={cn('w-3.5 h-3.5', isRoleplay ? 'text-primary' : 'text-primary')} />
       );
     return (
-      <Lock
-        className={cn('w-3.5 h-3.5', isRoleplay ? 'text-violet-300/70' : 'text-muted-foreground')}
-      />
+      <Lock className={cn('w-3.5 h-3.5', isRoleplay ? 'text-primary' : 'text-muted-foreground')} />
     );
   })();
 
@@ -322,17 +320,17 @@ function MilestoneNode({
     <div
       className={cn(
         'rounded-lg border border-transparent transition-colors',
-        // SCENARIO ONLY — the roleplay act(s) read as an immersive "scene card":
+        // SCENARIO ONLY - the roleplay act(s) read as an immersive "scene card":
         // indented off the flush-left bookends, a left accent rail like a stage
-        // edge, a violet→fuchsia gradient fill and a soft glow. The prep/wrapup
+        // edge, a branded gradient fill and a soft glow. The prep/wrapup
         // bookends stay deliberately plain so the contrast carries the meaning.
-        isRoleplay && 'ml-3 rounded-xl border-l-[3px] border-l-violet-400/70',
+        isRoleplay && 'ml-3 rounded-xl border-l-[3px] border-l-primary/70',
         isRoleplay &&
           !active &&
-          'border-violet-400/25 bg-gradient-to-br from-violet-500/[0.15] via-violet-500/[0.07] to-fuchsia-500/[0.05] shadow-[0_8px_24px_rgba(124,92,255,0.16)]',
+          'border-primary/25 bg-gradient-to-br from-primary/[0.15] via-primary/[0.07] to-accent/[0.05] shadow-[0_8px_24px_rgb(var(--brand-shadow)/0.16)]',
         isRoleplay &&
           active &&
-          'border-violet-300/45 bg-gradient-to-br from-violet-500/[0.24] to-fuchsia-500/[0.10] shadow-[0_12px_32px_rgba(124,92,255,0.34)] ring-1 ring-violet-300/45',
+          'border-primary/25 bg-gradient-to-br from-primary/[0.24] to-accent/[0.10] shadow-[0_12px_32px_rgb(var(--brand-shadow)/0.30)] ring-1 ring-primary/25',
         // Bookends & ordinary projects keep the original primary active highlight.
         !isRoleplay &&
           active &&
@@ -395,7 +393,7 @@ function MilestoneNode({
             disabled={sceneBusy}
             className={cn(
               'flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors',
-              'bg-gradient-to-r from-primary to-violet-400 text-primary-foreground shadow-[0_8px_22px_rgba(124,92,255,0.30)] hover:brightness-110',
+              'bg-primary text-primary-foreground shadow-[0_8px_22px_-16px_rgb(var(--brand-shadow)/0.38)] hover:bg-primary/90 dark:shadow-none',
               'disabled:cursor-not-allowed disabled:opacity-60',
             )}
           >
@@ -462,7 +460,7 @@ function MicrotaskRow({
           disabled={taskBusy}
           className={cn(
             'ml-5 mt-1.5 inline-flex min-w-[64px] items-center justify-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold',
-            'border border-violet-100/15 bg-primary/72 text-white shadow-[0_6px_16px_rgba(157,140,255,0.16)] transition-colors hover:bg-primary/88',
+            'border border-primary/25 bg-primary/72 text-white shadow-[0_6px_16px_rgba(157,140,255,0.16)] transition-colors hover:bg-primary/88',
             'disabled:cursor-not-allowed disabled:opacity-60',
           )}
         >

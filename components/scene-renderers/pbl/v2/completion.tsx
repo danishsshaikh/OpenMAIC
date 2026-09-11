@@ -127,7 +127,7 @@ export function PBLV2Completion({ project, onBack }: Props) {
         }));
 
   return (
-    <div className="relative h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(124,92,255,0.18),transparent_32%),radial-gradient(circle_at_88%_0%,rgba(34,211,238,0.14),transparent_30%),linear-gradient(135deg,#0b1220_0%,#111c33_52%,#0a1020_100%)] text-slate-100">
+    <div className="relative h-full w-full overflow-y-auto bg-[#17141b] text-slate-100">
       <div className="m-auto w-full max-w-6xl px-8 py-10">
         {onBack && (
           <button
@@ -546,7 +546,7 @@ function ActGoalReviewItem({
             <div className="min-w-0 flex-1">
               <span className="text-slate-200">{g.goal}</span>
               {g.skillFocus && (
-                <span className="ml-1.5 inline-block rounded bg-violet-300/[0.10] px-1.5 py-0.5 text-[10px] text-violet-200">
+                <span className="ml-1.5 inline-block rounded bg-primary/[0.10] px-1.5 py-0.5 text-[10px] text-primary">
                   {g.skillFocus}
                 </span>
               )}
@@ -586,7 +586,7 @@ function ActGoalListItem({
             <div className="min-w-0 flex-1">
               <span className="text-slate-200">{g.goal}</span>
               {g.skillFocus && (
-                <span className="ml-1.5 inline-block rounded bg-violet-300/[0.10] px-1.5 py-0.5 text-[10px] text-violet-200">
+                <span className="ml-1.5 inline-block rounded bg-primary/[0.10] px-1.5 py-0.5 text-[10px] text-primary">
                   {g.skillFocus}
                 </span>
               )}
@@ -645,7 +645,7 @@ function StageReviewItem({
         <span className="text-sm font-medium text-slate-100">
           {detail.milestoneTitle}
           {detail.isCoreStage && (
-            <span className="ml-1.5 rounded-full border border-violet-300/20 bg-violet-300/[0.08] px-1.5 py-0.5 text-[10px] text-violet-200">
+            <span className="ml-1.5 rounded-full border border-primary/25 bg-primary/[0.08] px-1.5 py-0.5 text-[10px] text-primary">
               {t('pbl.v2.completion.coreStageBadge')}
             </span>
           )}
@@ -677,7 +677,7 @@ function StageReviewItem({
           )}
           {detail.isCoreStage && detail.coreConcept && detail.synthesisQuality && (
             <li className="text-xs text-slate-200">
-              <span className="mr-1 text-violet-300/80">+</span>
+              <span className="mr-1 text-primary">+</span>
               {t('pbl.v2.completion.coreConceptGrasp', {
                 concept: detail.coreConcept,
                 quality: t(`pbl.v2.completion.synthesisQuality.${detail.synthesisQuality}`),

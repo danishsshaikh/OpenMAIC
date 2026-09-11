@@ -26,7 +26,18 @@ function project(language = 'en-US'): PBLProjectV2 {
 }
 
 describe('PBL v2 route locale sync', () => {
-  it('uses x-user-locale as the authoritative route-time language', () => {
+  it('uses exposed x-user-locale values as the authoritative route-time language', () => {
+    const p = project('zh-CN');
+    const req = new NextRequest('http://localhost/api/pbl/v2/open-task', {
+      headers: { 'x-user-locale': 'en-US' },
+    });
+
+    applyRequestLocaleToProject(req, p);
+
+    expect(p.language).toBe('en-US');
+  });
+
+  it('ignores locale headers that are supported upstream but hidden by this deployment', () => {
     const p = project('en-US');
     const req = new NextRequest('http://localhost/api/pbl/v2/open-task', {
       headers: { 'x-user-locale': 'zh-CN' },
@@ -34,7 +45,7 @@ describe('PBL v2 route locale sync', () => {
 
     applyRequestLocaleToProject(req, p);
 
-    expect(p.language).toBe('zh-CN');
+    expect(p.language).toBe('en-US');
   });
 
   it('ignores unsupported locale headers', () => {

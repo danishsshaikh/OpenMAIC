@@ -26,6 +26,9 @@ out/
 *.md
 *.yml
 *.yaml
+*.txt
+*.snap
+*.svg
 
 # SVG arc helper (vendored declaration)
 lib/export/svg-arc-to-cubic-bezier.d.ts

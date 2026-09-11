@@ -1,27 +1,18 @@
-<!-- <p align="center">
-  <img src="assets/logo-horizontal.png" alt="OpenMAIC" width="420"/>
-</p> -->
-
 <p align="center">
-  <img src="assets/banner.png" alt="OpenMAIC Banner" width="680"/>
+  <img src="public/branding/mit-adt-teaching-ai-wordmark.svg" alt="MIT ADT Teaching AI" width="520"/>
 </p>
 
 <p align="center">
-  Get an immersive, multi-agent learning experience in just one click
+  Faculty-facing AI classroom creation for MIT Art, Design and Technology University
 </p>
 
 <p align="center">
   <a href="https://jcst.ict.ac.cn/en/article/doi/10.1007/s11390-025-6000-0"><img src="https://img.shields.io/badge/Paper-JCST'26-blue?style=flat-square" alt="Paper"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT"/></a>
-  <a href="https://open.maic.chat/"><img src="https://img.shields.io/badge/Demo-Live-brightgreen?style=flat-square" alt="Live Demo"/></a>
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FTHU-MAIC%2FOpenMAIC&envDescription=Configure%20at%20least%20one%20LLM%20provider%20API%20key%20(e.g.%20OPENAI_API_KEY%2C%20ANTHROPIC_API_KEY).%20All%20providers%20are%20optional.&envLink=https%3A%2F%2Fgithub.com%2FTHU-MAIC%2FOpenMAIC%2Fblob%2Fmain%2F.env.example&project-name=openmaic&framework=nextjs"><img src="https://vercel.com/button" alt="Deploy with Vercel" height="20"/></a>
+  <a href="https://mituniversity.ac.in/"><img src="https://img.shields.io/badge/MIT_ADT-University-9F172D?style=flat-square" alt="MIT ADT University"/></a>
   <a href="#-openclaw-integration"><img src="https://img.shields.io/badge/OpenClaw-Integration-F4511E?style=flat-square" alt="OpenClaw Integration"/></a>
   <a href="#lemonade-local-ai"><img src="https://img.shields.io/badge/Lemonade-Local_AI-FFD43B?style=flat-square" alt="Lemonade Local AI"/></a>
   <a href="https://github.com/THU-MAIC/OpenMAIC/stargazers"><img src="https://img.shields.io/github/stars/THU-MAIC/OpenMAIC?style=flat-square" alt="Stars"/></a>
-  <br/>
-  <a href="https://discord.gg/p8Pf2r3SaG"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/></a>
-  &nbsp;
-  <a href="community/feishu.md"><img src="https://img.shields.io/badge/Feishu-飞书交流群-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="Feishu"/></a>
   <br/>
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js"/>
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React"/>
@@ -31,11 +22,35 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <a href="./README-zh.md">简体中文</a>
-  <br/>
-  <a href="https://open.maic.chat/">Live Demo</a> · <a href="#-quick-start">Quick Start</a> · <a href="#lemonade-local-ai">Lemonade</a> · <a href="#funasr-local-asr">FunASR</a> · <a href="#-features">Features</a> · <a href="#-use-cases">Use Cases</a> · <a href="#-openclaw-integration">OpenClaw</a>
+  <a href="#-quick-start">Quick Start</a> · <a href="#-features">Features</a> · <a href="#upstream-and-attribution">Upstream and Attribution</a>
 </p>
 
+## MIT ADT Teaching AI Deployment
+
+This repository contains MIT ADT's customized deployment of OpenMAIC for faculty
+classroom creation. The product identity is centralized in
+`lib/branding/brand-config.ts` so the temporary display name can be replaced when
+the final product name is selected.
+
+The deployment is English-only for now: the UI, default locale, fallback locale,
+and normal generated teaching output resolve to English while the upstream i18n
+architecture remains in place for future compatibility.
+
+Faculty can use the platform to generate and edit AI-assisted classroom content,
+including slides, quizzes, simulations, interactive learning activities, AI
+Teacher narration, Teaching Voice profiles, exports, private workspaces, and
+local model integrations.
+
+## Upstream and Attribution
+
+This product includes software derived from **OpenMAIC** by **THU-MAIC**,
+licensed under the MIT License. OpenMAIC history, package names, internal
+identifiers, and required third-party notices are intentionally preserved. This
+customized university deployment does not imply endorsement by THU-MAIC.
+
+The sections below retain upstream OpenMAIC setup and reference material for
+mergeability. Product-facing strings for this deployment are defined in the
+brand layer described in `docs/branding-and-upstream.md`.
 
 ## 🗞️ News
 
@@ -683,7 +698,7 @@ Optional config in `~/.openclaw/openclaw.json`:
 - **Text-to-Speech** — Multiple voice providers with customizable voices
 - **Speech Recognition** — Talk to your AI teacher using your microphone
 - **Web Search** — Agents search the web for up-to-date information during class
-- **i18n** — Interface supports 7 languages: Chinese (Simplified & Traditional), English, Japanese, Russian, Arabic, and Portuguese (Brazil)
+- **i18n** — Upstream locale files remain available; this MIT ADT deployment exposes English only.
 - **Dark Mode** — Easy on the eyes for late-night study sessions
 
 ---
@@ -758,7 +773,7 @@ OpenMAIC/
 │   ├── media/                  #   Image & video generation providers
 │   ├── export/                 #   PPTX & HTML export
 │   ├── hooks/                  #   React custom hooks (55+)
-│   ├── i18n/                   #   Internationalization (zh-CN, zh-TW, en-US, ja-JP, ru-RU, ar-SA, pt-BR)
+│   ├── i18n/                   #   Internationalization core; MIT ADT deployment exposes en-US
 │   └── ...                     #   prosemirror, storage, pdf, web-search, utils
 │
 ├── components/                 # React UI components

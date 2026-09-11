@@ -49,6 +49,7 @@ import { trackSubmissionScore } from '@/lib/pbl/v2/operations/runtime/dynamic-si
 import { normalizeProjectRuntime } from '@/lib/pbl/v2/operations/kernel/progress';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
+import { resolveDeploymentLocale } from '@/lib/i18n/deployment';
 import { applyInstructorEvent } from './apply-instructor-event';
 
 const log = createLogger('PBL v2 InstructorStream');
@@ -304,7 +305,7 @@ export async function runOneStream(args: OneStreamArgs): Promise<PBLProjectV2> {
   // may grow to depend on the UI locale.
   try {
     const stored = localStorage.getItem('locale');
-    if (stored) headers['x-user-locale'] = stored;
+    headers['x-user-locale'] = resolveDeploymentLocale(stored);
   } catch {
     // localStorage unavailable; skip silently.
   }

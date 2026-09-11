@@ -38,7 +38,7 @@ const log = createLogger('Generation');
  * language rather than defaulting to the training-distribution prior.
  */
 export const DEFAULT_LANGUAGE_DIRECTIVE =
-  'Teach in the language that matches the user requirement.';
+  'Deliver the entire course in English. Keep mathematical notation, code, proper nouns, and technical symbols unchanged.';
 
 /**
  * Generate scene outlines from user requirements

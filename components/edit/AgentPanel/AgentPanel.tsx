@@ -3,12 +3,12 @@
 /**
  * MAIC Agent — editor AI sidebar (right rail), "Edit with AI" Cursor-style
  * surface per the OpenMAIC AgentSidebar design board:
- * - user messages are right-aligned solid-violet bubbles (radius 14/14/4/14);
+ * - user messages are right-aligned solid brand bubbles (radius 14/14/4/14);
  * - assistant output is full-width markdown with design-language tool cards in
  *   chronological order;
- * - the composer is a bordered shell with a violet focus glow, an @-context
+ * - the composer is a bordered shell with a brand focus glow, an @-context
  *   chip for the active scene, horizontally-scrolling quick-prompt chips, and a
- *   square violet send button.
+ *   square brand send button.
  * Only design aspects with real V0 backing are implemented — the model picker,
  * Agent/Ask mode, checkpoints/Restore, reasoning blocks and per-element @-chips
  * from the board are intentionally omitted (no runtime support yet).
@@ -68,7 +68,7 @@ const CAPABILITY_KEYS = [
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="flex justify-end">
-      {/* Solid brand-violet bubble, right-aligned, with a tail toward the user
+      {/* Solid brand bubble, right-aligned, with a tail toward the user
           (radius 14/14/4/14) — per the design board's .ae-user. */}
       <div className="min-w-0 max-w-[88%] rounded-[14px] rounded-br-[4px] bg-primary px-3.5 py-2 text-[13px] leading-relaxed text-white [overflow-wrap:anywhere]">
         <MessagePrimitive.Parts />
@@ -279,7 +279,7 @@ export function AgentPanel({
                   {capabilityKeys.map(({ label, examples }) => (
                     <div key={label} className="flex flex-col gap-0.5">
                       <span className="text-[12px] font-semibold text-foreground">{t(label)}</span>
-                      <span className="text-[11.5px] leading-relaxed text-[#5b1fa8]/70 dark:text-violet-300/70">
+                      <span className="text-[11.5px] leading-relaxed text-[#5b1fa8]/70 dark:text-primary">
                         {t(examples)}
                       </span>
                     </div>
@@ -289,7 +289,7 @@ export function AgentPanel({
                   {t(emptyBoundaryKey)}
                 </p>
                 <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                  <Sparkles className="size-3 text-[#5b1fa8]/60 dark:text-violet-300/60" />
+                  <Sparkles className="size-3 text-[#5b1fa8]/60 dark:text-primary" />
                   {t('edit.agent.empty.comingSoon')}
                 </p>
               </div>
@@ -308,11 +308,11 @@ export function AgentPanel({
                 {unsupportedMessage}
               </p>
             ) : null}
-            <ComposerPrimitive.Root className="rounded-[10px] border border-border bg-card shadow-sm transition-[border-color,box-shadow] focus-within:border-violet-400 focus-within:ring-[3px] focus-within:ring-violet-500/10 dark:focus-within:ring-violet-500/20">
+            <ComposerPrimitive.Root className="rounded-[10px] border border-border bg-card shadow-sm transition-[border-color,box-shadow] focus-within:border-primary/25 focus-within:ring-[3px] focus-within:ring-primary/25 dark:focus-within:ring-primary/25">
               {scene?.title ? (
                 <div className="px-2 pt-2">
-                  <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-[#5b1fa8] dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
-                    <AtSign className="size-3 shrink-0 text-violet-500" />
+                  <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-[#5b1fa8] dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
+                    <AtSign className="size-3 shrink-0 text-primary" />
                     <span className="truncate">{scene.title}</span>
                   </span>
                 </div>
@@ -368,13 +368,13 @@ export function AgentPanel({
       <aside
         onClick={() => setCollapsed(false)}
         title={t('edit.agent.expand')}
-        className="group/rail relative flex h-full w-11 shrink-0 cursor-pointer flex-col items-center gap-3 border-l border-gray-100 bg-white/80 pt-3 backdrop-blur-xl transition-colors hover:bg-violet-50/40 dark:border-gray-800 dark:bg-slate-900/80 dark:hover:bg-violet-500/5 shadow-[-2px_0_24px_rgba(0,0,0,0.02)]"
+        className="group/rail relative flex h-full w-11 shrink-0 cursor-pointer flex-col items-center gap-3 border-l border-gray-100 bg-white/80 pt-3 backdrop-blur-xl transition-colors hover:bg-primary/10 dark:border-gray-800 dark:bg-slate-900/80 dark:hover:bg-primary/10 shadow-[-2px_0_24px_rgba(0,0,0,0.02)]"
       >
-        <span className="grid size-8 place-items-center rounded-lg text-[#5b1fa8] transition-colors group-hover/rail:bg-violet-100/70 dark:text-violet-300 dark:group-hover/rail:bg-violet-500/15">
+        <span className="grid size-8 place-items-center rounded-lg text-[#5b1fa8] transition-colors group-hover/rail:bg-primary/10 dark:text-primary dark:group-hover/rail:bg-primary/10">
           <PanelRightOpen className="size-4" />
         </span>
-        <Sparkles className="size-4 text-[#5b1fa8]/80 dark:text-violet-300/80" />
-        <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5b1fa8]/70 [writing-mode:vertical-rl] dark:text-violet-300/70">
+        <Sparkles className="size-4 text-[#5b1fa8]/80 dark:text-primary" />
+        <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5b1fa8]/70 [writing-mode:vertical-rl] dark:text-primary">
           {t('edit.agent.title')}
         </span>
       </aside>
@@ -394,15 +394,15 @@ export function AgentPanel({
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group absolute left-0 top-0 bottom-0 z-10 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-violet-400/30 active:bg-violet-500/50 dark:hover:bg-violet-500/30"
+        className="group absolute left-0 top-0 bottom-0 z-10 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-primary/10 active:bg-primary/10 dark:hover:bg-primary/10"
       >
-        <div className="absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-violet-400 dark:bg-gray-600 dark:group-hover:bg-violet-500" />
+        <div className="absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-primary/10 dark:bg-gray-600 dark:group-hover:bg-primary/10" />
       </div>
 
-      {/* Header — "Edit with AI" with a violet sparkles mark (design .ae-head). */}
+      {/* Header - "Edit with AI" with a brand sparkles mark (design .ae-head). */}
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-gray-100 px-4 pl-5 dark:border-gray-800">
-        <Sparkles className="size-3.5 text-[#5b1fa8] dark:text-violet-300" />
-        <span className="text-[13px] font-semibold text-[#5b1fa8] dark:text-violet-300">
+        <Sparkles className="size-3.5 text-[#5b1fa8] dark:text-primary" />
+        <span className="text-[13px] font-semibold text-[#5b1fa8] dark:text-primary">
           {t('edit.agent.title')}
         </span>
         <Popover onOpenChange={(open) => open && void refreshSessions()}>
@@ -499,7 +499,7 @@ export function AgentPanel({
                   {capabilityKeys.map(({ label, examples }) => (
                     <div key={label} className="flex flex-col gap-0.5">
                       <span className="text-[12px] font-semibold text-foreground">{t(label)}</span>
-                      <span className="text-[11.5px] leading-relaxed text-[#5b1fa8]/70 dark:text-violet-300/70">
+                      <span className="text-[11.5px] leading-relaxed text-[#5b1fa8]/70 dark:text-primary">
                         {t(examples)}
                       </span>
                     </div>
@@ -510,7 +510,7 @@ export function AgentPanel({
                   {t(emptyBoundaryKey)}
                 </p>
                 <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                  <Sparkles className="size-3 text-[#5b1fa8]/60 dark:text-violet-300/60" />
+                  <Sparkles className="size-3 text-[#5b1fa8]/60 dark:text-primary" />
                   {t('edit.agent.empty.comingSoon')}
                 </p>
               </div>
@@ -524,18 +524,18 @@ export function AgentPanel({
           </ThreadPrimitive.ScrollToBottom>
 
           {/* Composer (design .ae-composer): a bordered input shell with an
-              @-scene context chip, a voice-input mic, and a square violet send. */}
+              @-scene context chip, a voice-input mic, and a square brand send. */}
           <div className="px-3 pb-3 pt-1">
             {!canSend ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                 {unsupportedMessage}
               </p>
             ) : null}
-            <ComposerPrimitive.Root className="rounded-[10px] border border-border bg-card shadow-sm transition-[border-color,box-shadow] focus-within:border-violet-400 focus-within:ring-[3px] focus-within:ring-violet-500/10 dark:focus-within:ring-violet-500/20">
+            <ComposerPrimitive.Root className="rounded-[10px] border border-border bg-card shadow-sm transition-[border-color,box-shadow] focus-within:border-primary/25 focus-within:ring-[3px] focus-within:ring-primary/25 dark:focus-within:ring-primary/25">
               {scene?.title ? (
                 <div className="px-2 pt-2">
-                  <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-[#5b1fa8] dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
-                    <AtSign className="size-3 shrink-0 text-violet-500" />
+                  <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-[#5b1fa8] dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
+                    <AtSign className="size-3 shrink-0 text-primary" />
                     <span className="truncate">{scene.title}</span>
                   </span>
                 </div>

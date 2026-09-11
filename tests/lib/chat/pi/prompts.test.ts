@@ -584,7 +584,7 @@ describe('Pi child prompt structured output', () => {
     expect(prompt).toContain('Do not take the first substantive explanation');
     expect(prompt).toContain('summarize the whole lesson');
     expect(prompt).toContain('student-to-student self-chat');
-    expect(prompt).toContain('around 40 Chinese characters');
+    expect(prompt).toContain('around 40 visible characters');
     expect(prompt).toContain('If your response is as long as the teacher response, it is wrong');
   });
 });

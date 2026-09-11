@@ -1292,13 +1292,13 @@ export const ASR_PROVIDERS: Record<BuiltInASRProviderId, ASRProviderConfig> = {
  */
 export const DEFAULT_TTS_VOICES: Record<BuiltInTTSProviderId, string> = {
   'openai-tts': 'alloy',
-  'azure-tts': 'zh-CN-XiaoxiaoNeural',
+  'azure-tts': 'en-US-JennyNeural',
   'glm-tts': 'tongtong',
   'qwen-tts': 'Cherry',
   'voxcpm-tts': VOXCPM_AUTO_VOICE_ID,
-  'doubao-tts': 'zh_female_vv_uranus_bigtts',
+  'doubao-tts': 'en_female_anna_emo_v2_mars_bigtts',
   'elevenlabs-tts': 'EXAVITQu4vr4xnSDxMaL',
-  'minimax-tts': 'female-yujie',
+  'minimax-tts': 'English_Graceful_Lady',
   'lemonade-tts': 'af_heart',
   'browser-native-tts': 'default',
 };

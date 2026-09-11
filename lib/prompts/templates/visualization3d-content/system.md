@@ -172,7 +172,7 @@ const earth = new THREE.Mesh(earthGeometry, earthMaterial);
 
 ```html
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en-US">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

@@ -746,7 +746,7 @@ export function AgentBar() {
               </div>
             )}
           </div>
-          <Shuffle className="size-4 text-violet-400 dark:text-violet-500" />
+          <Shuffle className="size-4 text-primary" />
         </>
       ) : (
         <>
@@ -953,9 +953,9 @@ export function AgentBar() {
               ) : (
                 <div className="flex flex-col items-center pt-6 pb-3 gap-4">
                   <div className="relative flex items-center justify-center">
-                    <div className="absolute size-10 rounded-full bg-violet-400/10 dark:bg-violet-400/15 animate-ping [animation-duration:3s]" />
-                    <div className="absolute size-12 rounded-full bg-violet-400/5 dark:bg-violet-400/10 animate-pulse [animation-duration:2.5s]" />
-                    <Shuffle className="relative size-5 text-violet-400 dark:text-violet-500" />
+                    <div className="absolute size-10 rounded-full bg-primary/10 animate-ping [animation-duration:3s]" />
+                    <div className="absolute size-12 rounded-full bg-primary/5 animate-pulse [animation-duration:2.5s]" />
+                    <Shuffle className="relative size-5 text-primary" />
                   </div>
                   <div className="flex-1" />
                   <div className="text-center space-y-1">

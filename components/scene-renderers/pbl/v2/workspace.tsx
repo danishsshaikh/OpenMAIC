@@ -29,6 +29,7 @@ import { PBLV2RightPanelTabs } from './right-panel-tabs';
 import { shouldShowScenarioBriefing } from './scenario-briefing-gate';
 import { cn } from '@/lib/utils/cn';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { brandConfig } from '@/lib/branding/brand-config';
 import type { CSSProperties } from 'react';
 import { runOneStream, type StreamDisplayState, type StreamStatus } from './use-instructor-stream';
 import type { PBLProjectPatch } from '@/lib/pbl/v2/api/sse';
@@ -75,24 +76,28 @@ function streamStatusForEvaluationKind(kind: unknown): StreamStatus {
 }
 
 const PBL_WORKSPACE_THEME = {
-  '--background': 'oklch(0.205 0.055 264)',
-  '--foreground': 'oklch(0.962 0.016 260)',
-  '--card': 'oklch(0.285 0.055 263)',
-  '--card-foreground': 'oklch(0.97 0.014 260)',
-  '--popover': 'oklch(0.265 0.055 263)',
-  '--popover-foreground': 'oklch(0.97 0.014 260)',
-  '--primary': '#9d8cff',
-  '--primary-foreground': 'oklch(0.99 0.005 260)',
-  '--secondary': 'oklch(0.32 0.052 260)',
-  '--secondary-foreground': 'oklch(0.95 0.016 260)',
-  '--muted': 'oklch(0.305 0.046 262)',
-  '--muted-foreground': 'oklch(0.78 0.04 258)',
-  '--accent': 'oklch(0.37 0.07 260)',
-  '--accent-foreground': 'oklch(0.965 0.014 260)',
+  '--background': '#181020',
+  '--foreground': '#fbf7ff',
+  '--card': '#21162d',
+  '--card-foreground': '#fbf7ff',
+  '--popover': '#21162d',
+  '--popover-foreground': '#fbf7ff',
+  '--primary': '#b99cff',
+  '--primary-foreground': '#1b0f2a',
+  '--secondary': '#33233f',
+  '--secondary-foreground': '#fbf7ff',
+  '--muted': '#2d2038',
+  '--muted-foreground': '#c8bdd4',
+  '--accent': '#f06aa9',
+  '--accent-foreground': '#210a18',
   '--destructive': 'oklch(0.66 0.19 25)',
-  '--border': 'oklch(0.74 0.055 262 / 0.22)',
-  '--input': 'oklch(0.68 0.05 262 / 0.3)',
-  '--ring': 'oklch(0.73 0.12 282)',
+  '--border': 'rgb(251 247 255 / 0.13)',
+  '--input': 'rgb(251 247 255 / 0.18)',
+  '--ring': '#cbb8ff',
+  '--brand-primary': '#b99cff',
+  '--brand-secondary': '#f06aa9',
+  '--brand-gold': '#e6bd62',
+  '--brand-shadow': '0 0 0',
 } satisfies CSSVariableProperties;
 
 interface CompleteTaskPayload {
@@ -339,9 +344,9 @@ export function PBLV2Workspace({
     <div
       ref={rootRef}
       className={cn(
-        'grid h-full w-full overflow-hidden bg-background text-foreground ring-1 ring-indigo-100/[0.16]',
-        'shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_24px_72px_rgba(42,50,95,0.20)]',
-        'bg-[radial-gradient(circle_at_18%_5%,rgba(119,102,255,0.20),transparent_31%),radial-gradient(circle_at_86%_10%,rgba(20,184,166,0.17),transparent_29%),radial-gradient(circle_at_52%_105%,rgba(96,165,250,0.10),transparent_34%),linear-gradient(180deg,#182542_0%,#111c34_48%,#162743_100%)]',
+        'grid h-full w-full overflow-hidden bg-background text-foreground ring-1 ring-white/[0.12]',
+        'shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_24px_72px_rgba(34,14,55,0.22)]',
+        'bg-[radial-gradient(circle_at_18%_5%,rgba(185,156,255,0.20),transparent_31%),radial-gradient(circle_at_86%_10%,rgba(240,106,169,0.14),transparent_29%),radial-gradient(circle_at_52%_105%,rgba(216,164,50,0.08),transparent_34%),linear-gradient(180deg,#21162d_0%,#181020_48%,#241331_100%)]',
       )}
       data-pbl-workspace="true"
       style={{
@@ -433,17 +438,17 @@ function WorkspaceTopBar({
   const { t } = useI18n();
   return (
     <header
-      className="relative z-40 col-span-full grid min-w-0 items-center overflow-hidden border-b border-cyan-100/[0.12] bg-[#111d35]/88 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_14px_42px_rgba(5,12,28,0.24)] backdrop-blur-xl"
+      className="relative z-40 col-span-full grid min-w-0 items-center overflow-hidden border-b border-border bg-[#20142d]/92 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_42px_rgba(15,6,28,0.24)] backdrop-blur-xl"
       style={{
         gridTemplateColumns: `${panelWidths.sidebar}fr 6px ${panelWidths.chat}fr 6px ${panelWidths.submission}fr`,
       }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(157,140,255,0.20),transparent_30%),radial-gradient(circle_at_78%_0%,rgba(34,211,238,0.13),transparent_26%),linear-gradient(90deg,rgba(255,255,255,0.05),transparent_34%,rgba(255,255,255,0.035))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(185,156,255,0.20),transparent_30%),radial-gradient(circle_at_78%_0%,rgba(240,106,169,0.16),transparent_26%),linear-gradient(90deg,rgba(255,255,255,0.05),transparent_34%,rgba(255,255,255,0.035))]" />
       <div className="relative flex min-w-0 flex-1 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200/25 bg-violet-100/[0.08] shadow-[0_0_24px_rgba(157,140,255,0.18)]">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/[0.08] shadow-[0_0_24px_rgba(185,156,255,0.18)]">
           <Image
-            src="/openmaic-mark.png"
-            alt="OpenMAIC"
+            src={brandConfig.assets.productMark}
+            alt={brandConfig.productName}
             width={28}
             height={28}
             className="h-6 w-6"
@@ -467,21 +472,21 @@ function WorkspaceTopBar({
               type="button"
               onClick={onReturnToHero}
               title={t('pbl.v2.workspace.returnToHero')}
-              className="rounded bg-gradient-to-r from-violet-200 via-cyan-200 to-sky-200 bg-clip-text text-transparent transition-opacity hover:opacity-80 focus-visible:underline focus-visible:outline-none"
+              className="rounded bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] bg-clip-text text-transparent transition-opacity hover:opacity-80 focus-visible:underline focus-visible:outline-none"
             >
               {t('pbl.v2.workspace.breadcrumbOverview')}
             </button>
-            <span aria-hidden className="text-indigo-100/40">
+            <span aria-hidden className="text-white/35">
               ›
             </span>
-            <span className="text-indigo-100/55">{t('pbl.v2.workspace.breadcrumbCurrent')}</span>
+            <span className="text-white/55">{t('pbl.v2.workspace.breadcrumbCurrent')}</span>
           </nav>
         </div>
       </div>
 
       <div className="relative col-start-3 hidden min-w-0 items-center gap-2 lg:flex">
-        <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-indigo-100/[0.14] bg-white/[0.045] px-2.5 text-[11px] font-medium text-indigo-100/82">
-          <Workflow className="h-3.5 w-3.5 text-violet-200/90" />
+        <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.045] px-2.5 text-[11px] font-medium text-white/80">
+          <Workflow className="h-3.5 w-3.5 text-[var(--brand-primary)]" />
           {t('pbl.v2.workspace.progressLabel')}
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -497,14 +502,15 @@ function WorkspaceTopBar({
                 <div
                   className={cn(
                     'h-1.5 min-w-4 flex-1 rounded-full transition-colors',
-                    completed && 'bg-cyan-300/70 shadow-[0_0_12px_rgba(103,232,249,0.30)]',
-                    active && 'bg-violet-300 shadow-[0_0_16px_rgba(167,139,250,0.42)]',
+                    completed &&
+                      'bg-[rgb(230_189_98_/_0.75)] shadow-[0_0_12px_rgba(230,189,98,0.28)]',
+                    active && 'bg-[var(--brand-primary)] shadow-[0_0_16px_rgba(185,156,255,0.38)]',
                     !active && !completed && 'bg-slate-500/35',
                   )}
                 />
                 {active && (
                   <div
-                    className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.58)] transition-[left] duration-500 ease-out"
+                    className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-[var(--brand-primary)] shadow-[0_0_18px_rgba(185,156,255,0.50)] transition-[left] duration-500 ease-out"
                     style={{ left: `${milestoneProgressFraction(milestone) * 100}%` }}
                   />
                 )}
@@ -518,7 +524,7 @@ function WorkspaceTopBar({
         <button
           type="button"
           onClick={onExpand}
-          className="absolute right-3 top-1/2 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-cyan-100/[0.18] bg-white/[0.06] text-indigo-100/85 shadow-sm backdrop-blur transition-colors hover:bg-white/[0.12]"
+          className="absolute right-3 top-1/2 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-white/15 bg-white/[0.06] text-white/85 shadow-sm backdrop-blur transition-colors hover:bg-white/[0.12]"
           aria-label={t('pbl.v2.workspace.enterFullscreen')}
           title={t('pbl.v2.workspace.enterFullscreen')}
         >
@@ -584,14 +590,14 @@ function WorkspaceResizeHandle({
     >
       <div
         className={cn(
-          'absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-cyan-100/[0.18] transition-colors',
+          'absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/[0.16] transition-colors',
           'group-hover:bg-primary/55',
           active && 'bg-primary/75',
         )}
       />
       <div
         className={cn(
-          'absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/60 opacity-0 shadow-[0_0_14px_rgba(157,140,255,0.28)] transition-all',
+          'absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/60 opacity-0 shadow-[0_0_14px_rgba(185,156,255,0.28)] transition-all',
           'group-hover:h-14 group-hover:opacity-100',
           active && 'h-16 opacity-100',
         )}
@@ -606,11 +612,10 @@ function Panel({ slot, children }: { readonly slot: PanelSlot; readonly children
       className={cn(
         'relative row-start-2 h-full min-w-0 overflow-hidden backdrop-blur-[2px]',
         slot === 'sidebar' &&
-          'bg-[linear-gradient(180deg,rgba(28,39,71,0.96)_0%,rgba(22,34,62,0.94)_100%)] shadow-[inset_-18px_0_38px_rgba(5,12,28,0.10)]',
-        slot === 'chat' &&
-          'bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.10),transparent_34%),linear-gradient(180deg,rgba(15,27,51,0.78)_0%,rgba(11,23,43,0.82)_100%)]',
+          'bg-[rgba(28,35,50,0.96)] shadow-[inset_-18px_0_38px_rgba(5,12,28,0.10)]',
+        slot === 'chat' && 'bg-[rgba(16,24,38,0.82)]',
         slot === 'submission' &&
-          'bg-[linear-gradient(180deg,rgba(18,43,65,0.94)_0%,rgba(18,32,58,0.94)_100%)] shadow-[inset_18px_0_38px_rgba(5,12,28,0.10)]',
+          'bg-[rgba(22,35,50,0.94)] shadow-[inset_18px_0_38px_rgba(5,12,28,0.10)]',
       )}
     >
       <div className="relative z-10 h-full">{children}</div>

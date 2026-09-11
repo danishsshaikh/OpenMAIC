@@ -95,7 +95,7 @@ export function ReasoningPart({ text }: { text: string }) {
         'rounded-lg border',
         interrupted
           ? 'border-neutral-200 bg-neutral-50/60 dark:border-neutral-700/60 dark:bg-neutral-800/30'
-          : 'border-violet-100/70 bg-violet-50/30 dark:border-violet-500/15 dark:bg-violet-500/[0.04]',
+          : 'border-primary/15 bg-primary/5 dark:border-primary/15 dark:bg-primary/[0.06]',
       )}
     >
       <button
@@ -105,7 +105,7 @@ export function ReasoningPart({ text }: { text: string }) {
           'flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] font-medium transition-colors',
           interrupted
             ? 'text-muted-foreground/70 hover:text-muted-foreground'
-            : 'text-[#5b1fa8]/80 hover:text-[#5b1fa8] dark:text-violet-300/80 dark:hover:text-violet-200',
+            : 'text-primary/80 hover:text-primary',
         )}
       >
         <ChevronRight className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')} />
@@ -114,7 +114,7 @@ export function ReasoningPart({ text }: { text: string }) {
         {dur ? <span className="shrink-0 tabular-nums opacity-70">{dur}</span> : null}
       </button>
       {open ? (
-        <div className="whitespace-pre-wrap break-words border-t border-violet-100/60 px-2.5 py-2 text-[12px] leading-relaxed text-muted-foreground dark:border-violet-500/10">
+        <div className="whitespace-pre-wrap break-words border-t border-primary/10 px-2.5 py-2 text-[12px] leading-relaxed text-muted-foreground">
           {text}
         </div>
       ) : null}

@@ -71,17 +71,17 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
   return (
     <div
       className={cn(
-        'relative space-y-4 overflow-hidden rounded-2xl border border-violet-200/85 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-violet-300/20',
+        'relative space-y-4 overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(145deg,rgba(252,250,255,0.98)_0%,rgba(238,242,255,0.94)_48%,rgba(232,250,255,0.96)_100%)] p-5 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_22px_58px_rgba(8,18,38,0.30),0_0_0_1px_rgba(139,92,246,0.10),0_0_42px_rgba(34,211,238,0.10)] ring-1 ring-primary/25 dark:bg-card dark:bg-none dark:text-card-foreground dark:shadow-none dark:ring-0',
         className,
       )}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-400" />
-      <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-cyan-200/35 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-violet-200/30 blur-3xl" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-cyan-400 dark:hidden" />
+      <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-cyan-200/35 blur-3xl dark:hidden" />
+      <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl dark:hidden" />
       {/* Header */}
       <div className="relative flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-violet-200 bg-violet-100 text-violet-700">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
             <Flag className="w-4 h-4" />
           </span>
           {t('pbl.v2.milestoneCard.title')}
@@ -98,7 +98,7 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
         <div className="relative text-sm leading-relaxed text-slate-800">
           <MarkdownText
             content={narrative}
-            className="pbl-v2-light-card-markdown text-slate-700 prose-p:text-slate-700 prose-strong:text-slate-900 prose-li:marker:text-violet-500"
+            className="pbl-v2-light-card-markdown text-slate-700 prose-p:text-slate-700 prose-strong:text-slate-900 prose-li:marker:text-primary"
           />
         </div>
       )}
@@ -122,13 +122,13 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
 
       {/* Performance prose */}
       {performance && (
-        <div className="relative border-l-2 border-violet-300 bg-white/35 py-1.5 pl-3 pr-2 text-[13px] italic text-slate-600">
+        <div className="relative border-l-2 border-primary/25 bg-white/35 py-1.5 pl-3 pr-2 text-[13px] italic text-slate-600">
           {performance}
         </div>
       )}
 
       {/* Handover footer */}
-      <div className="relative border-t border-violet-200/80 pt-2">
+      <div className="relative border-t border-primary/25 pt-2">
         {handover ? (
           <div className="space-y-2">
             <div className="text-xs text-slate-600">
@@ -148,7 +148,7 @@ export function MilestoneCard({ evaluation, handover, onContinue, className }: P
                 'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all',
                 consumed
                   ? 'cursor-default border border-slate-300 bg-slate-100 text-slate-500 shadow-none'
-                  : 'bg-gradient-to-r from-violet-600 to-cyan-500 text-white shadow-[0_12px_28px_rgba(99,102,241,0.30),0_0_22px_rgba(34,211,238,0.18)] hover:from-violet-500 hover:to-cyan-400 hover:shadow-[0_16px_34px_rgba(99,102,241,0.38),0_0_28px_rgba(34,211,238,0.24)]',
+                  : 'bg-gradient-to-r from-primary to-cyan-500 text-white shadow-[0_12px_28px_rgba(99,102,241,0.30),0_0_22px_rgba(34,211,238,0.18)] hover:from-primary hover:to-cyan-400 hover:shadow-[0_16px_34px_rgba(99,102,241,0.38),0_0_28px_rgba(34,211,238,0.24)] dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:shadow-none',
               )}
             >
               {consumed ? (

@@ -154,8 +154,7 @@ export function HeaderControls({
               onSelect={() => setTheme('light')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'light' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'light' && 'bg-primary/10 text-primary',
               )}
             >
               <Sun className="w-4 h-4" />
@@ -165,8 +164,7 @@ export function HeaderControls({
               onSelect={() => setTheme('dark')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'dark' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'dark' && 'bg-primary/10 text-primary',
               )}
             >
               <Moon className="w-4 h-4" />
@@ -176,8 +174,7 @@ export function HeaderControls({
               onSelect={() => setTheme('system')}
               className={cn(
                 'cursor-pointer gap-2',
-                theme === 'system' &&
-                  'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                theme === 'system' && 'bg-primary/10 text-primary',
               )}
             >
               <Monitor className="w-4 h-4" />
@@ -208,12 +205,10 @@ export function HeaderControls({
             'shrink-0 inline-flex items-center gap-2.5 rounded-full border shadow-sm transition-colors duration-200',
             'bg-white/60 dark:bg-gray-800/60 backdrop-blur-md',
             compact ? 'h-8 px-2.5' : 'h-9 px-3',
-            mode === 'edit'
-              ? 'border-violet-500/60 dark:border-violet-400/60'
-              : 'border-gray-100/50 dark:border-gray-700/50',
+            mode === 'edit' ? 'border-primary/50' : 'border-gray-100/50 dark:border-gray-700/50',
             !canEdit && mode !== 'edit'
               ? 'opacity-60 cursor-not-allowed'
-              : 'cursor-pointer hover:border-violet-400/60 dark:hover:border-violet-500/50',
+              : 'cursor-pointer hover:border-primary/40',
           )}
           // When disabled (e.g. the course-complete placeholder), explain why
           // on hover and point the user to a real scene instead of a bare
@@ -229,9 +224,7 @@ export function HeaderControls({
           <span
             className={cn(
               'text-[11px] font-bold uppercase tracking-[0.14em] tabular-nums select-none transition-colors duration-200',
-              mode === 'edit'
-                ? 'text-violet-600 dark:text-violet-300'
-                : 'text-gray-500 dark:text-gray-400',
+              mode === 'edit' ? 'text-primary' : 'text-gray-500 dark:text-gray-400',
             )}
           >
             {t('edit.proMode')}
@@ -241,7 +234,7 @@ export function HeaderControls({
             onCheckedChange={onToggleEditMode}
             disabled={!canEdit && mode !== 'edit'}
             aria-label={t('edit.editMode')}
-            className="data-[state=checked]:bg-violet-600 dark:data-[state=checked]:bg-violet-500"
+            className="data-[state=checked]:bg-primary"
           />
         </label>
       )}

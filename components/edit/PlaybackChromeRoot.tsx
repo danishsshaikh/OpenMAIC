@@ -1878,9 +1878,9 @@ function NarrationCueRail({
                 disabled={!canJump}
                 onClick={() => onJumpToAction(sceneId, cue.actionIndex)}
                 className={cn(
-                  'w-full rounded-md border px-3 py-2 text-left text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500',
+                  'w-full rounded-md border px-3 py-2 text-left text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                   cue.active
-                    ? 'border-violet-300 bg-violet-50 text-violet-950 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100'
+                    ? 'border-primary/30 bg-primary/10 text-primary dark:border-primary/35 dark:bg-primary/15 dark:text-primary'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800',
                   !canJump && 'cursor-not-allowed opacity-50',
                 )}

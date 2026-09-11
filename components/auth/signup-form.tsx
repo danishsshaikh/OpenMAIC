@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { brandConfig } from '@/lib/branding/brand-config';
 
 export function SignupForm() {
   const [name, setName] = useState('');
@@ -49,7 +50,7 @@ export function SignupForm() {
   }
 
   return (
-    <form className="space-y-5" onSubmit={onSubmit}>
+    <form className="space-y-4" onSubmit={onSubmit}>
       <Field>
         <FieldLabel htmlFor="signup-name">Name</FieldLabel>
         <Input
@@ -59,6 +60,7 @@ export function SignupForm() {
           type="text"
           autoComplete="name"
           required
+          className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
         />
       </Field>
       <Field>
@@ -70,8 +72,11 @@ export function SignupForm() {
           type="email"
           autoComplete="email"
           required
+          className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
         />
-        <FieldDescription>Use your @mituniversity.edu.in email address.</FieldDescription>
+        <FieldDescription>
+          Use your @{brandConfig.approvedEmailDomain} email address.
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor="signup-password">Password</FieldLabel>
@@ -83,6 +88,7 @@ export function SignupForm() {
             type={passwordVisible ? 'text' : 'password'}
             autoComplete="new-password"
             required
+            className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
           />
           <InputGroupButton
             type="button"
@@ -104,6 +110,7 @@ export function SignupForm() {
             type={confirmPasswordVisible ? 'text' : 'password'}
             autoComplete="new-password"
             required
+            className="h-11 bg-background/70 px-3 focus-visible:ring-primary/20"
           />
           <InputGroupButton
             type="button"
@@ -116,7 +123,12 @@ export function SignupForm() {
         </InputGroup>
       </Field>
       {error && <FieldError>{error}</FieldError>}
-      <Button type="submit" disabled={submitting} size="lg" className="w-full">
+      <Button
+        type="submit"
+        disabled={submitting}
+        size="lg"
+        className="mt-2 h-11 w-full bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-secondary))] text-white shadow-[0_16px_32px_-20px_rgb(var(--brand-shadow))] hover:opacity-95 dark:bg-primary dark:bg-none dark:text-primary-foreground dark:shadow-none dark:hover:bg-primary/90 dark:hover:opacity-100"
+      >
         {submitting ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -124,9 +136,12 @@ export function SignupForm() {
         )}
         Create account
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="pt-1 text-center text-sm text-muted-foreground">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+        <Link
+          href="/login"
+          className="font-semibold text-primary underline-offset-4 hover:underline"
+        >
           Sign in
         </Link>
       </p>

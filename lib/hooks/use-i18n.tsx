@@ -2,21 +2,11 @@
 
 import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type Locale, defaultLocale, supportedLocales } from '@/lib/i18n';
+import { type Locale, defaultLocale } from '@/lib/i18n';
+import { resolveDeploymentLocale } from '@/lib/i18n/deployment';
 import '@/lib/i18n/config';
 
 const LOCALE_STORAGE_KEY = 'locale';
-
-/** Match a browser language code (e.g. 'en', 'zh-TW') to a supported locale */
-function resolveLocale(lang: string): Locale {
-  // Exact match
-  const exact = supportedLocales.find((l) => l.code === lang);
-  if (exact) return exact.code;
-  // Prefix match: 'en' → 'en-US', 'zh' → 'zh-CN'
-  const prefix = lang.split('-')[0].toLowerCase();
-  const match = supportedLocales.find((l) => l.code.toLowerCase().startsWith(prefix));
-  return match?.code ?? defaultLocale;
-}
 
 type I18nContextType = {
   locale: Locale;
@@ -38,7 +28,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
       const raw = stored || navigator.language || defaultLocale;
-      const target = resolveLocale(raw);
+      const target = resolveDeploymentLocale(raw);
+      if (stored !== target) localStorage.setItem(LOCALE_STORAGE_KEY, target);
       if (target !== i18n.language) i18n.changeLanguage(target);
     } catch {
       // localStorage unavailable, keep default
@@ -46,9 +37,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLocale = (newLocale: Locale) => {
-    i18n.changeLanguage(newLocale);
+    const target = resolveDeploymentLocale(newLocale);
+    i18n.changeLanguage(target);
     try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, newLocale);
+      localStorage.setItem(LOCALE_STORAGE_KEY, target);
     } catch {
       // localStorage unavailable
     }

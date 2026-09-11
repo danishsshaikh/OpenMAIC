@@ -60,7 +60,7 @@ model picker; no streaming-reasoning UI.
 - Visual: left-aligned rows within the existing centered ~260px container;
   labels `text-foreground`, examples `text-muted-foreground`, small sizes,
   consistent with the rail's existing type scale. Quoted examples may use the
-  brand-violet faintly to read as "things you can say".
+  brand accent faintly to read as "things you can say".
 
 ### 2. Voice input button (`AgentPanel.tsx` composer footer)
 
@@ -77,7 +77,7 @@ model picker; no streaming-reasoning UI.
   shows as disabled when no ASR is configured. (Availability depends on whether
   an ASR provider is configured or browser-native ASR is present.)
 - Style the button to match the composer chrome (same size box as Send, muted
-  until active, brand-violet while recording — `SpeechButton` owns its active
+  until active, brand accent while recording — `SpeechButton` owns its active
   state; pass `className` to fit the footer).
 
 ### 3. Unified tool-call rendering
@@ -86,7 +86,7 @@ model picker; no streaming-reasoning UI.
   current `regenerate-tool-ui.tsx` / `regenerate-scene-tool-ui.tsx` scaffolding:
   the bordered `.ae-tool` shell — leading icon, truncating title, optional
   `@scene` pill (reuse the existing `ScenePill`), a right-aligned status badge
-  (running = violet spinner, done = emerald check, failed = amber alert), an
+  (running = brand spinner, done = emerald check, failed = amber alert), an
   optional **inline bar-action slot** (rendered on the always-visible header row,
   e.g. for the Restore button), and an optional expandable body (children
   render-prop). This also resolves the previously-deferred tool-card duplication

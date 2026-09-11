@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { spotlightV1 } from '@/lib/choreography';
 import { compileVideoTimeline, emitHyperframes } from '@/lib/video-export';
 import type { AssetMeta, CompilerScene } from '@/lib/video-export';
+import { brandConfig } from '@/lib/branding/brand-config';
 import {
   slide,
   quiz,
@@ -58,7 +59,7 @@ describe('emitHyperframes', () => {
         'LICENSES/Inter-OFL-1.1.txt',
         'README.md',
         'index.html',
-        'openmaic-video-manifest.json',
+        brandConfig.export.manifestFileName,
         'subtitles.srt',
         'subtitles.vtt',
       ].sort(),
@@ -69,12 +70,12 @@ describe('emitHyperframes', () => {
   });
 
   it('builds one composition driven by one paused GSAP timeline', () => {
-    expect(html).toContain('data-composition-id="openmaic"');
+    expect(html).toContain(`data-composition-id="${brandConfig.export.compositionId}"`);
     expect(html).toContain('data-width="1920"');
     expect(html).toContain('data-height="1080"');
     expect(html).toContain(`data-duration="${ir.totalDurationMs / 1000}"`);
     expect(html).toContain('gsap.timeline({ paused: true })');
-    expect(html).toContain('window.__timelines["openmaic"] = tl;');
+    expect(html).toContain(`window.__timelines["${brandConfig.export.compositionId}"] = tl;`);
   });
 
   it('lays out base / narration / video clips with clip attributes', () => {

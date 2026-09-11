@@ -1,5 +1,6 @@
 import type { Scene } from '@/lib/types/stage';
 import type { SpeechAction } from '@/lib/types/action';
+import { brandConfig } from '@/lib/branding/brand-config';
 import {
   VIDEO_FRAME_COMPILER_NAME,
   VIDEO_FRAME_EXPORT_SCHEMA,
@@ -122,7 +123,7 @@ function getScenePlaceholderReason(scene: Scene): string {
     case 'interactive':
       return 'Interactive/widget scenes require runtime playback; this artifact preserves scene JSON and reusable HTML sidecars when available.';
     case 'pbl':
-      return 'PBL scenes require OpenMAIC task runtime; this artifact preserves scene JSON for future renderer support.';
+      return `PBL scenes require ${brandConfig.shortName} task runtime; this artifact preserves scene JSON for future renderer support.`;
     default:
       return 'This scene type is preserved as sidecar data but is not rendered by this compiler slice.';
   }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { supportedLocales } from '@/lib/i18n';
+import { englishOnlyDeployment } from '@/lib/i18n/deployment';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -23,6 +23,9 @@ interface LanguageSwitcherProps {
  */
 export function LanguageSwitcher({ onOpen }: LanguageSwitcherProps) {
   const { locale, setLocale } = useI18n();
+  const locales = englishOnlyDeployment.exposedLocales;
+
+  if (!englishOnlyDeployment.showLanguageSwitcher) return null;
 
   return (
     <DropdownMenu
@@ -33,18 +36,18 @@ export function LanguageSwitcher({ onOpen }: LanguageSwitcherProps) {
     >
       <DropdownMenuTrigger asChild>
         <button className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all">
-          {supportedLocales.find((l) => l.code === locale)?.shortLabel ?? locale}
+          {locales.find((l) => l.code === locale)?.shortLabel ?? locale}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-[120px]">
-        {supportedLocales.map((l) => (
+        {locales.map((l) => (
           <DropdownMenuItem
             key={l.code}
             onSelect={() => setLocale(l.code)}
             className={cn(
               'cursor-pointer',
               locale === l.code &&
-                'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400',
+                'bg-primary/10 text-primary dark:bg-primary/15 dark:text-primary',
             )}
           >
             {l.label}

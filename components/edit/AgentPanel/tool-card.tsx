@@ -4,7 +4,7 @@
  * Shared tool-call card for the AgentBar, in the AgentSidebar design board's
  * `.ae-tool` language: a bordered row with a leading glyph, truncating title, an
  * optional `@scene` pill, an optional inline bar-action (always visible on the
- * row — e.g. a Restore button), an icon-only status mark (running = violet
+ * row - e.g. a Restore button), an icon-only status mark (running = brand
  * spinner, done = emerald check ✓, failed = amber cross ✗; the text label is a
  * hover tooltip). Tool cards are intentionally NOT expandable. Every tool card
  * (regenerate / read / future) renders through this
@@ -42,8 +42,8 @@ export function ScenePill({ sceneId }: { sceneId?: string }) {
   );
   if (!title) return null;
   return (
-    <span className="inline-flex min-w-0 max-w-[150px] shrink items-center gap-0.5 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-medium text-[#5b1fa8] dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
-      <AtSign className="size-2.5 shrink-0 text-violet-500" />
+    <span className="inline-flex min-w-0 max-w-[150px] shrink items-center gap-0.5 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-medium text-primary">
+      <AtSign className="size-2.5 shrink-0 text-primary" />
       <span className="truncate">{title}</span>
     </span>
   );
@@ -57,7 +57,7 @@ const STATUS_ICON: Record<ToolStatus, LucideIcon> = {
 };
 
 const STATUS_TONE: Record<ToolStatus, string> = {
-  running: 'text-[#5b1fa8] dark:text-violet-300',
+  running: 'text-primary',
   done: 'text-emerald-600 dark:text-emerald-400',
   failed: 'text-amber-600 dark:text-amber-400',
   // Stopped: a deliberately loud rose stop sign so an interrupted run reads as
@@ -89,7 +89,7 @@ export function ToolCard({
     <div
       className={cn(
         'overflow-hidden rounded-[9px] border',
-        running ? 'border-violet-300 dark:border-violet-500/40' : 'border-border',
+        running ? 'border-primary/35' : 'border-border',
       )}
     >
       <div className="flex w-full items-center gap-2 bg-muted/50 px-2.5 py-2 text-left">
