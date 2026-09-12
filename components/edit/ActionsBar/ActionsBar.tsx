@@ -1,8 +1,16 @@
 'use client';
 
 /**
- * ActionsBar — Pro-mode "讲解脚本" bottom bar, a horizontal film-editing timeline
+ * ActionsBar — the "narration script" timeline: a horizontal film-editing strip
  * that is also a light editor for the scene's playback `actions`.
+ *
+ * This WAS the whole bottom bar. It is now the body of `EditDock`, which owns
+ * the surface (border, blur, fold) and the global edit bar above it; the
+ * timeline still renders its own header row — the row's controls and the body
+ * share one piece of state — and drives the dock's fold through `useEditDock`.
+ * Nothing about the timeline's own behaviour or geometry changed in the move.
+ * (The height-drag handle was removed per product decision: only the fold moves
+ * the dock's height, so the timeline no longer sizes itself.)
  *
  * The scene's `actions` ARE the timeline: walked left→right, each `speech`
  * becomes an editable clip block (one spoken line, numbered) and every non-speech
@@ -12,12 +20,13 @@
  *
  * Editing (persisted via useStageStore.updateScene → actions-edit ops):
  * - speech clip text is editable inline (commit on blur);
- * - the header "添加动作" pill opens ActionPicker to insert a new action;
+ * - the header "Add action" pill opens ActionPicker to insert a new action;
  * - existing items drag to reorder; each card carries a delete button;
- * - clicking an element-bound cue arms canvas pick mode (useCanvasStore.pickTarget),
- *   so the target is chosen by clicking the element directly on the slide.
+ * - clicking an element-bound cue arms canvas pick mode (useCanvasStore.pickTarget
+ *   with purpose 'cue'), so the target is chosen by clicking the element directly
+ *   on the slide.
  *
- * Collapsible; height-resizable from the top edge; reactive to the stage store.
+ * Reactive to the stage store; collapse and height belong to the dock.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -30,9 +39,11 @@ import {
   Flag,
   FoldVertical,
   GripVertical,
+  Loader2,
   Play,
   Plus,
   RefreshCw,
+  Square,
   Trash2,
   UnfoldVertical,
   Volume2,
@@ -40,12 +51,10 @@ import {
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils/cn';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { useStageStore } from '@/lib/store/stage';
+import { flushStageSave, useStageStore } from '@/lib/store/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
-import { fetchSceneActions } from '@/lib/hooks/use-scene-generator';
-import { createLogger } from '@/lib/logger';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import {
   Select,
@@ -55,7 +64,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Action, DiscussionAction } from '@/lib/types/action';
-import type { Scene, SceneType } from '@/lib/types/stage';
+import type { SceneType } from '@/lib/types/stage';
 import { ELEMENT_BOUND, cueLabel, cueMeta, elementLabel } from './cue-meta';
 import { applyCuePreview, clearCuePreview, cuePreviewFor } from './cue-preview';
 import {
@@ -71,67 +80,36 @@ import {
   setDiscussionAgentById,
   setDiscussionPromptById,
   setDiscussionTopicById,
-  setSpeechTextById,
+  setSpeechTextClearAudioById,
 } from './actions-edit';
+import { useEditDock } from '@/components/edit/EditDock/dock-context';
 import { ActionPicker } from './ActionPicker';
 import type { PickerType } from './picker-options';
 import {
   audioExists,
   audioObjectUrl,
+  discardSpeechAudio,
   regenerateSpeechAudio,
+  resolveLegacySpeechAudioId,
   resolveSpeechAudioId,
-  speechAudioId,
 } from '@/lib/audio/regenerate-speech-tts';
-import {
-  buildNarrationSourceFromScene,
-  getVisibleElementText,
-  getAudioSourceFingerprint,
-  getNarrationSyncState,
-  normalizeNarrationText,
-  resolveNarrationSyncDecision,
-  stableStringify,
-  staleAudioMetadata,
-  syncedNarrationMetadata,
-  type NarrationSyncDecision,
-  type NarrationSyncState,
-  type NarrationVisualBlock,
-} from '@/lib/audio/narration-sync';
-import type { PPTElement } from '@openmaic/dsl';
-import type {
-  GeneratedInteractiveContent,
-  GeneratedPBLContent,
-  GeneratedQuizContent,
-  GeneratedSlideContent,
-  SceneOutline,
-} from '@/lib/types/generation';
+import { useMayGenerateForStage } from '@/lib/classroom/generation-permission';
 
 const EMPTY: Action[] = [];
 const EMPTY_ELEMENTS: { id?: string; type: string; content?: string }[] = [];
-const log = createLogger('NarrationSync');
-const ORDER_LOG_PREFIX = '[NarrationSyncOrder]';
-const SPOTLIGHT_TRACE_PREFIX = '[SpotlightTargetTrace]';
-type NarrationGenerationSlideContent = GeneratedSlideContent & {
-  narrationSource?: {
-    text: string;
-    elementCount: number;
-    fingerprint: string;
-    blocks: Array<{
-      blockId: string;
-      elementIds: string[];
-      targetElementId: string;
-      text: string;
-      orderIndex: number;
-    }>;
-  };
-  choreography?: Array<{
-    targetElementId: string;
-    targetText: string;
-    orderIndex: number;
-  }>;
-};
 // Stable empty set for the "no lines regenerating" state (avoids re-allocating
 // on every reset and keeps a constant identity between batch runs).
 const NO_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Module-level single-flight controller for TTS preview: at most one
+ * SpeechTtsBar may be loading or playing at any moment, across every speech
+ * clip in the timeline. A bar registers its own `stop` handle when it starts a
+ * preview and clears it in `stopPreview` only when it is still the registered
+ * owner — so a stale stop (a superseded attempt, or an unmounted non-active
+ * bar) never kills the currently active preview.
+ */
+let activePreview: { stop: () => void } | null = null;
 
 /**
  * Clear the canvas spotlight/laser preview when a cue glyph unmounts while it is
@@ -152,10 +130,6 @@ function useClearCuePreviewOnUnmount() {
  */
 const INCOMPLETE_CLIP = 'border-dashed border-amber-400/70';
 
-const MIN_H = 168;
-const MAX_H = 520;
-const DEFAULT_H = 224;
-const LINE_H = 86; // height when collapsed to just the axis line of node icons (fits the chips)
 const AXIS_FROM_TOP = 20; // px from track top to the axis center (nodes hang below it)
 
 // Radix Select forbids an empty-string item value, so the discussion's
@@ -211,8 +185,8 @@ function CueTooltip({ tip }: { tip: TooltipState }) {
 }
 
 // Native HTML5 drag snapshots the element's square bounding box, so a round
-// icon chip drags with white corners ("白边"). Suppress the ghost with a 1×1
-// transparent image - the brand drop indicator carries the feedback instead.
+// icon chip drags with white corners ("white border"). Suppress the ghost with a 1×1
+// transparent image — the violet drop indicator carries the feedback instead.
 let blankDragImg: HTMLImageElement | null = null;
 function setBlankDragImage(e: React.DragEvent) {
   if (typeof document === 'undefined') return;
@@ -226,780 +200,6 @@ function setBlankDragImage(e: React.DragEvent) {
   } catch {
     /* not supported — fall back to the default ghost */
   }
-}
-
-function outlineForScene(scene: Scene, outlines: readonly SceneOutline[]): SceneOutline {
-  const matched =
-    (scene.outlineId ? outlines.find((outline) => outline.id === scene.outlineId) : undefined) ??
-    outlines.find((outline) => outline.order === scene.order);
-  if (matched) return matched;
-  return {
-    id: scene.outlineId ?? scene.id,
-    type: scene.type,
-    title: scene.title,
-    description: scene.title,
-    keyPoints: [scene.title],
-    order: scene.order,
-  };
-}
-
-function speechTextsForScene(scene: Scene): string[] {
-  return (scene.actions ?? [])
-    .filter((action) => action.type === 'speech')
-    .map((action) => ((action as { text?: string }).text ?? '').trim())
-    .filter(Boolean);
-}
-
-function toGenerationContent(
-  content: Scene['content'],
-  narrationSource?: ReturnType<typeof buildNarrationSourceFromScene>,
-  choreographyBlocks?: readonly NarrationGenerationBlock[],
-):
-  | NarrationGenerationSlideContent
-  | GeneratedQuizContent
-  | GeneratedInteractiveContent
-  | GeneratedPBLContent {
-  if (content.type === 'slide') {
-    const blocks = choreographyBlocks ?? narrationSource?.visualBlocks ?? [];
-    return {
-      elements: content.canvas.elements ?? [],
-      background: content.canvas.background,
-      ...(narrationSource
-        ? {
-            narrationSource: {
-              text: narrationSource.text,
-              elementCount: narrationSource.elementCount,
-              fingerprint: narrationSource.fingerprint,
-              blocks: blocks.map((block) => ({
-                blockId: block.blockId,
-                elementIds: block.elementIds,
-                targetElementId: block.targetElementId,
-                text: block.text,
-                orderIndex: block.orderIndex,
-              })),
-            },
-            choreography: blocks.map((block) => ({
-              targetElementId: block.targetElementId,
-              targetText: block.text,
-              orderIndex: block.orderIndex,
-            })),
-          }
-        : {}),
-    } satisfies NarrationGenerationSlideContent;
-  }
-  return content as GeneratedQuizContent | GeneratedInteractiveContent | GeneratedPBLContent;
-}
-
-type NarrationGenerationBlock = NarrationVisualBlock & { targetElementId: string };
-
-interface TargetResolution {
-  elementId: string;
-}
-
-function preserveSpeechAudioByPosition(
-  previous: readonly Action[],
-  generated: readonly Action[],
-): Action[] {
-  const previousSpeech = previous.filter((action) => action.type === 'speech') as Array<
-    Action & { id?: string; audioId?: string; audioUrl?: string }
-  >;
-  const previousSpeechById = new Map(
-    previousSpeech
-      .filter((action) => action.id)
-      .map((action) => [action.id as string, action] as const),
-  );
-  let speechIndex = 0;
-  return generated.map((action) => {
-    if (action.type !== 'speech') return action;
-    const prior =
-      (action.id ? previousSpeechById.get(action.id) : undefined) ?? previousSpeech[speechIndex++];
-    if (!prior?.audioId && !prior?.audioUrl) return action;
-    return {
-      ...action,
-      ...(prior.audioId ? { audioId: prior.audioId } : {}),
-      ...(prior.audioUrl ? { audioUrl: prior.audioUrl } : {}),
-    } as Action;
-  });
-}
-
-function preserveActionPairIdsByVisualBlock(
-  previous: readonly Action[],
-  generated: readonly Action[],
-  blocks: readonly NarrationGenerationBlock[],
-) {
-  const previousPairs = spotlightSpeechPairsByVisualBlock(previous, blocks);
-  const generatedTargetCounts = new Map<string, number>();
-  let pendingTargetId: string | null = null;
-
-  return generated.map((action) => {
-    if (isElementTargetAction(action)) {
-      const block = visualBlockForTargetId(blocks, action.elementId);
-      pendingTargetId = block?.blockId ?? action.elementId;
-      const index = generatedTargetCounts.get(pendingTargetId) ?? 0;
-      generatedTargetCounts.set(pendingTargetId, index + 1);
-      const pair = previousPairs.get(pendingTargetId)?.[index];
-      return pair?.effectId ? ({ ...action, id: pair.effectId } as Action) : action;
-    }
-
-    if (action.type === 'speech' && pendingTargetId) {
-      const index = (generatedTargetCounts.get(pendingTargetId) ?? 1) - 1;
-      const pair = previousPairs.get(pendingTargetId)?.[index];
-      pendingTargetId = null;
-      return pair?.speechId ? ({ ...action, id: pair.speechId } as Action) : action;
-    }
-
-    return action;
-  });
-}
-
-function reorderTargetPairsByVisualBlocks(
-  generated: readonly Action[],
-  blocks: readonly NarrationGenerationBlock[],
-  elements: readonly PPTElement[],
-  previous: readonly Action[] = [],
-): Action[] {
-  if (!blocks.length) return [...generated] as Action[];
-  const previousTargetByBlock = previousTargetIdByVisualBlock(previous, blocks);
-  const targetChunks: Array<{ blockId: string; originalIndex: number; actions: Action[] }> = [];
-  const unknownTargetChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
-  const otherChunks: Array<{ originalIndex: number; actions: Action[] }> = [];
-
-  for (let index = 0; index < generated.length; index += 1) {
-    const action = generated[index];
-    if (!action) continue;
-    if (isElementTargetAction(action)) {
-      const block = visualBlockForTargetId(blocks, action.elementId);
-      const next = generated[index + 1];
-      const speechText =
-        next?.type === 'speech' ? ((next as { text?: string }).text ?? '') : undefined;
-      const resolved = block
-        ? resolveSpotlightEffectTarget({
-            generatedTargetId: action.elementId,
-            previousTargetId: previousTargetByBlock.get(block.blockId),
-            block,
-            elements,
-            narrationText: speechText,
-          })
-        : undefined;
-      const normalizedAction = resolved
-        ? ({ ...action, elementId: resolved.elementId } as Action)
-        : action;
-      const actions: Action[] = [normalizedAction];
-      if (next?.type === 'speech') {
-        actions.push(next);
-        index += 1;
-      }
-      if (block) {
-        targetChunks.push({ blockId: block.blockId, originalIndex: index, actions });
-      } else {
-        unknownTargetChunks.push({ originalIndex: index, actions });
-      }
-    } else {
-      otherChunks.push({ originalIndex: index, actions: [action] });
-    }
-  }
-  if (!targetChunks.length) return [...generated] as Action[];
-
-  const chunksByBlock = new Map<string, Array<{ originalIndex: number; actions: Action[] }>>();
-  for (const chunk of targetChunks) {
-    const chunks = chunksByBlock.get(chunk.blockId) ?? [];
-    chunks.push(chunk);
-    chunksByBlock.set(chunk.blockId, chunks);
-  }
-  const orderedTargets = blocks.flatMap((block) =>
-    (chunksByBlock.get(block.blockId) ?? [])
-      .sort((a, b) => a.originalIndex - b.originalIndex)
-      .map((chunk) => chunk.actions),
-  );
-  const firstTargetIndex = Math.min(...targetChunks.map((chunk) => chunk.originalIndex));
-  const lastTargetIndex = Math.max(...targetChunks.map((chunk) => chunk.originalIndex));
-  const leadingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex < firstTargetIndex);
-  const middleOtherChunks = otherChunks.filter(
-    (chunk) => chunk.originalIndex >= firstTargetIndex && chunk.originalIndex <= lastTargetIndex,
-  );
-  const trailingOtherChunks = otherChunks.filter((chunk) => chunk.originalIndex > lastTargetIndex);
-
-  return [
-    ...leadingOtherChunks
-      .sort((a, b) => a.originalIndex - b.originalIndex)
-      .flatMap((chunk) => chunk.actions),
-    ...orderedTargets.flat(),
-    ...middleOtherChunks
-      .sort((a, b) => a.originalIndex - b.originalIndex)
-      .flatMap((chunk) => chunk.actions),
-    ...unknownTargetChunks
-      .sort((a, b) => a.originalIndex - b.originalIndex)
-      .flatMap((chunk) => chunk.actions),
-    ...trailingOtherChunks
-      .sort((a, b) => a.originalIndex - b.originalIndex)
-      .flatMap((chunk) => chunk.actions),
-  ] as Action[];
-}
-
-function previousTargetIdByVisualBlock(
-  actions: readonly Action[],
-  blocks: readonly NarrationGenerationBlock[],
-) {
-  const targets = new Map<string, string>();
-  for (const action of actions) {
-    if (!isElementTargetAction(action)) continue;
-    const block = visualBlockForTargetId(blocks, action.elementId);
-    if (block && !targets.has(block.blockId)) targets.set(block.blockId, action.elementId);
-  }
-  return targets;
-}
-
-function resolveSpotlightEffectTarget(args: {
-  generatedTargetId: string;
-  previousTargetId?: string;
-  block: NarrationGenerationBlock;
-  elements: readonly PPTElement[];
-  narrationText?: string;
-}): TargetResolution {
-  const generated = targetCandidate(args.generatedTargetId, args.elements, args.block);
-  const generatedIsOrderingBlock =
-    generated.valid &&
-    (args.generatedTargetId === args.block.blockId ||
-      args.generatedTargetId === args.block.targetElementId) &&
-    !args.block.elementIds.includes(args.generatedTargetId) &&
-    Boolean(bestDescendantTarget(args.block, args.elements, args.narrationText));
-
-  if (generated.valid && !generated.oversized && !generatedIsOrderingBlock) {
-    return {
-      elementId: args.generatedTargetId,
-    };
-  }
-
-  const previous = args.previousTargetId
-    ? targetCandidate(args.previousTargetId, args.elements, args.block)
-    : undefined;
-  if (
-    previous?.valid &&
-    !previous.oversized &&
-    args.previousTargetId &&
-    args.block.elementIds.includes(args.previousTargetId)
-  ) {
-    return {
-      elementId: args.previousTargetId,
-    };
-  }
-
-  const descendant = bestDescendantTarget(args.block, args.elements, args.narrationText);
-  if (descendant) {
-    return {
-      elementId: descendant,
-    };
-  }
-
-  const blockTarget = targetCandidate(args.block.targetElementId, args.elements, args.block);
-  return {
-    elementId: blockTarget.valid ? args.block.targetElementId : args.generatedTargetId,
-  };
-}
-
-function targetCandidate(
-  targetId: string,
-  elements: readonly PPTElement[],
-  block: NarrationGenerationBlock,
-) {
-  const element = elementById(elements, targetId);
-  const bounds = element ? boundsForElement(element) : undefined;
-  const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
-  const valid =
-    Boolean(element) &&
-    Boolean(bounds) &&
-    Boolean(bounds && bounds.width > 0 && bounds.height > 0) &&
-    targetBelongsToBlock(targetId, block, elements);
-  const oversized = Boolean(valid && areaRatio != null && areaRatio > 0.68);
-  return { valid, areaRatio, oversized };
-}
-
-function bestDescendantTarget(
-  block: NarrationGenerationBlock,
-  elements: readonly PPTElement[],
-  narrationText?: string,
-): string | undefined {
-  const tokens = new Set(significantTokens(narrationText ?? block.text));
-  const candidates = block.elementIds
-    .map((id) => elementById(elements, id))
-    .filter((element): element is PPTElement => Boolean(element))
-    .filter((element) => {
-      const bounds = boundsForElement(element);
-      return Boolean(bounds.width > 0 && bounds.height > 0 && getVisibleElementText(element));
-    });
-  if (!candidates.length) return undefined;
-
-  return candidates
-    .map((element, index) => {
-      const elementTokens = significantTokens(getVisibleElementText(element));
-      const overlap = elementTokens.filter((token) => tokens.has(token)).length;
-      return { id: element.id, score: overlap * 100 + elementTokens.length, index };
-    })
-    .sort((a, b) => b.score - a.score || a.index - b.index || a.id.localeCompare(b.id))[0]?.id;
-}
-
-function targetBelongsToBlock(
-  targetId: string,
-  block: NarrationGenerationBlock,
-  elements: readonly PPTElement[],
-): boolean {
-  if (
-    targetId === block.blockId ||
-    targetId === block.targetElementId ||
-    block.elementIds.includes(targetId)
-  ) {
-    return true;
-  }
-  const element = elementById(elements, targetId);
-  const bounds = element ? boundsForElement(element) : undefined;
-  if (!bounds) return false;
-  const centerX = bounds.left + bounds.width / 2;
-  const centerY = bounds.top + bounds.height / 2;
-  return (
-    centerX >= block.bounds.left &&
-    centerX <= block.bounds.left + block.bounds.width &&
-    centerY >= block.bounds.top &&
-    centerY <= block.bounds.top + block.bounds.height
-  );
-}
-
-function elementById(elements: readonly PPTElement[], targetId: string): PPTElement | undefined {
-  return elements.find((element) => element.id === targetId);
-}
-
-function boundsForElement(element: PPTElement): NarrationVisualBlock['bounds'] {
-  const record = element as unknown as Record<string, unknown>;
-  return {
-    left: finiteNumber(record.left),
-    top: finiteNumber(record.top),
-    width: finiteNumber(record.width),
-    height: finiteNumber(record.height),
-  };
-}
-
-function finiteNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function spotlightTargetAreaRatio(
-  bounds: NarrationVisualBlock['bounds'],
-  elements: readonly PPTElement[],
-): number | undefined {
-  const slideWidth = Math.max(
-    ...elements.map((element) => {
-      const elementBounds = boundsForElement(element);
-      return elementBounds.left + elementBounds.width;
-    }),
-    0,
-  );
-  const slideHeight = Math.max(
-    ...elements.map((element) => {
-      const elementBounds = boundsForElement(element);
-      return elementBounds.top + elementBounds.height;
-    }),
-    0,
-  );
-  if (slideWidth <= 0 || slideHeight <= 0) return undefined;
-  return (bounds.width * bounds.height) / (slideWidth * slideHeight);
-}
-
-function targetIdsFromActions(actions: readonly Action[]): string[] {
-  const seen = new Set<string>();
-  return actions.filter(isElementTargetAction).flatMap((action) => {
-    if (seen.has(action.elementId)) return [];
-    seen.add(action.elementId);
-    return [action.elementId];
-  });
-}
-
-function targetableVisualBlocks(
-  source: ReturnType<typeof buildNarrationSourceFromScene>,
-  actions: readonly Action[],
-  sceneTitle: string,
-): NarrationGenerationBlock[] {
-  const titleText = normalizeNarrationText(sceneTitle);
-  const targetIds = targetIdsFromActions(actions);
-  if (!targetIds.length) {
-    return source.visualBlocks.filter((block) => block.text !== titleText);
-  }
-  return source.visualBlocks.flatMap((block) => {
-    if (block.text === titleText) return [];
-    const targetElementId =
-      targetIds.find((id) => id === block.targetElementId || block.elementIds.includes(id)) ??
-      undefined;
-    if (!targetElementId) return [];
-    return [{ ...block, targetElementId }];
-  });
-}
-
-function spotlightSpeechPairsByVisualBlock(
-  actions: readonly Action[],
-  blocks: readonly NarrationGenerationBlock[],
-) {
-  const pairs = new Map<string, Array<{ effectId?: string; speechId?: string }>>();
-  let pending: { blockId: string; effectId?: string } | null = null;
-  for (const action of actions) {
-    if (isElementTargetAction(action)) {
-      const block = visualBlockForTargetId(blocks, action.elementId);
-      pending = { blockId: block?.blockId ?? action.elementId, effectId: action.id };
-      continue;
-    }
-    if (action.type === 'speech' && pending) {
-      const list = pairs.get(pending.blockId) ?? [];
-      list.push({ effectId: pending.effectId, speechId: action.id });
-      pairs.set(pending.blockId, list);
-      pending = null;
-    }
-  }
-  return pairs;
-}
-
-function visualBlockForTargetId(
-  blocks: readonly NarrationGenerationBlock[],
-  targetId: string,
-): NarrationGenerationBlock | undefined {
-  return blocks.find(
-    (block) =>
-      block.targetElementId === targetId ||
-      block.blockId === targetId ||
-      block.elementIds.includes(targetId),
-  );
-}
-
-function isElementTargetAction(action: Action): action is Action & { elementId: string } {
-  return (
-    (action.type === 'spotlight' || action.type === 'laser') &&
-    typeof (action as { elementId?: unknown }).elementId === 'string' &&
-    Boolean((action as { elementId?: string }).elementId)
-  );
-}
-
-function targetActionsForDiagnostics(actions: readonly Action[]) {
-  return actions
-    .filter(isElementTargetAction)
-    .map((action) => ({ actionId: action.id, targetElementId: action.elementId }));
-}
-
-function speechIdsForDiagnostics(actions: readonly Action[]) {
-  return actions
-    .filter((action) => action.type === 'speech')
-    .map((action) => action.id)
-    .filter(Boolean) as string[];
-}
-
-function orderTextPreview(value: unknown, max = 80): string {
-  return normalizeNarrationText(
-    typeof value === 'string' ? value.replace(/<[^>]+>/g, ' ') : '',
-  ).slice(0, max);
-}
-
-function elementArrayOrderForDiagnostics(scene: Scene | undefined) {
-  if (!scene || scene.content.type !== 'slide') return [];
-  return (scene.content.canvas.elements ?? []).map((element) => {
-    const record = element as unknown as Record<string, unknown>;
-    return {
-      elementId: element.id,
-      type: element.type,
-      x: typeof record.left === 'number' ? record.left : undefined,
-      y: typeof record.top === 'number' ? record.top : undefined,
-      textPreview: getVisibleElementText(element).slice(0, 80),
-    };
-  });
-}
-
-function elementArrayOrderFlatForDiagnostics(scene: Scene | undefined) {
-  return elementArrayOrderForDiagnostics(scene).map((element, index) =>
-    `${index}:${element.elementId}:${element.x ?? ''}:${element.y ?? ''}:${element.textPreview}`.slice(
-      0,
-      120,
-    ),
-  );
-}
-
-function editedElementTextFlatForDiagnostics(scene: Scene | undefined) {
-  if (!scene || scene.content.type !== 'slide') return [];
-  return (scene.content.canvas.elements ?? [])
-    .map((element, index) =>
-      `${index}:${element.id}:${getVisibleElementText(element)}`.slice(0, 120),
-    )
-    .filter((item) => item.replace(/^[^:]+:[^:]+:/, '').trim());
-}
-
-function visualBlockOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
-  return blocks.map((block) => ({
-    blockId: block.blockId,
-    targetElementId: block.targetElementId,
-    x: block.bounds.left,
-    y: block.bounds.top,
-    textPreview: block.text.slice(0, 80),
-  }));
-}
-
-function visualBlockOrderFlatForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
-  return blocks.map((block) =>
-    `${block.orderIndex}:${block.blockId}:${block.targetElementId}:${block.text}`.slice(0, 120),
-  );
-}
-
-function generationInputOrderForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
-  return blocks.map((block) => ({
-    blockId: block.blockId,
-    targetElementId: block.targetElementId,
-    textPreview: block.text.slice(0, 80),
-  }));
-}
-
-function generationInputOrderFlatForDiagnostics(blocks: readonly NarrationVisualBlock[]) {
-  return blocks.map((block, index) =>
-    `${index}:${block.blockId}:${block.targetElementId}:${block.text}`.slice(0, 120),
-  );
-}
-
-function actionOrderForDiagnostics(actions: readonly Action[]) {
-  return actions.map((action) => ({
-    type: action.type,
-    actionId: action.id,
-    targetElementId: isElementTargetAction(action) ? action.elementId : undefined,
-    speechPreview:
-      action.type === 'speech' ? orderTextPreview((action as { text?: string }).text) : undefined,
-  }));
-}
-
-function actionOrderFlatForDiagnostics(actions: readonly Action[]) {
-  return actions.map((action, index) => {
-    const target = isElementTargetAction(action) ? action.elementId : '';
-    const speech =
-      action.type === 'speech' ? orderTextPreview((action as { text?: string }).text, 120) : '';
-    return `${index}:${action.type}:${action.id ?? ''}:${target}:${speech}`.slice(0, 120);
-  });
-}
-
-function narrationSourceTextFlatForDiagnostics(
-  source: ReturnType<typeof buildNarrationSourceFromScene>,
-) {
-  return source.text
-    .split('\n')
-    .map((line, index) => `${index}:${line}`.slice(0, 120))
-    .filter((line) => line.replace(/^\d+:/, '').trim());
-}
-
-function logNarrationOrderCheckpoint(payload: Record<string, unknown>) {
-  if (process.env.NODE_ENV === 'production') return;
-  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
-  console.info(ORDER_LOG_PREFIX, payload);
-}
-
-function logSpotlightTargetCheckpoint(payload: Record<string, unknown>) {
-  if (process.env.NODE_ENV === 'production') return;
-  if (typeof console === 'undefined' || typeof console.info !== 'function') return;
-  console.info(SPOTLIGHT_TRACE_PREFIX, payload);
-}
-
-function spotlightTargetFlatForDiagnostics(
-  actions: readonly Action[],
-  blocks: readonly NarrationGenerationBlock[],
-  elements: readonly PPTElement[],
-) {
-  return actions.filter(isElementTargetAction).map((action, index) => {
-    const block = visualBlockForTargetId(blocks, action.elementId);
-    const element = elementById(elements, action.elementId);
-    const bounds = element ? boundsForElement(element) : undefined;
-    const areaRatio = bounds ? spotlightTargetAreaRatio(bounds, elements) : undefined;
-    return [
-      index,
-      action.id ?? '',
-      action.elementId,
-      block?.blockId ?? '',
-      block?.targetElementId ?? '',
-      areaRatio == null ? '' : areaRatio.toFixed(4),
-      areaRatio != null && areaRatio > 0.68 ? 'oversized' : 'ok',
-    ].join(':');
-  });
-}
-
-function canonicalSpotlightBlocksFlatForDiagnostics(blocks: readonly NarrationGenerationBlock[]) {
-  return blocks.map((block) =>
-    [
-      block.orderIndex,
-      block.blockId,
-      block.targetElementId,
-      block.elementIds.join(','),
-      `${Math.round(block.bounds.width)}x${Math.round(block.bounds.height)}`,
-      block.text,
-    ]
-      .join(':')
-      .slice(0, 180),
-  );
-}
-
-function logSyncDecision(sceneId: string, decision: NarrationSyncDecision) {
-  logNarrationOrderCheckpoint({
-    checkpoint: 'sync-decision',
-    sceneId,
-    currentNarrationSourceFingerprint: fingerprintHash(decision.currentNarrationSourceFingerprint),
-    storedNarrationSourceFingerprint: fingerprintHash(decision.storedNarrationSourceFingerprint),
-    narrationSourceChanged: decision.narrationSourceChanged,
-    currentAudioFingerprint: fingerprintHash(decision.currentAudioFingerprint),
-    storedAudioFingerprint: fingerprintHash(decision.storedAudioFingerprint),
-    audioChanged: decision.audioChanged,
-    resolvedStaleState: decision.resolvedStaleState,
-    chosenOperation: decision.operation,
-    hasExistingNarration: decision.hasExistingNarration,
-    hasExistingAudio: decision.hasExistingAudio,
-    isLegacyWithoutNarrationFingerprint: decision.isLegacyWithoutNarrationFingerprint,
-    isLegacyWithoutAudioFingerprint: decision.isLegacyWithoutAudioFingerprint,
-  });
-  logNarrationOrderCheckpoint({
-    checkpoint: 'syncDecisionFlat',
-    sceneId,
-    order: [
-      `narrationSourceChanged:${decision.narrationSourceChanged}`,
-      `audioChanged:${decision.audioChanged}`,
-      `state:${decision.resolvedStaleState}`,
-      `operation:${decision.operation}`,
-      `hasNarration:${decision.hasExistingNarration}`,
-      `hasAudio:${decision.hasExistingAudio}`,
-    ],
-  });
-}
-
-function logSyncCompleted(sceneId: string) {
-  logNarrationOrderCheckpoint({
-    checkpoint: 'sync-completed',
-    sceneId,
-  });
-}
-
-function logSyncFailed(sceneId: string, stage: string, error: unknown) {
-  logNarrationOrderCheckpoint({
-    checkpoint: 'sync-failed',
-    sceneId,
-    stage,
-    errorName: error instanceof Error ? error.name : typeof error,
-  });
-}
-
-function withStampedAudioIds(
-  actions: readonly Action[],
-  okIds: ReadonlySet<string>,
-  sceneOrder: number,
-): Action[] {
-  let next = [...actions] as Action[];
-  for (const action of actions) {
-    if (action.type === 'speech' && action.id && okIds.has(action.id)) {
-      next = setAudioIdById(next, action.id, speechAudioId(sceneOrder, action.id));
-    }
-  }
-  return next;
-}
-
-function fingerprintText(value: string): string {
-  return stableStringify(value);
-}
-
-function significantTokens(value: string): string[] {
-  const stop = new Set([
-    'about',
-    'after',
-    'again',
-    'also',
-    'and',
-    'are',
-    'because',
-    'been',
-    'before',
-    'being',
-    'can',
-    'for',
-    'from',
-    'has',
-    'have',
-    'into',
-    'its',
-    'our',
-    'the',
-    'their',
-    'this',
-    'through',
-    'to',
-    'with',
-  ]);
-  return normalizeNarrationText(value)
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length > 3 && !stop.has(token));
-}
-
-function unchangedNarrationStillLooksStale(
-  currentSourceText: string,
-  previousNarration: string,
-  generatedNarration: string,
-): boolean {
-  if (
-    !previousNarration.trim() ||
-    fingerprintText(previousNarration) !== fingerprintText(generatedNarration)
-  ) {
-    return false;
-  }
-  const sourceTokens = new Set(significantTokens(currentSourceText));
-  const previousTokens = significantTokens(previousNarration);
-  if (previousTokens.length < 5) return false;
-  const missing = previousTokens.filter((token) => !sourceTokens.has(token));
-  return missing.length >= Math.max(3, Math.ceil(previousTokens.length * 0.4));
-}
-
-function fingerprintHash(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function syncDiagnostic(args: {
-  sceneId: string;
-  operation: 'narration-and-audio' | 'audio-only';
-  currentSceneFingerprint: string;
-  storedNarrationSourceFingerprint?: string;
-  narrationSourceCharacterCount: number;
-  narrationSourceElementCount: number;
-  previousNarrationFingerprint?: string;
-  generatedNarrationFingerprint?: string;
-  ttsInputFingerprint?: string;
-  savedNarrationFingerprint?: string;
-  savedAudioFingerprint?: string;
-  staleStateBefore?: NarrationSyncState['status'];
-  staleStateAfter?: NarrationSyncState['status'];
-  preview?: string;
-  visualBlocks?: readonly NarrationVisualBlock[];
-  narrationActionTargets?: Array<{ actionId?: string; targetElementId?: string }>;
-  generatedNarrationActionIds?: string[];
-}) {
-  log.debug('sync operation', {
-    sceneId: args.sceneId,
-    operation: args.operation,
-    currentSceneFingerprint: fingerprintHash(args.currentSceneFingerprint),
-    storedNarrationSourceFingerprint: fingerprintHash(args.storedNarrationSourceFingerprint),
-    narrationSourceCharacterCount: args.narrationSourceCharacterCount,
-    narrationSourceElementCount: args.narrationSourceElementCount,
-    previousNarrationFingerprint: fingerprintHash(args.previousNarrationFingerprint),
-    generatedNarrationFingerprint: fingerprintHash(args.generatedNarrationFingerprint),
-    ttsInputFingerprint: fingerprintHash(args.ttsInputFingerprint),
-    savedNarrationFingerprint: fingerprintHash(args.savedNarrationFingerprint),
-    savedAudioFingerprint: fingerprintHash(args.savedAudioFingerprint),
-    staleStateBefore: args.staleStateBefore,
-    staleStateAfter: args.staleStateAfter,
-    preview: args.preview,
-    visualBlockOrder: args.visualBlocks?.map((block) => ({
-      blockId: block.blockId,
-      elementIds: block.elementIds,
-      boundedTextPreview: block.text.slice(0, 80),
-    })),
-    narrationActionTargets: args.narrationActionTargets,
-    generatedNarrationActionIds: args.generatedNarrationActionIds,
-  });
 }
 
 /** Shared delete button — prominent, top-right of a card. */
@@ -1069,36 +269,48 @@ function MoveButtons({
 
 type TtsStatus = 'none' | 'ready' | 'generating' | 'error';
 
-/** Audio status + 试听 / 重新生成 row, shown when managed TTS is on. */
-function SpeechTtsBar({
+/** TTS preview lifecycle: idle → loading (awaiting the blob URL) → playing → idle. */
+type PreviewPhase = 'idle' | 'loading' | 'playing';
+
+/** Audio status + preview / regenerate row, shown when managed TTS is on. */
+export function SpeechTtsBar({
   actionId,
   audioId,
+  audioUrl,
+  audioInvalidated,
   sceneOrder,
   language,
   text,
-  audioUrl,
   refreshKey,
   regenerating,
   onGenerated,
 }: {
   actionId: string;
   audioId?: string;
+  /** The legacy URL of an unconverted pair: narration exists until conversion removes it. */
+  audioUrl?: string;
+  audioInvalidated?: boolean;
   sceneOrder: number;
   language?: string;
   text: string;
-  audioUrl?: string;
   refreshKey?: number;
   regenerating?: boolean;
-  onGenerated: () => void;
+  /**
+   * Notification that regeneration succeeded. Carries the freshly allocated
+   * audioId so the caller can stamp it on the action: this tree allocates pool
+   * identities (the blob is stored under the returned id), so the id cannot be
+   * re-derived by the caller like the reference's deterministic key.
+   */
+  onGenerated: (audioId: string) => void;
 }) {
   const { t } = useI18n();
   const [status, setStatus] = useState<TtsStatus>('none');
-  // Holds this line in 生成中 across a batch ("全部配音") run and — crucially —
-  // until its OWN audio re-check resolves, so it can't briefly flash back to
-  // 未配音 in the window between the batch clearing `regenerating` and the async
-  // audioExists effect landing. Latched on the rising edge of `regenerating`,
-  // cleared inside that re-check effect (which the batch always re-triggers via
-  // `refreshKey`).
+  // Holds this line in the generating state across a batch ("Voice all") run
+  // and — crucially — until its OWN audio re-check resolves, so it can't
+  // briefly flash back to not voiced in the window between the batch clearing
+  // `regenerating` and the async audioExists effect landing. Latched on the
+  // rising edge of `regenerating`, cleared inside that re-check effect (which
+  // the batch always re-triggers via `refreshKey`).
   const [batchPending, setBatchPending] = useState(false);
   const [prevRegenerating, setPrevRegenerating] = useState(regenerating);
   if (regenerating !== prevRegenerating) {
@@ -1107,32 +319,58 @@ function SpeechTtsBar({
     setPrevRegenerating(regenerating);
     if (regenerating) setBatchPending(true);
   }
+  // TTS preview state machine — local UI state for the preview button, kept
+  // apart from `status`/`effStatus` (audio availability + regeneration), which
+  // the playback lifecycle must not disturb.
+  const [previewPhase, setPreviewPhase] = useState<PreviewPhase>('idle');
+  // Generation token: every `stopPreview` (and every fresh `preview`) bumps it,
+  // so an in-flight `audioObjectUrl` await can tell it was superseded and drop
+  // its result — this is what kills the double-click double-Audio race.
+  const previewTokenRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objUrlRef = useRef<string | null>(null);
 
-  // The audio's real key: the action's stamped audioId, else the canonical
-  // derived key (resolveSpeechAudioId is the single source of truth).
   const lookupId = resolveSpeechAudioId(sceneOrder, { id: actionId, audioId });
+  const [readAudioId, setReadAudioId] = useState<string | undefined>(lookupId);
+  const [seededLookupId, setSeededLookupId] = useState(lookupId);
+  if (lookupId !== seededLookupId) {
+    setSeededLookupId(lookupId);
+    setReadAudioId(lookupId);
+  }
 
   const stopPreview = useCallback(() => {
+    // Invalidate every in-flight `preview()` await — a newer click, a takeover
+    // by another bar, or an unmount all funnel through here.
+    previewTokenRef.current += 1;
+    // Only the registered owner clears the module-level handle: a stale stop
+    // from a superseded or unmounted bar must not kill the current preview.
+    if (activePreview?.stop === stopPreview) activePreview = null;
     audioRef.current?.pause();
     audioRef.current = null;
     if (objUrlRef.current) {
       URL.revokeObjectURL(objUrlRef.current);
       objUrlRef.current = null;
     }
+    setPreviewPhase('idle');
   }, []);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        if (audioUrl) {
-          if (alive) setStatus('ready');
-          return;
+        // A missing stamped id means "not generated" for new documents. Probe
+        // the deterministic key only to preserve pre-allocation Dexie rows.
+        const legacyId = lookupId
+          ? undefined
+          : await resolveLegacySpeechAudioId(sceneOrder, { id: actionId, audioInvalidated });
+        const candidateId = lookupId ?? legacyId;
+        // An unconverted pair's legacy URL is narration that exists: the id
+        // lookup may find nothing while the URL is still live.
+        const has = (candidateId ? await audioExists(candidateId) : false) || !!audioUrl;
+        if (alive) {
+          setReadAudioId(has ? candidateId : undefined);
+          setStatus((s) => (s === 'generating' ? s : has ? 'ready' : 'none'));
         }
-        const has = await audioExists(lookupId);
-        if (alive) setStatus((s) => (s === 'generating' ? s : has ? 'ready' : 'none'));
       } catch {
         /* IndexedDB read failed — leave status as-is (as before this change) */
       } finally {
@@ -1141,37 +379,72 @@ function SpeechTtsBar({
         // pre-batch check that resolves mid-batch must NOT clear it (adding
         // regenerating to the deps also cancels such a check at batch start via
         // the cleanup below). Runs even if the read threw, so the row can never
-        // wedge in 生成中.
+        // wedge in the generating state.
         if (alive && !regenerating) setBatchPending(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [lookupId, audioUrl, refreshKey, regenerating]);
+  }, [lookupId, actionId, sceneOrder, audioInvalidated, audioUrl, refreshKey, regenerating]);
 
   useEffect(() => () => stopPreview(), [stopPreview]);
 
   const preview = async () => {
-    stopPreview();
-    let src = audioUrl ?? null;
-    if (!src) {
-      src = await audioObjectUrl(lookupId);
-      objUrlRef.current = src;
+    // Global single-flight: stop whatever is loading/playing in ANY bar first.
+    // This also bumps the token, so this bar's own previous in-flight attempt
+    // is already invalidated by the time we capture the fresh token below.
+    activePreview?.stop();
+    const token = ++previewTokenRef.current;
+    setPreviewPhase('loading');
+    activePreview = { stop: stopPreview };
+    // The legacy URL of an unconverted pair is the narration when no pool or
+    // Dexie id resolved -- or when the resolved id turns out to have no local
+    // bytes, which is exactly the dangling-id case the URL survives for.
+    const src = (readAudioId ? await audioObjectUrl(readAudioId) : null) ?? audioUrl ?? null;
+    if (token !== previewTokenRef.current) {
+      // Superseded while loading (a newer click, a takeover, a stop): drop the
+      // result and revoke any blob URL we minted — the winner is in charge.
+      if (src && src.startsWith('blob:')) URL.revokeObjectURL(src);
+      return;
     }
-    if (!src) return;
+    if (!src) {
+      stopPreview();
+      return;
+    }
+    objUrlRef.current = src;
     const a = new Audio(src);
     audioRef.current = a;
     a.addEventListener('ended', stopPreview);
-    void a.play().catch(() => stopPreview());
+    a.addEventListener('error', stopPreview);
+    try {
+      await a.play();
+      // Stopped while play() was settling (e.g. a takeover in the gap): the
+      // stop already paused it, nothing more to do.
+      if (token !== previewTokenRef.current) return;
+      setPreviewPhase('playing');
+    } catch {
+      // Autoplay rejection etc. — treat like any other stop.
+      stopPreview();
+    }
   };
+
+  // The control that spends is withheld from a viewer; the ones that only listen
+  // and report stay. `regenerateSpeechAudio` refuses in any case.
+  const mayRegenerate = useMayGenerateForStage(useStageStore((state) => state.stage?.id));
 
   const regenerate = async () => {
     setStatus('generating');
     try {
-      const id = await regenerateSpeechAudio(sceneOrder, { id: actionId, text }, language);
+      const previousAudioId = audioId;
+      const id = await regenerateSpeechAudio(
+        sceneOrder,
+        { id: actionId, text, audioId: previousAudioId },
+        language,
+      );
       if (id) {
-        onGenerated();
+        setReadAudioId(id);
+        onGenerated(id);
         setStatus('ready');
       } else {
         setStatus('none');
@@ -1190,13 +463,22 @@ function SpeechTtsBar({
     },
     error: { label: t('edit.tts.statusError'), cls: 'text-rose-500' },
   };
-  // A batch "全部配音" run drives this line's loading state from the parent
+  // A batch "Voice all" run drives this line's loading state from the parent
   // (regenerating) — independent of the local single-line status. `batchPending`
-  // extends 生成中 past the prop clearing, until this line's own audio re-check
-  // resolves to 已配音 / 未配音, so the batch end shows a clean 生成中 → 已配音
-  // transition with no intermediate flash.
+  // extends the generating state past the prop clearing, until this line's own
+  // audio re-check resolves to voiced / not voiced, so the batch end shows a
+  // clean generating → voiced transition with no intermediate flash.
   const effStatus: TtsStatus = regenerating || batchPending ? 'generating' : status;
   const s = STATUS[effStatus];
+  const previewLabel =
+    previewPhase === 'loading'
+      ? t('edit.tts.cancelPreview')
+      : previewPhase === 'playing'
+        ? t('edit.tts.stopPreview')
+        : t('edit.tts.preview');
+  // idle → Play; loading → spinner (click cancels the load); playing → Stop.
+  const PreviewIcon =
+    previewPhase === 'loading' ? Loader2 : previewPhase === 'playing' ? Square : Play;
 
   return (
     <div className="flex items-center gap-1 border-t border-border/60 px-2 py-1">
@@ -1205,24 +487,31 @@ function SpeechTtsBar({
       <span className="ml-auto" />
       <button
         type="button"
-        onClick={preview}
+        onClick={previewPhase === 'idle' ? () => void preview() : stopPreview}
         disabled={effStatus !== 'ready'}
-        className="grid size-5 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
-        aria-label={t('edit.tts.preview')}
-        title={t('edit.tts.preview')}
+        className={cn(
+          'grid size-5 place-items-center rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent',
+          previewPhase === 'playing'
+            ? 'text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400'
+            : 'text-muted-foreground/60 hover:bg-muted hover:text-foreground',
+        )}
+        aria-label={previewLabel}
+        title={previewLabel}
       >
-        <Play className="size-3" />
+        <PreviewIcon className={cn('size-3', previewPhase === 'loading' && 'animate-spin')} />
       </button>
-      <button
-        type="button"
-        onClick={regenerate}
-        disabled={effStatus === 'generating' || !text.trim()}
-        className="grid size-5 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
-        aria-label={t('edit.tts.regenerate')}
-        title={t('edit.tts.regenerate')}
-      >
-        <RefreshCw className={cn('size-3', effStatus === 'generating' && 'animate-spin')} />
-      </button>
+      {mayRegenerate ? (
+        <button
+          type="button"
+          onClick={regenerate}
+          disabled={effStatus === 'generating' || !text.trim()}
+          className="grid size-5 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+          aria-label={t('edit.tts.regenerate')}
+          title={t('edit.tts.regenerate')}
+        >
+          <RefreshCw className={cn('size-3', effStatus === 'generating' && 'animate-spin')} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1233,11 +522,12 @@ function SpeechClip({
   index,
   actionId,
   audioId,
+  audioUrl,
+  audioInvalidated,
   sceneOrder,
   language,
   autoFocus,
   ttsActive,
-  audioUrl,
   ttsRefresh,
   regenerating,
   onCommit,
@@ -1255,15 +545,16 @@ function SpeechClip({
   index: number;
   actionId: string;
   audioId?: string;
+  audioUrl?: string;
+  audioInvalidated?: boolean;
   sceneOrder: number;
   language?: string;
   autoFocus: boolean;
   ttsActive: boolean;
-  audioUrl?: string;
   ttsRefresh?: number;
   regenerating?: boolean;
   onCommit: (text: string) => void;
-  onGenerated: () => void;
+  onGenerated: (audioId: string) => void;
   onDelete: () => void;
   onMoveLeft: () => void;
   onMoveRight: () => void;
@@ -1307,7 +598,7 @@ function SpeechClip({
   return (
     <div
       className={cn(
-        'group/clip relative flex h-full w-[228px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/85 bg-white/75 shadow-sm transition-colors focus-within:border-primary/25 hover:border-primary/25 dark:bg-slate-800/50 dark:hover:border-primary/25',
+        'group/clip relative flex h-full w-[228px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/85 bg-white/75 shadow-sm transition-colors focus-within:border-violet-400 hover:border-violet-300/70 dark:bg-slate-800/50 dark:hover:border-violet-500/40',
         needsText && INCOMPLETE_CLIP,
       )}
     >
@@ -1352,10 +643,11 @@ function SpeechClip({
         <SpeechTtsBar
           actionId={actionId}
           audioId={audioId}
+          audioUrl={audioUrl}
+          audioInvalidated={audioInvalidated}
           sceneOrder={sceneOrder}
           language={language}
           text={val}
-          audioUrl={audioUrl}
           refreshKey={ttsRefresh}
           regenerating={regenerating}
           onGenerated={onGenerated}
@@ -1566,7 +858,7 @@ function CueMarker({
       className={cn(
         'group/cue relative flex h-full w-[108px] shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200/80 bg-white/65 shadow-sm transition-colors dark:border-gray-700/60 dark:bg-slate-800/40',
         bound
-          ? 'cursor-pointer hover:border-primary/25 dark:hover:border-primary/25'
+          ? 'cursor-pointer hover:border-violet-300/70 dark:hover:border-violet-500/40'
           : 'cursor-grab active:cursor-grabbing',
         needsTarget && cn('border-dashed', m.dash),
       )}
@@ -1760,32 +1052,15 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
         | undefined
     )?.canvas?.elements ?? EMPTY_ELEMENTS;
   const language = useStageStore((s) => s.stage?.languageDirective);
-  const teacherVoiceProfileId = useStageStore((s) => s.stage?.teacherVoiceProfileId);
-  // Managed TTS on → speech clips show audio status + 试听 / 重新生成.
+  // Managed TTS on → speech clips show audio status + preview / regenerate.
+  // The ownership gate belongs on regeneration alone: listening back to
+  // narration that already exists, and seeing whether a line has any, spend
+  // nothing, and a course with no ownership record must not lose its playback
+  // controls the way it must lose its ability to bill the operator.
   const ttsActive = useSettingsStore(
-    (s) =>
-      Boolean(teacherVoiceProfileId) || (s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts'),
+    (s) => s.ttsEnabled && s.ttsProviderId !== 'browser-native-tts',
   );
-  const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
-  const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
-  const ttsVoice = useSettingsStore((s) => s.ttsVoice);
-  const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
-  const ttsModelId = useSettingsStore((s) => s.ttsProvidersConfig?.[s.ttsProviderId]?.modelId);
-  const ttsFingerprintSettings = useMemo(
-    () => ({
-      language,
-      ttsEnabled,
-      ttsProviderId,
-      ttsVoice,
-      ttsSpeed,
-      ttsModelId,
-      teacherVoiceProfileId,
-    }),
-    [language, ttsEnabled, ttsProviderId, ttsVoice, ttsSpeed, ttsModelId, teacherVoiceProfileId],
-  );
-  const stage = useStageStore((s) => s.stage);
-  const allOutlines = useStageStore((s) => s.outlines);
-  const allScenes = useStageStore((s) => s.scenes);
+  const mayGenerate = useMayGenerateForStage(useStageStore((s) => s.stage?.id));
 
   // Agents a discussion can be initiated by — sourced from the user's currently
   // SELECTED agents, the exact set the playback engine gates on: it skips (and
@@ -1796,14 +1071,6 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
   // which is correct since an unset `agentId` is never skipped.
   const agentsRecord = useAgentRegistry((s) => s.agents);
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
-  const selectedAgentsForGeneration = useMemo(
-    () =>
-      selectedAgentIds
-        .map((id) => agentsRecord[id])
-        .filter(Boolean)
-        .map((a) => ({ id: a.id, name: a.name, role: a.role, persona: a.persona })),
-    [selectedAgentIds, agentsRecord],
-  );
   const discussionAgents = useMemo(
     () =>
       selectedAgentIds
@@ -1813,46 +1080,21 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     [selectedAgentIds, agentsRecord],
   );
 
-  const [lineMode, setLineMode] = useState(false); // collapse to just the axis line of node icons
+  // Collapsed = the dock's own fold, which this bar's title and its trailing
+  // toggle both drive. The timeline's collapsed form is its axis of node icons,
+  // so it reads `collapsed` rather than being hidden by the shell.
+  const { collapsed: lineMode, toggleCollapsed } = useEditDock();
   const [tip, setTip] = useState<TooltipState | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [regenAll, setRegenAll] = useState(false);
   const [pickerAt, setPickerAt] = useState<{ slot: number; rect: DOMRect } | null>(null);
-  // Ids of speech lines currently being (re)generated by "全部配音", so each
-  // line's status row shows 生成中 for the duration of the batch.
+  // Ids of speech lines currently being (re)generated by "Voice all", so each
+  // line's status row shows the generating state for the duration of the batch.
   const [regeneratingIds, setRegeneratingIds] = useState<ReadonlySet<string>>(NO_IDS);
   const [ttsRefresh, setTtsRefresh] = useState(0); // bump → speech clips re-check audio status
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
   const reduce = useReducedMotion();
   const dragRef = useRef<DragPayload | null>(null);
-  const syncingRef = useRef(false);
-
-  const syncState = useMemo(
-    () => (scene ? getNarrationSyncState(scene, ttsFingerprintSettings) : null),
-    [scene, ttsFingerprintSettings],
-  );
-
-  useEffect(() => {
-    if (!scene || !ttsActive || !syncState) return;
-    if (
-      syncState.status === 'unknown-legacy' ||
-      syncState.status === 'syncing' ||
-      syncState.status === 'narration-stale'
-    ) {
-      return;
-    }
-    if (!syncState.hasSpeechAudio) return;
-    const stamped = scene.sync?.audioSourceFingerprint;
-    if (stamped && stamped !== getAudioSourceFingerprint(scene, ttsFingerprintSettings)) {
-      useStageStore.getState().updateScene(scene.id, {
-        sync: staleAudioMetadata(scene, ttsFingerprintSettings, {
-          narrationSourceFingerprint: scene.sync?.narrationSourceFingerprint,
-        }),
-      });
-    }
-  }, [scene, syncState, ttsActive, ttsFingerprintSettings]);
 
   // Apply an edit to the LATEST actions from the store (not the render-time
   // snapshot), so a concurrent agent/TTS update isn't reverted by a later UI
@@ -1865,579 +1107,60 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     [sceneId],
   );
 
-  const synthesizeAudioForActions = useCallback(
-    async (targetScene: Scene, actionsForTts: readonly Action[]): Promise<Action[]> => {
-      const speeches = actionsForTts.filter(
-        (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
-      );
-      if (!speeches.length) return [...actionsForTts] as Action[];
-
-      const ids = speeches.map((a) => a.id).filter(Boolean) as string[];
-      logNarrationOrderCheckpoint({
-        checkpoint: 'tts-input-order',
-        sceneId: targetScene.id,
-        speechActionIds: ids,
-        speechPreviews: speeches.map((action) =>
-          orderTextPreview((action as { text?: string }).text),
-        ),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'ttsInputOrderFlat',
-        sceneId: targetScene.id,
-        order: speeches.map((action, index) =>
-          `${index}:${action.id ?? ''}:${orderTextPreview((action as { text?: string }).text, 120)}`.slice(
-            0,
-            120,
-          ),
-        ),
-      });
-      setRegeneratingIds(new Set(ids));
-      const okIds = new Set<string>();
-      try {
-        for (const action of speeches) {
-          if (!action.id) continue;
-          const text = (action as { text?: string }).text ?? '';
-          const id = await regenerateSpeechAudio(
-            targetScene.order,
-            { id: action.id, text },
-            language,
-          );
-          if (id) okIds.add(action.id);
-        }
-      } finally {
-        setRegeneratingIds(NO_IDS);
-        setTtsRefresh((n) => n + 1);
-      }
-
-      if (okIds.size !== ids.length) {
-        throw new Error(t('edit.timeline.syncFailed'));
-      }
-
-      return withStampedAudioIds(actionsForTts, okIds, targetScene.order);
-    },
-    [language, t],
-  );
-
   // Regenerate TTS for every speech line in the scene, then stamp audioIds.
   // Reads the latest actions from the store at each step so a concurrent edit
   // isn't clobbered, and stamps by id (index-stale-safe).
   const regenerateAllAudio = useCallback(async () => {
-    if (regenAll || syncingRef.current) return;
-    const latest = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-    if (!latest) return;
-    const source = buildNarrationSourceFromScene(latest);
-    const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
-    const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
+    if (regenAll) return;
+    const latest = () => useStageStore.getState().scenes.find((s) => s.id === sceneId);
+    const speeches = (latest()?.actions ?? []).filter(
+      (a) => a.type === 'speech' && ((a as { text?: string }).text ?? '').trim(),
+    );
+    if (!speeches.length) return;
+    const order = latest()?.order ?? 0;
     setRegenAll(true);
+    // Light up every queued line's status row up front (they're all about to be
+    // synthesized), cleared together in the finally once the batch settles.
+    setRegeneratingIds(new Set(speeches.map((a) => a.id).filter(Boolean) as string[]));
     try {
-      const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
-      const latestAfterTts = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-      if (!latestAfterTts) return;
-      const syncedScene = { ...latestAfterTts, actions: actionsWithAudio } as Scene;
-      const sync = syncedNarrationMetadata(syncedScene, ttsFingerprintSettings);
-      useStageStore.getState().updateScene(sceneId, { actions: actionsWithAudio, sync });
-      syncDiagnostic({
-        sceneId,
-        operation: 'audio-only',
-        currentSceneFingerprint: source.fingerprint,
-        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
-        narrationSourceCharacterCount: source.text.length,
-        narrationSourceElementCount: source.elementCount,
-        previousNarrationFingerprint,
-        ttsInputFingerprint: previousNarrationFingerprint,
-        savedNarrationFingerprint: previousNarrationFingerprint,
-        savedAudioFingerprint: sync.audioSourceFingerprint,
-        staleStateBefore: beforeState.status,
-        staleStateAfter: 'synced',
-        preview: source.preview,
-        visualBlocks: source.visualBlocks,
-        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
-        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
-      setSyncError(message);
-      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-      if (current) {
-        useStageStore.getState().updateScene(sceneId, {
-          sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
-        });
+      for (const queued of speeches) {
+        if (!queued.id) continue;
+        try {
+          const liveAction = latest()?.actions?.find(
+            (action) => action.type === 'speech' && action.id === queued.id,
+          );
+          if (!liveAction || liveAction.type !== 'speech') continue;
+          const previousAudioId = liveAction.audioId;
+          const id = await regenerateSpeechAudio(
+            latest()?.order ?? order,
+            {
+              id: liveAction.id,
+              text: liveAction.text,
+              audioId: previousAudioId,
+            },
+            language,
+          );
+          if (id) {
+            commit((cur) => setAudioIdById(cur, liveAction.id!, id));
+            await flushStageSave();
+          }
+        } catch {
+          /* skip a failed line, keep going */
+        }
       }
     } finally {
       setRegenAll(false);
-    }
-  }, [regenAll, sceneId, synthesizeAudioForActions, t, ttsFingerprintSettings]);
-
-  const syncSceneById = useCallback(
-    async (targetSceneId: string) => {
-      const latest = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'current-scene',
-        sceneId: targetSceneId,
-        sceneFound: Boolean(latest),
-        elementArrayOrder: elementArrayOrderForDiagnostics(latest),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'elementArrayOrderFlat',
-        sceneId: targetSceneId,
-        order: elementArrayOrderFlatForDiagnostics(latest),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'editedElementTextFlat',
-        sceneId: targetSceneId,
-        order: editedElementTextFlatForDiagnostics(latest),
-      });
-      if (!latest || !stage) return;
-      const source = buildNarrationSourceFromScene(latest);
-      const decision = resolveNarrationSyncDecision(latest, ttsFingerprintSettings, source);
-      logSyncDecision(targetSceneId, decision);
-      if (decision.operation !== 'narration-and-audio' && decision.operation !== 'audio-only') {
-        return;
-      }
-      const beforeState = getNarrationSyncState(latest, ttsFingerprintSettings);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'visual-block-order',
-        sceneId: targetSceneId,
-        blocks: visualBlockOrderForDiagnostics(source.visualBlocks),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'visualBlockOrderFlat',
-        sceneId: targetSceneId,
-        order: visualBlockOrderFlatForDiagnostics(source.visualBlocks),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'narrationSourceTextFlat',
-        sceneId: targetSceneId,
-        order: narrationSourceTextFlatForDiagnostics(source),
-      });
-      const previousNarrationFingerprint = fingerprintText(speechTextsForScene(latest).join('\n'));
-
-      if (decision.operation === 'audio-only') {
-        const actionsWithAudio = await synthesizeAudioForActions(latest, latest.actions ?? []);
-        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-        if (!current) return;
-        const currentSource = buildNarrationSourceFromScene(current);
-        const syncedScene = { ...current, actions: actionsWithAudio } as Scene;
-        const sync =
-          currentSource.fingerprint === source.fingerprint
-            ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
-            : current.sync;
-        logNarrationOrderCheckpoint({
-          checkpoint: 'final-action-order',
-          sceneId: targetSceneId,
-          actions: actionOrderForDiagnostics(actionsWithAudio),
-        });
-        logNarrationOrderCheckpoint({
-          checkpoint: 'finalActionOrderFlat',
-          sceneId: targetSceneId,
-          order: actionOrderFlatForDiagnostics(actionsWithAudio),
-        });
-        useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
-        const saved = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-        logNarrationOrderCheckpoint({
-          checkpoint: 'saved-action-order',
-          sceneId: targetSceneId,
-          actions: actionOrderForDiagnostics(saved?.actions ?? []),
-        });
-        logNarrationOrderCheckpoint({
-          checkpoint: 'savedActionOrderFlat',
-          sceneId: targetSceneId,
-          order: actionOrderFlatForDiagnostics(saved?.actions ?? []),
-        });
-        syncDiagnostic({
-          sceneId: targetSceneId,
-          operation: 'audio-only',
-          currentSceneFingerprint: source.fingerprint,
-          storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
-          narrationSourceCharacterCount: source.text.length,
-          narrationSourceElementCount: source.elementCount,
-          previousNarrationFingerprint,
-          ttsInputFingerprint: previousNarrationFingerprint,
-          savedNarrationFingerprint: previousNarrationFingerprint,
-          savedAudioFingerprint: sync?.audioSourceFingerprint,
-          staleStateBefore: beforeState.status,
-          staleStateAfter: sync
-            ? getNarrationSyncState(
-                { ...current, actions: actionsWithAudio, sync },
-                ttsFingerprintSettings,
-              ).status
-            : undefined,
-          preview: source.preview,
-          visualBlocks: source.visualBlocks,
-          narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
-          generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
-        });
-        return;
-      }
-
-      useStageStore.getState().updateScene(targetSceneId, {
-        sync: { ...(latest.sync ?? {}), status: 'syncing', updatedAt: Date.now() },
-      });
-
-      const outline = outlineForScene(latest, allOutlines);
-      const choreographyBlocks = targetableVisualBlocks(source, latest.actions ?? [], latest.title);
-      const slideElements =
-        latest.content.type === 'slide' ? (latest.content.canvas.elements ?? []) : [];
-      const generationContent = toGenerationContent(latest.content, source, choreographyBlocks);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'generation-input-order',
-        sceneId: targetSceneId,
-        targets: generationInputOrderForDiagnostics(choreographyBlocks),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'generationInputOrderFlat',
-        sceneId: targetSceneId,
-        order: generationInputOrderFlatForDiagnostics(choreographyBlocks),
-      });
-      logSpotlightTargetCheckpoint({
-        checkpoint: 'canonicalSpotlightBlocksFlat',
-        sceneId: targetSceneId,
-        order: canonicalSpotlightBlocksFlatForDiagnostics(choreographyBlocks),
-      });
-      let result: Awaited<ReturnType<typeof fetchSceneActions>>;
-      try {
-        result = await fetchSceneActions({
-          outline,
-          allOutlines: allOutlines.length ? allOutlines : [outline],
-          content: generationContent,
-          stageId: stage.id,
-          agents: selectedAgentsForGeneration,
-          previousSpeeches: [],
-          languageDirective: stage.languageDirective,
-        });
-      } catch (error) {
-        logSyncFailed(targetSceneId, 'generation', error);
-        throw error;
-      }
-      if (!result.success || !result.scene) {
-        const error = new Error(result.error || 'Narration sync failed');
-        logSyncFailed(targetSceneId, 'generation', error);
-        throw error;
-      }
-
-      const rawGeneratedActions = result.scene.actions ?? [];
-      logNarrationOrderCheckpoint({
-        checkpoint: 'generated-action-order',
-        sceneId: targetSceneId,
-        actions: actionOrderForDiagnostics(rawGeneratedActions),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'generatedActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(rawGeneratedActions),
-      });
-      logSpotlightTargetCheckpoint({
-        checkpoint: 'generatedSpotlightTargetsFlat',
-        sceneId: targetSceneId,
-        order: spotlightTargetFlatForDiagnostics(
-          rawGeneratedActions,
-          choreographyBlocks,
-          slideElements,
-        ),
-      });
-      const visuallyOrderedActions = reorderTargetPairsByVisualBlocks(
-        rawGeneratedActions,
-        choreographyBlocks,
-        slideElements,
-        latest.actions ?? [],
-      );
-      const generatedActions = preserveActionPairIdsByVisualBlock(
-        latest.actions ?? [],
-        visuallyOrderedActions,
-        choreographyBlocks,
-      );
-      logNarrationOrderCheckpoint({
-        checkpoint: 'final-action-order',
-        sceneId: targetSceneId,
-        actions: actionOrderForDiagnostics(generatedActions),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'finalActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(generatedActions),
-      });
-      logSpotlightTargetCheckpoint({
-        checkpoint: 'finalSavedSpotlightTargetsFlat',
-        sceneId: targetSceneId,
-        order: spotlightTargetFlatForDiagnostics(
-          generatedActions,
-          choreographyBlocks,
-          slideElements,
-        ),
-      });
-      const generatedNarration = generatedActions
-        .filter((action) => action.type === 'speech')
-        .map((action) => ((action as { text?: string }).text ?? '').trim())
-        .filter(Boolean)
-        .join('\n');
-      if (!generatedNarration) {
-        const error = new Error(result.error || 'Narration sync produced no narration');
-        logSyncFailed(targetSceneId, 'generation-result', error);
-        throw error;
-      }
-      if (
-        unchangedNarrationStillLooksStale(
-          source.text,
-          speechTextsForScene(latest).join('\n'),
-          generatedNarration,
-        )
-      ) {
-        const message = 'Narration sync returned unchanged narration for changed slide content';
-        useStageStore.getState().updateScene(targetSceneId, {
-          sync: {
-            ...(latest.sync ?? {
-              narrationSourceFingerprint: beforeState.narrationSourceFingerprint,
-              audioSourceFingerprint: beforeState.audioSourceFingerprint,
-            }),
-            status: 'narration-stale',
-            error: message,
-            updatedAt: Date.now(),
-          },
-        });
-        const error = new Error(message);
-        logSyncFailed(targetSceneId, 'generation-validation', error);
-        throw error;
-      }
-
-      const currentBeforeSave = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-      if (!currentBeforeSave) return;
-      const currentSource = buildNarrationSourceFromScene(currentBeforeSave);
-      if (currentSource.fingerprint !== source.fingerprint) {
-        const message = 'Scene changed while narration sync was running';
-        useStageStore.getState().updateScene(targetSceneId, {
-          sync: {
-            ...(currentBeforeSave.sync ?? {}),
-            status: 'narration-stale',
-            narrationSourceFingerprint:
-              decision.storedNarrationSourceFingerprint ?? source.fingerprint,
-            audioSourceFingerprint:
-              decision.storedAudioFingerprint ?? beforeState.audioSourceFingerprint,
-            error: message,
-            updatedAt: Date.now(),
-          },
-        });
-        const error = new Error(message);
-        logSyncFailed(targetSceneId, 'pre-save-source-check', error);
-        throw error;
-      }
-
-      const generatedNarrationFingerprint = fingerprintText(generatedNarration);
-      const actionsWithPriorAudio = preserveSpeechAudioByPosition(
-        currentBeforeSave.actions ?? [],
-        generatedActions,
-      );
-      useStageStore.getState().updateScene(targetSceneId, {
-        actions: actionsWithPriorAudio,
-        sync: {
-          status: 'audio-stale',
-          narrationSourceFingerprint: source.fingerprint,
-          audioSourceFingerprint: getAudioSourceFingerprint(
-            currentBeforeSave,
-            ttsFingerprintSettings,
-          ),
-          updatedAt: Date.now(),
-        },
-      });
-      const savedBeforeTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'saved-action-order',
-        sceneId: targetSceneId,
-        actions: actionOrderForDiagnostics(savedBeforeTts?.actions ?? []),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'savedActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(savedBeforeTts?.actions ?? []),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'timelineActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(savedBeforeTts?.actions ?? []),
-      });
-
-      let actionsWithAudio: Action[];
-      try {
-        actionsWithAudio = await synthesizeAudioForActions(
-          currentBeforeSave,
-          actionsWithPriorAudio,
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
-        const current = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-        if (current) {
-          useStageStore.getState().updateScene(targetSceneId, {
-            sync: { ...staleAudioMetadata(current, ttsFingerprintSettings), error: message },
-          });
-        }
-        logSyncFailed(targetSceneId, 'tts', error);
-        throw error;
-      }
-
-      const currentAfterTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-      if (!currentAfterTts) return;
-      const latestSource = buildNarrationSourceFromScene(currentAfterTts);
-      const syncedScene = { ...currentAfterTts, actions: actionsWithAudio } as Scene;
-      const sync =
-        latestSource.fingerprint === source.fingerprint
-          ? syncedNarrationMetadata(syncedScene, ttsFingerprintSettings)
-          : currentAfterTts.sync;
-      useStageStore.getState().updateScene(targetSceneId, { actions: actionsWithAudio, sync });
-      const savedAfterTts = useStageStore.getState().scenes.find((s) => s.id === targetSceneId);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'saved-action-order',
-        sceneId: targetSceneId,
-        actions: actionOrderForDiagnostics(savedAfterTts?.actions ?? []),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'savedActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(savedAfterTts?.actions ?? []),
-      });
-      logNarrationOrderCheckpoint({
-        checkpoint: 'timelineActionOrderFlat',
-        sceneId: targetSceneId,
-        order: actionOrderFlatForDiagnostics(savedAfterTts?.actions ?? []),
-      });
-      syncDiagnostic({
-        sceneId: targetSceneId,
-        operation: 'narration-and-audio',
-        currentSceneFingerprint: source.fingerprint,
-        storedNarrationSourceFingerprint: latest.sync?.narrationSourceFingerprint,
-        narrationSourceCharacterCount: source.text.length,
-        narrationSourceElementCount: source.elementCount,
-        previousNarrationFingerprint,
-        generatedNarrationFingerprint,
-        ttsInputFingerprint: generatedNarrationFingerprint,
-        savedNarrationFingerprint: fingerprintText(speechTextsForScene(syncedScene).join('\n')),
-        savedAudioFingerprint: sync?.audioSourceFingerprint,
-        staleStateBefore: beforeState.status,
-        staleStateAfter: sync
-          ? getNarrationSyncState(
-              { ...currentAfterTts, actions: actionsWithAudio, sync },
-              ttsFingerprintSettings,
-            ).status
-          : undefined,
-        preview: source.preview,
-        visualBlocks: source.visualBlocks,
-        narrationActionTargets: targetActionsForDiagnostics(actionsWithAudio),
-        generatedNarrationActionIds: speechIdsForDiagnostics(actionsWithAudio),
-      });
-      logSyncCompleted(targetSceneId);
-    },
-    [
-      allOutlines,
-      selectedAgentsForGeneration,
-      stage,
-      synthesizeAudioForActions,
-      t,
-      ttsFingerprintSettings,
-    ],
-  );
-
-  const syncCurrentScene = useCallback(async () => {
-    if (syncingRef.current) return;
-    syncingRef.current = true;
-    setSyncing(true);
-    setSyncError(null);
-    try {
-      await syncSceneById(sceneId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t('edit.timeline.syncFailed');
-      setSyncError(message);
-      const current = useStageStore.getState().scenes.find((s) => s.id === sceneId);
-      if (current) {
-        const fallbackSync =
-          current.sync?.status === 'syncing'
-            ? ({ ...current.sync, status: 'error', error: message, updatedAt: Date.now() } as const)
-            : {
-                ...(current.sync ?? staleAudioMetadata(current, ttsFingerprintSettings)),
-                error: message,
-                updatedAt: Date.now(),
-              };
-        useStageStore.getState().updateScene(sceneId, {
-          sync: fallbackSync,
-        });
-      }
-    } finally {
-      syncingRef.current = false;
-      setSyncing(false);
-    }
-  }, [sceneId, syncSceneById, t, ttsFingerprintSettings]);
-
-  const syncAllStaleScenes = useCallback(async () => {
-    if (!stage || syncingRef.current) return;
-    syncingRef.current = true;
-    setSyncing(true);
-    setSyncError(null);
-    try {
-      const staleSceneIds = useStageStore
-        .getState()
-        .scenes.filter((s) => {
-          const state = getNarrationSyncState(s, ttsFingerprintSettings);
-          return state.status === 'narration-stale' || state.status === 'audio-stale';
-        })
-        .map((s) => s.id);
-      logNarrationOrderCheckpoint({
-        checkpoint: 'bulk-queue',
-        sceneIds: staleSceneIds,
-      });
-
-      for (const staleSceneId of staleSceneIds) {
-        await syncSceneById(staleSceneId);
-      }
+      setRegeneratingIds(NO_IDS);
+      // Always re-check every line's audio at batch end — even when nothing
+      // synthesized — so each SpeechTtsBar resolves its status (and clears its
+      // batchPending flag) instead of getting stuck in the generating state.
       setTtsRefresh((n) => n + 1);
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : t('edit.timeline.syncFailed'));
-    } finally {
-      syncingRef.current = false;
-      setSyncing(false);
     }
-  }, [stage, syncSceneById, t, ttsFingerprintSettings]);
+  }, [regenAll, sceneId, language, commit]);
 
-  // Height drag-resize (top edge).
-  const sectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panViewport = (dir: -1 | 1) =>
     scrollRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
-  const [height, setHeight] = useState(DEFAULT_H);
-  const resizeRef = useRef<{
-    startY: number;
-    startH: number;
-    lastH: number;
-    pointerId: number;
-  } | null>(null);
-  const onResizeStart = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const startH = sectionRef.current?.getBoundingClientRect().height ?? height;
-      resizeRef.current = { startY: e.clientY, startH, lastH: startH, pointerId: e.pointerId };
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        /* best effort */
-      }
-      document.body.style.cursor = 'row-resize';
-    },
-    [height],
-  );
-  const onResizeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const d = resizeRef.current;
-    if (!d || e.pointerId !== d.pointerId) return;
-    const next = Math.min(MAX_H, Math.max(MIN_H, d.startH + (d.startY - e.clientY)));
-    d.lastH = next;
-    if (sectionRef.current) sectionRef.current.style.height = `${next}px`;
-  }, []);
-  const onResizeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const d = resizeRef.current;
-    if (!d || e.pointerId !== d.pointerId) return;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* may already be released */
-    }
-    setHeight(d.lastH);
-    resizeRef.current = null;
-    document.body.style.cursor = '';
-  }, []);
 
   const newId = () =>
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `a-${Date.now()}`;
@@ -2485,170 +1208,94 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
     return { action, index, key: (action.id ?? `a-${index}`) as string, speechIndex };
   });
 
-  return (
-    <section
-      ref={sectionRef}
-      style={{ height: lineMode ? LINE_H : height }}
-      className="relative flex flex-col border-t border-gray-100 bg-white/80 backdrop-blur-xl dark:border-gray-800 dark:bg-slate-900/80"
-    >
+  const header = (
+    <>
+      {/* The title is also the fold: it was a click target long before there was
+          a toggle beside it, so the cursor already knows this spot. */}
+      <button
+        type="button"
+        data-testid="edit-timeline-title"
+        onClick={toggleCollapsed}
+        className="flex shrink-0 items-center gap-2.5"
+      >
+        <span className="size-1.5 rounded-full bg-primary" />
+        <span className="text-[12px] font-medium tracking-[0.18em] text-foreground/80">
+          {t('edit.timeline.title')}
+        </span>
+      </button>
+
       {!lineMode && (
-        <div
-          onPointerDown={onResizeStart}
-          onPointerMove={onResizeMove}
-          onPointerUp={onResizeEnd}
-          onPointerCancel={onResizeEnd}
-          className="group absolute inset-x-0 top-0 z-10 h-1.5 cursor-row-resize touch-none transition-colors hover:bg-primary/10 active:bg-primary/10 dark:hover:bg-primary/10"
+        <button
+          type="button"
+          onClick={(e) => {
+            const slot = discussionPresent ? actions.length - 1 : actions.length;
+            setPickerAt({ slot, rect: e.currentTarget.getBoundingClientRect() });
+          }}
+          className="ml-1.5 inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
         >
-          <div className="absolute left-1/2 top-[3px] h-0.5 w-9 -translate-x-1/2 rounded-full bg-gray-300 transition-colors group-hover:bg-primary/10 dark:bg-gray-600 dark:group-hover:bg-primary/10" />
-        </div>
+          <Plus className="size-3" />
+          {t('edit.timeline.addAction')}
+          <ChevronDown className="size-3 opacity-70" />
+        </button>
       )}
 
-      <div className="flex h-10 shrink-0 items-center gap-2.5 px-6">
+      {!lineMode && ttsActive && mayGenerate && (
         <button
           type="button"
-          onClick={() => setLineMode((v) => !v)}
-          className="flex items-center gap-2.5"
+          onClick={regenerateAllAudio}
+          disabled={regenAll}
+          title={t('edit.timeline.regenAllTts')}
+          aria-label={t('edit.timeline.regenAllTts')}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-50"
         >
-          <span className="size-1.5 rounded-full bg-primary" />
-          <span className="text-[12px] font-medium tracking-[0.18em] text-foreground/80">
-            {t('edit.timeline.title')}
-          </span>
+          <RefreshCw className={cn('size-3', regenAll && 'animate-spin')} />
+          {t('edit.timeline.voiceAll')}
         </button>
+      )}
 
-        {!lineMode && (
+      <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/60">
+        {t('edit.timeline.counts', { speech: speechCount, cue: cueCount })}
+      </span>
+      {/* pan the timeline viewport left/right */}
+      {!lineMode && (
+        <div className="flex shrink-0 items-center border-l border-gray-200/70 pl-1 dark:border-gray-700/60">
           <button
             type="button"
-            onClick={(e) => {
-              const slot = discussionPresent ? actions.length - 1 : actions.length;
-              setPickerAt({ slot, rect: e.currentTarget.getBoundingClientRect() });
-            }}
-            className="ml-3 inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+            onClick={() => panViewport(-1)}
+            title={t('edit.timeline.panLeft')}
+            aria-label={t('edit.timeline.panLeft')}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
           >
-            <Plus className="size-3" />
-            {t('edit.timeline.addAction')}
-            <ChevronDown className="size-3 opacity-70" />
+            <ChevronsLeft className="size-4" />
           </button>
-        )}
-
-        {!lineMode && ttsActive && (
-          <>
-            {syncState &&
-              (syncState.status === 'narration-stale' ||
-                syncState.status === 'audio-stale' ||
-                syncState.status === 'syncing' ||
-                syncState.status === 'error') && (
-                <span
-                  className={cn(
-                    'ml-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                    syncState.status === 'error'
-                      ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300'
-                      : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300',
-                  )}
-                  title={syncError ?? scene?.sync?.error}
-                >
-                  {syncState.status === 'narration-stale'
-                    ? t('edit.timeline.narrationStale')
-                    : syncState.status === 'audio-stale'
-                      ? t('edit.timeline.audioStale')
-                      : syncState.status === 'syncing'
-                        ? t('edit.timeline.syncing')
-                        : t('edit.timeline.syncFailed')}
-                </span>
-              )}
-            {syncState &&
-              (syncState.status === 'narration-stale' || syncState.status === 'audio-stale') && (
-                <button
-                  type="button"
-                  onClick={syncCurrentScene}
-                  disabled={syncing}
-                  title={
-                    syncState.status === 'narration-stale'
-                      ? t('edit.timeline.syncNarrationAudio')
-                      : t('edit.timeline.regenSlideAudio')
-                  }
-                  aria-label={
-                    syncState.status === 'narration-stale'
-                      ? t('edit.timeline.syncNarrationAudio')
-                      : t('edit.timeline.regenSlideAudio')
-                  }
-                  className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
-                >
-                  <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
-                  {syncState.status === 'narration-stale'
-                    ? t('edit.timeline.syncNow')
-                    : t('edit.timeline.regenAudio')}
-                </button>
-              )}
-            {allScenes.some((s) => {
-              const state = getNarrationSyncState(s, ttsFingerprintSettings);
-              return state.status === 'narration-stale' || state.status === 'audio-stale';
-            }) && (
-              <button
-                type="button"
-                onClick={syncAllStaleScenes}
-                disabled={syncing}
-                title={t('edit.timeline.syncAllStale')}
-                aria-label={t('edit.timeline.syncAllStale')}
-                className="ml-1 inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-50"
-              >
-                <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
-                {t('edit.timeline.syncAll')}
-              </button>
-            )}
-          </>
-        )}
-
-        {!lineMode && ttsActive && (
           <button
             type="button"
-            onClick={regenerateAllAudio}
-            disabled={regenAll}
-            title={t('edit.timeline.regenAllTts')}
-            aria-label={t('edit.timeline.regenAllTts')}
-            className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-50"
+            onClick={() => panViewport(1)}
+            title={t('edit.timeline.panRight')}
+            aria-label={t('edit.timeline.panRight')}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
           >
-            <RefreshCw className={cn('size-3', regenAll && 'animate-spin')} />
-            {t('edit.timeline.voiceAll')}
+            <ChevronsRight className="size-4" />
           </button>
-        )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        title={lineMode ? t('edit.timeline.expandTrack') : t('edit.timeline.collapseAxis')}
+        aria-label={lineMode ? t('edit.timeline.expandTrack') : t('edit.timeline.collapseAxis')}
+        className="ml-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+      >
+        {lineMode ? <UnfoldVertical className="size-4" /> : <FoldVertical className="size-4" />}
+      </button>
+    </>
+  );
 
-        <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground/60">
-          {t('edit.timeline.counts', { speech: speechCount, cue: cueCount })}
-        </span>
-        {/* pan the timeline viewport left/right */}
-        {!lineMode && (
-          <div className="ml-1 flex items-center border-l border-gray-200/70 pl-1 dark:border-gray-700/60">
-            <button
-              type="button"
-              onClick={() => panViewport(-1)}
-              title={t('edit.timeline.panLeft')}
-              aria-label={t('edit.timeline.panLeft')}
-              className="grid size-7 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <ChevronsLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => panViewport(1)}
-              title={t('edit.timeline.panRight')}
-              aria-label={t('edit.timeline.panRight')}
-              className="grid size-7 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <ChevronsRight className="size-4" />
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setLineMode((v) => !v)}
-          title={lineMode ? t('edit.timeline.expandTrack') : t('edit.timeline.collapseAxis')}
-          aria-label={lineMode ? t('edit.timeline.expandTrack') : t('edit.timeline.collapseAxis')}
-          className="ml-1 grid size-7 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-        >
-          {lineMode ? <UnfoldVertical className="size-4" /> : <FoldVertical className="size-4" />}
-        </button>
-      </div>
-
+  return (
+    <>
+      {/* The timeline's own header row: what it is, what it can insert, how much
+          it holds, and its fold. Geometry unchanged from the standalone bar. */}
+      <div className="flex h-10 shrink-0 items-center gap-2 px-6">{header}</div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
         <div className="relative h-full min-w-max">
           {/* the timeline axis (top) — nodes hang below it; hidden when empty
@@ -2688,9 +1335,17 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
                 setDragOver(null);
               };
               const onPick = () =>
-                useCanvasStore
-                  .getState()
-                  .setPickTarget({ sceneId, actionId: key, cueType: action.type });
+                useCanvasStore.getState().setPickTarget(
+                  useStageStore.getState().stage?.id
+                    ? {
+                        purpose: 'cue',
+                        stageId: useStageStore.getState().stage!.id,
+                        sceneId,
+                        actionId: key,
+                        cueType: action.type,
+                      }
+                    : null,
+                );
               const dot = (
                 <NodeDot
                   action={action}
@@ -2727,24 +1382,43 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
                               index={si}
                               actionId={key}
                               audioId={(action as { audioId?: string }).audioId}
+                              audioUrl={(action as { audioUrl?: string }).audioUrl}
+                              audioInvalidated={
+                                (action as { audioInvalidated?: boolean }).audioInvalidated
+                              }
                               sceneOrder={sceneOrder}
                               language={language}
                               ttsActive={ttsActive}
-                              audioUrl={(action as { audioUrl?: string }).audioUrl}
                               ttsRefresh={ttsRefresh}
                               regenerating={regeneratingIds.has(key)}
                               autoFocus={key === focusId}
                               onFocused={() => setFocusId(null)}
                               onCommit={(text) => {
-                                commit((cur) => setSpeechTextById(cur, key, text));
-                                setTtsRefresh((n) => n + 1);
+                                // Editing the text invalidates any cached audio
+                                // (the blob is keyed by order+id and the stamped
+                                // audioId, not the text), so drop the stamped
+                                // fields and delete the blob — the line then
+                                // reads as un-voiced until regen.
+                                const prevAudioId = (action as { audioId?: string }).audioId;
+                                commit((cur) => setSpeechTextClearAudioById(cur, key, text));
+                                // Re-check status only AFTER the blob is gone, so
+                                // the status row can't race the async delete and
+                                // briefly still read "voiced".
+                                void discardSpeechAudio(sceneOrder, {
+                                  id: key,
+                                  audioId: prevAudioId,
+                                }).finally(() => setTtsRefresh((n) => n + 1));
                               }}
-                              onGenerated={() =>
-                                commit((cur) =>
-                                  setAudioIdById(cur, key, speechAudioId(sceneOrder, key)),
-                                )
-                              }
-                              onDelete={() => commit((cur) => removeById(cur, key))}
+                              onGenerated={(assetId) => {
+                                commit((cur) => setAudioIdById(cur, key, assetId));
+                                // Stage persistence is debounced; flush so the
+                                // stamped reference is durable once the row
+                                // settles (pool bytes persist first, stamp last).
+                                void flushStageSave().catch(() => undefined);
+                              }}
+                              onDelete={() => {
+                                commit((cur) => removeById(cur, key));
+                              }}
                               onMoveLeft={() => commit((cur) => moveByIdDir(cur, key, -1))}
                               onMoveRight={() => commit((cur) => moveByIdDir(cur, key, 1))}
                               canMoveLeft={index > 0}
@@ -2813,6 +1487,6 @@ export function ActionsBar({ sceneId }: { sceneId: string }) {
           onClose={() => setPickerAt(null)}
         />
       )}
-    </section>
+    </>
   );
 }

@@ -1,11 +1,14 @@
 'use client';
 
-import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence } from 'motion/react';
 
 import type {
   PPTElement,
   PPTImageElement,
+  PPTShapeElement,
+  PPTTableElement,
+  PPTTextElement,
   PPTVideoElement,
   Slide,
   SlideBackground,
@@ -20,7 +23,6 @@ import { SpotlightOverlay } from './effects/SpotlightOverlay';
 import { LaserOverlay } from './effects/LaserOverlay';
 import { useOptionalSlideContext } from './context';
 import { SLIDE_RENDERER_STYLES } from './styles';
-import { computeSlideFitTransform, transformPercentageGeometry } from './utils/slideFit';
 
 export interface SlideCanvasProps {
   /**
@@ -50,6 +52,12 @@ export interface SlideCanvasProps {
   ) => ReactNode;
   /** Replace default <video> rendering for video elements. */
   renderVideo?: (element: PPTVideoElement) => ReactNode;
+  /** Replace the content node inside the shared text paint wrapper. */
+  renderText?: (element: PPTTextElement, defaultContent: ReactNode) => ReactNode;
+  /** Replace the static label node inside a Shape element. */
+  renderShapeLabel?: (element: PPTShapeElement, defaultContent: ReactNode) => ReactNode;
+  /** Replace the static content node inside a Table element. */
+  renderTable?: (element: PPTTableElement, defaultContent: ReactNode) => ReactNode;
   /** Enable pointer interaction for video controls or custom video UI. */
   videoInteractive?: boolean;
   /** Click handler invoked on any element. */
@@ -61,6 +69,10 @@ export interface SlideCanvasProps {
   elementIdPrefix?: string;
   /** Class on the outer container. */
   className?: string;
+  /** Compositor-only offsets used by the editing surface during a move gesture. */
+  dragOffsets?: ReadonlyMap<string, { x: number; y: number }>;
+  /** Element ids omitted from rendering and effect targeting. */
+  hiddenElementIds?: readonly string[];
   /** Inline style on the outer container. */
   style?: CSSProperties;
   /**
@@ -88,14 +100,26 @@ export function SlideCanvas(props: SlideCanvasProps) {
   const effects = props.effects ?? ctx?.effects;
   const renderImage = props.renderImage ?? ctx?.renderImage;
   const renderVideo = props.renderVideo ?? ctx?.renderVideo;
+  const renderText = props.renderText;
+  const renderShapeLabel = props.renderShapeLabel;
+  const renderTable = props.renderTable;
   const videoInteractive = props.videoInteractive ?? ctx?.videoInteractive;
   const onElementClick = props.onElementClick ?? ctx?.onElementClick;
   const elementIdPrefix = props.elementIdPrefix ?? 'slide-element-';
-  const { className, style } = props;
+  const { className, dragOffsets, style } = props;
   const chrome = props.chrome ?? true;
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const elements = slide.elements;
+  const visibleElements = useMemo(() => {
+    if (!props.hiddenElementIds?.length) return elements;
+    const hidden = new Set(props.hiddenElementIds);
+    return elements.filter((element) => !hidden.has(element.id));
+  }, [elements, props.hiddenElementIds]);
+  const elementIndexById = useMemo(
+    () => new Map(elements.map((element, index) => [element.id, index + 1])),
+    [elements],
+  );
 
   const { viewportStyles, fitScale } = useViewportSize(canvasRef, {
     viewportSize: slide.viewportSize,
@@ -104,41 +128,29 @@ export function SlideCanvas(props: SlideCanvasProps) {
     onScaleChange: scale === undefined ? props.onScaleChange : undefined,
   });
   const canvasScale = scale ?? fitScale;
-  const slideFitTransform = computeSlideFitTransform(
-    elements,
-    viewportStyles.width,
-    viewportStyles.height,
-  );
 
   const resolvedBackground = background ?? slide.background;
   const { backgroundStyle } = useSlideBackgroundStyle(resolvedBackground);
 
   // Plain derivations: when this package is consumed in a React Compiler build
   // these are auto-memoized; otherwise the cost (O(elements) lookups) is trivial.
-  const rawLaserGeometry: PercentageGeometry | null = effects?.laser
+  const laserGeometry: PercentageGeometry | null = effects?.laser
     ? findElementGeometry(
-        elements,
+        visibleElements,
         effects.laser.elementId,
         slide.viewportSize,
         slide.viewportRatio,
       )
     : null;
-  const laserGeometry = transformPercentageGeometry(
-    rawLaserGeometry,
-    slideFitTransform,
-    viewportStyles.width,
-    viewportStyles.height,
-  );
 
-  const rawZoomGeometry: PercentageGeometry | null = effects?.zoom
-    ? findElementGeometry(elements, effects.zoom.elementId, slide.viewportSize, slide.viewportRatio)
+  const zoomGeometry: PercentageGeometry | null = effects?.zoom
+    ? findElementGeometry(
+        visibleElements,
+        effects.zoom.elementId,
+        slide.viewportSize,
+        slide.viewportRatio,
+      )
     : null;
-  const zoomGeometry = transformPercentageGeometry(
-    rawZoomGeometry,
-    slideFitTransform,
-    viewportStyles.width,
-    viewportStyles.height,
-  );
 
   const highlights = effects?.highlights ?? (effects?.highlight ? [effects.highlight] : []);
 
@@ -201,41 +213,36 @@ export function SlideCanvas(props: SlideCanvasProps) {
             transform: `scale(${canvasScale})`,
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              transformOrigin: 'top left',
-              transform: slideFitTransform.cssTransform,
-            }}
-          >
-            {elements.map((element, index) => (
-              <SlideElement
-                key={element.id}
-                elementInfo={element}
-                elementIndex={index + 1}
-                theme={slide.theme}
-                renderImage={renderImage}
-                renderVideo={renderVideo}
-                videoInteractive={videoInteractive}
-                onElementClick={onElementClick}
-                idPrefix={elementIdPrefix}
-              />
-            ))}
+          {visibleElements.map((element) => (
+            <SlideElement
+              key={element.id}
+              elementInfo={element}
+              elementIndex={elementIndexById.get(element.id) ?? 1}
+              theme={slide.theme}
+              renderImage={renderImage}
+              renderVideo={renderVideo}
+              renderText={renderText}
+              renderShapeLabel={renderShapeLabel}
+              renderTable={renderTable}
+              videoInteractive={videoInteractive}
+              onElementClick={onElementClick}
+              idPrefix={elementIdPrefix}
+              dragOffset={dragOffsets?.get(element.id)}
+            />
+          ))}
 
-            {highlights.map((highlight) => {
-              const element = elements.find((el) => el.id === highlight.elementId);
-              return element ? (
-                <HighlightOverlay key={highlight.elementId} element={element} options={highlight} />
-              ) : null;
-            })}
-          </div>
+          {highlights.map((highlight) => {
+            const element = visibleElements.find((el) => el.id === highlight.elementId);
+            return element ? (
+              <HighlightOverlay key={highlight.elementId} element={element} options={highlight} />
+            ) : null;
+          })}
         </div>
 
         <SpotlightOverlay
           options={effects?.spotlight}
           elementIdPrefix={elementIdPrefix}
-          measurementKey={elements}
+          measurementKey={visibleElements}
         />
 
         <div
@@ -254,7 +261,6 @@ export function SlideCanvas(props: SlideCanvasProps) {
                   geometry={laserGeometry}
                   color={effects.laser.color}
                   duration={effects.laser.duration}
-                  static={effects.laser.static}
                 />
               )}
             </AnimatePresence>

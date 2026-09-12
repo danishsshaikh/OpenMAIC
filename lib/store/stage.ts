@@ -15,13 +15,16 @@ import type { SceneOutline } from '@/lib/types/generation';
 import { createLogger } from '@/lib/logger';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
+import type { StageManifest } from '@/lib/workbench/stage-freshness';
 import { applyGeneratedAgentsToRegistry } from '@/lib/orchestration/registry/store';
 import { migrateScene } from '@/lib/edit/slide-schema';
 import { preparePBLScenesForDocumentPersistence } from '@/lib/pbl/v2/runtime/document-persistence';
 import { hydratePBLScenesFromRuntime } from '@/lib/pbl/v2/runtime/hydration';
 import type { ChatStorageSnapshot } from '@/lib/utils/chat-storage';
-import { applyNarrationSyncForSceneUpdate } from '@/lib/audio/narration-sync';
+import type { DocumentProducer } from '@/lib/document-store/persistence-types';
 import type { PendingChange, StaleDroppedSave } from '@/lib/utils/stage-storage';
+import { collectStageAssetRefs } from '@/lib/media/collect-stage-asset-refs';
+import { reconcileSceneMediaAllocations } from '@/lib/media/reconcile-scene-media';
 import {
   isStageDeleted,
   isStageDeletionInFlight,
@@ -55,6 +58,19 @@ let stageStorageModulePromise: Promise<typeof import('@/lib/utils/stage-storage'
 
 const DEPARTING_STAGE_RETRY_DELAY_MS = 100;
 
+const SAVE_DEBOUNCE_MS = 500;
+const SAVE_BACKOFF_MAX_MS = 30_000;
+let consecutiveFlushFailures = 0;
+
+function nextSaveDelayMs(): number {
+  if (consecutiveFlushFailures === 0) return SAVE_DEBOUNCE_MS;
+  return Math.min(SAVE_DEBOUNCE_MS * 2 ** consecutiveFlushFailures, SAVE_BACKOFF_MAX_MS);
+}
+
+function recordFlushOutcome(failed: boolean): void {
+  consecutiveFlushFailures = failed ? consecutiveFlushFailures + 1 : 0;
+}
+
 function pendingChangeKey(change: PendingChange): string {
   return change.kind === 'scene' ? `scene:${change.sceneId}` : change.kind;
 }
@@ -68,16 +84,21 @@ function resetPendingChanges(stageId: string | null = null): void {
   cancelScheduledSave();
   pendingChanges.clear();
   pendingStageId = stageId;
+  consecutiveFlushFailures = 0;
 }
 
 function schedulePendingSave(): void {
+  // Once a write has failed, keep the already-armed backoff timer. Streaming
+  // chat mutations are already represented by the dirty descriptor; rearming
+  // per delta would collapse the backoff to the base cadence or starve it.
+  if (consecutiveFlushFailures > 0 && saveTimer) return;
   cancelScheduledSave();
   saveTimer = setTimeout(() => {
     saveTimer = null;
     void flushStageSave().catch(() => {
       // flushStageSave logs once and retains the pending entries for retry.
     });
-  }, 500);
+  }, nextSaveDelayMs());
 }
 
 function markPendingChanges(stageId: string | undefined, ...changes: PendingChange[]): void {
@@ -250,10 +271,10 @@ function mergeSceneContentForUpdate(
   if (current.type !== 'pbl' || incoming.type !== 'pbl') return incoming;
   const currentPBL = current as PBLContent;
   const incomingPBL = incoming as PBLContent;
-  if ('projectV2' in incomingPBL || !currentPBL.projectV2) return incoming;
   return {
+    ...currentPBL,
     ...incomingPBL,
-    projectV2: currentPBL.projectV2,
+    ...(incomingPBL.projectV2 || !currentPBL.projectV2 ? {} : { projectV2: currentPBL.projectV2 }),
   };
 }
 
@@ -285,11 +306,40 @@ interface StageState {
   // Gates resume-on-mount so an edited finished deck is not regenerated.
   generationComplete: boolean;
 
+  /**
+   * Viewer-facing ownership facts resolved from the stage-meta sidecar (the
+   * reference's classroom access fields). Defaults are the upstream single-user
+   * ones — `isOwner: true`, `readOnly: false` — so a course that was never
+   * probed (no server sidecar row) stays editable exactly as before; the
+   * sidecar probe overrides them when it answers. These are viewer-scoped and
+   * deliberately NOT persisted with the document.
+   */
+  isOwner: boolean;
+  readOnly: boolean;
+
+  /**
+   * Who produced the current outline ('client' absent / 'server-job'), written
+   * by the workbench stage-freshness sync's delegated initial read. Absent
+   * from the host's original store; the reference carries it so a server-owned
+   * course can be told apart from a client-authored one.
+   */
+  outlineProducer: DocumentProducer | null;
+
   // Transient generation tracking (not persisted)
   generationEpoch: number;
   generationStatus: 'idle' | 'generating' | 'paused' | 'completed' | 'error';
   currentGeneratingOrder: number;
   failedOutlines: SceneOutline[];
+
+  // Workbench canvas-freshness projections (Mono #1960 Part 2 port).
+  // The workbench stage-freshness sync records the manifest this browser has
+  // actually rendered (`serverManifestByStage`) and the store's save paths may
+  // bump `stageSyncRequest` when a refused write must converge the baseline
+  // before the next save is judged. Both are written by
+  // `lib/workbench/use-workbench-session.ts` / future ownership slices; the
+  // upstream host's own save paths do not consume them yet.
+  serverManifestByStage: Record<string, StageManifest>;
+  stageSyncRequest: number;
 
   // Actions
   setStage: (stage: Stage) => void;
@@ -308,6 +358,12 @@ interface StageState {
   setGenerationComplete: (complete: boolean) => void;
   /** Mark generation complete iff every outline has a scene and none failed. */
   markGenerationCompleteIfDone: () => void;
+  /**
+   * Apply the stage-meta sidecar's per-viewer facts. `readOnly` follows the
+   * reference's classroom rule: a visitor who is not the owner gets a
+   * read-only classroom.
+   */
+  setViewerAccess: (access: { isOwner: boolean }) => void;
   setGenerationStatus: (status: 'idle' | 'generating' | 'paused' | 'completed' | 'error') => void;
   setCurrentGeneratingOrder: (order: number) => void;
   bumpGenerationEpoch: () => void;
@@ -422,10 +478,15 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   generatingOutlines: [],
   outlines: [],
   generationComplete: false,
+  outlineProducer: null,
+  isOwner: true,
+  readOnly: false,
   generationEpoch: 0,
   generationStatus: 'idle' as const,
   currentGeneratingOrder: -1,
   failedOutlines: [],
+  serverManifestByStage: {},
+  stageSyncRequest: 0,
 
   // Actions
   setStage: (stage) => {
@@ -525,6 +586,11 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       );
       return;
     }
+    // Before anything else: a scene whose media was stored while it was still
+    // being built carries placeholders that already have allocated ids waiting
+    // for them. Applying them here, ahead of the structure mark below, is what
+    // keeps the placeholder out of the scene's very first save.
+    reconcileSceneMediaAllocations(scene);
     const scenes = [...get().scenes, migrateScene(scene)];
     // Remove the matching outline from generatingOutlines (match by order)
     const generatingOutlines = get().generatingOutlines.filter((o) => o.order !== scene.order);
@@ -545,8 +611,8 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   insertSceneAfter: (anchorSceneId, scene) => {
     // Pro mode slide management entry point — inserts after the anchor and
     // rebalances `order` so PPTX export / array position stay consistent.
-    // Edit mode is gated against active regeneration (see useEditModeLock),
-    // so rewriting `order` here is safe — no outline matcher is racing us.
+    // Regeneration is gated by the regen lease, so no outline matcher is
+    // racing us here; cross-tab `order` collisions are last-write-wins.
     const currentStage = get().stage;
     if (!currentStage || scene.stageId !== currentStage.id) {
       log.warn(
@@ -570,11 +636,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       const content = mergeSceneContentForUpdate(scene.content, updates.content) ?? scene.content;
       // Rebind `type` to the merged content's kind (a type-only patch can no
       // longer desync the discriminant from the content).
-      const next = makeScene({ ...scene, ...updates }, content);
-      if (updates.sync) return next;
-      return applyNarrationSyncForSceneUpdate(scene, next, {
-        language: get().stage?.languageDirective,
-      });
+      return makeScene({ ...scene, ...updates }, content);
     });
     set({ scenes });
     markPendingChanges(get().stage?.id, { kind: 'scene', sceneId });
@@ -591,19 +653,38 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     const state = get();
     const wasComplete = !state.generationComplete && isDeckComplete(state);
 
-    const scenes = get().scenes.filter((scene) => scene.id !== sceneId);
+    const scenes = state.scenes.filter((scene) => scene.id !== sceneId);
     const currentSceneId = get().currentSceneId;
+    const provisionalAfter = state.stage ? { stage: state.stage, scenes } : null;
+    const beforeRefs = collectStageAssetRefs(
+      state.stage ? { stage: state.stage, scenes: state.scenes } : null,
+      { mediaRows: [], audioRows: [] },
+    );
+    const afterRefs = collectStageAssetRefs(provisionalAfter, { mediaRows: [], audioRows: [] });
+    const detachedRefs = new Set(
+      [...beforeRefs.referenced].filter((ref) => !afterRefs.referenced.has(ref)),
+    );
+    let nextStage = state.stage;
+    if (nextStage?.videoManifest && detachedRefs.size > 0) {
+      const nextManifest = Object.fromEntries(
+        Object.entries(nextStage.videoManifest).filter(([ref]) => !detachedRefs.has(ref)),
+      );
+      if (Object.keys(nextManifest).length !== Object.keys(nextStage.videoManifest).length) {
+        nextStage = { ...nextStage, videoManifest: nextManifest };
+      }
+    }
 
     // If deleted scene was current, select next or previous
     if (currentSceneId === sceneId) {
       const index = get().getSceneIndex(sceneId);
       const newIndex = index < scenes.length ? index : scenes.length - 1;
       set({
+        stage: nextStage,
         scenes,
         currentSceneId: scenes[newIndex]?.id || null,
       });
     } else {
-      set({ scenes });
+      set({ stage: nextStage, scenes });
     }
 
     if (wasComplete) get().setGenerationComplete(true);
@@ -611,6 +692,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     markPendingChanges(
       get().stage?.id,
       { kind: 'structure' },
+      ...(nextStage !== state.stage ? ([{ kind: 'stage' }] as PendingChange[]) : []),
       ...(currentSceneId === sceneId ? ([{ kind: 'currentScene' }] as PendingChange[]) : []),
     );
   },
@@ -703,6 +785,10 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     const { outlines, scenes, failedOutlines, generationComplete } = get();
     if (generationComplete) return;
     if (isDeckComplete({ outlines, scenes, failedOutlines })) get().setGenerationComplete(true);
+  },
+
+  setViewerAccess: ({ isOwner }) => {
+    set({ isOwner, readOnly: !isOwner });
   },
 
   setGenerationStatus: (generationStatus) => set({ generationStatus }),
@@ -1069,9 +1155,11 @@ function startFlushRound(): FlushRound | null {
           },
         });
       }
+      recordFlushOutcome(failedKeys.size > 0);
       return failedKeys;
     } catch (error) {
       log.error(`Failed to flush pending stage changes for ${stageId}:`, error);
+      recordFlushOutcome(true);
       throw error;
     } finally {
       flushInFlight = null;

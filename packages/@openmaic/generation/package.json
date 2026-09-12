@@ -1,6 +1,6 @@
 {
   "name": "@openmaic/generation",
-  "version": "0.1.0",
+  "version": "0.3.7",
   "description": "Pure generation pipeline contracts and packaged prompt assets for MAIC consumers.",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,13 +16,14 @@
     "dist",
     "templates",
     "snippets",
+    "prompts-pbl",
     "README.md",
     "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
-    "clean": "rm -rf dist",
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
@@ -42,8 +43,11 @@
     "directory": "packages/@openmaic/generation"
   },
   "dependencies": {
+    "@openmaic/dsl": "workspace:^",
     "jsonrepair": "^3.13.2",
-    "nanoid": "^5.1.6"
+    "katex": "^0.16.22",
+    "nanoid": "^5.1.6",
+    "partial-json": "^0.1.7"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

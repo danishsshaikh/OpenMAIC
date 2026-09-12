@@ -172,23 +172,28 @@ describe('setSpeechText / setElementId', () => {
     expect(setAudioIdById(xs, 'a', 'tts_a')).toBe(xs); // 'a' is not speech → no-op
   });
   test('setAudioId only stamps speech actions', () => {
-    const xs = [A('a', 'speech'), A('b', 'spotlight')];
-    expect((setAudioId(xs, 0, 'tts_a')[0] as { audioId?: string }).audioId).toBe('tts_a');
+    const xs = [{ ...A('a', 'speech'), audioInvalidated: true }, A('b', 'spotlight')];
+    const updated = setAudioId(xs, 0, 'tts_a')[0] as {
+      audioId?: string;
+      audioInvalidated?: boolean;
+    };
+    expect(updated.audioId).toBe('tts_a');
+    expect(updated.audioInvalidated).toBeUndefined();
     expect(setAudioId(xs, 1, 'tts_b')).toBe(xs); // no-op for non-speech
   });
-  test('setSpeechTextClearAudioById sets text and preserves prior audio fields', () => {
+  test('setSpeechTextClearAudioById sets text and drops stale audio fields', () => {
     const xs: Action[] = [
-      { id: 'a', type: 'speech', text: 'old', audioId: 'tts_a', audioUrl: 'blob:x' } as Action,
+      { id: 'a', type: 'speech', text: 'old', audioId: 'tts_a' } as Action,
       A('b', 'spotlight'),
     ];
     const out = setSpeechTextClearAudioById(xs, 'a', 'new') as Array<{
       text?: string;
       audioId?: string;
-      audioUrl?: string;
+      audioInvalidated?: boolean;
     }>;
     expect(out[0].text).toBe('new');
-    expect(out[0].audioId).toBe('tts_a');
-    expect(out[0].audioUrl).toBe('blob:x');
+    expect(out[0].audioId).toBeUndefined();
+    expect(out[0].audioInvalidated).toBe(true);
     // index-stale-safe + type guard: missing id and non-speech are no-ops
     expect(setSpeechTextClearAudioById(xs, 'missing', 'x')).toBe(xs);
     expect(setSpeechTextClearAudioById(xs, 'b', 'x')).toBe(xs);

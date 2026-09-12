@@ -23,7 +23,7 @@ export function BaseVideoElement({
 }: BaseVideoElementProps) {
   return (
     <div
-      className="element-content"
+      className="base-element-video element-content"
       data-video-element
       style={{
         position: 'absolute',
@@ -59,6 +59,7 @@ export function BaseVideoElement({
             poster={elementInfo.poster}
             preload="metadata"
             controls={!!elementInfo.src}
+            playsInline
           />
         ) : (
           <div

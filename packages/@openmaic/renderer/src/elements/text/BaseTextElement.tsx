@@ -1,29 +1,34 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { PPTTextElement } from '@openmaic/dsl';
 import { useElementShadow } from '../shared/useElementShadow';
 import { ElementOutline } from '../shared/ElementOutline';
-import { formatInlineMarkdownBold } from '../../utils/inlineMarkdown';
-import { getTextFitStyle, useTextAutoFit } from '../../utils/textAutoFit';
+import { preservesPlainTextLineBreaks } from '../../utils/richText';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
   target?: string;
+  renderContent?: (element: PPTTextElement, defaultContent: ReactNode) => ReactNode;
 }
 
-export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
+export function BaseTextElement({ elementInfo, target, renderContent }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
-  const content = formatInlineMarkdownBold(
-    typeof elementInfo.content === 'string' ? elementInfo.content : '',
-  );
-  const { containerRef, textRef, textFitScale } = useTextAutoFit(
-    `${content}:${elementInfo.width}:${elementInfo.height}:${elementInfo.lineHeight ?? ''}:${elementInfo.defaultFontName ?? ''}`,
-  );
 
   const vAlign = elementInfo.vAlign ?? 'top';
   const justifyContent =
     vAlign === 'middle' ? 'center' : vAlign === 'bottom' ? 'flex-end' : 'flex-start';
+  const defaultContent = (
+    <div
+      className="text ProseMirror-static"
+      style={{
+        position: 'relative',
+        pointerEvents: target === 'thumbnail' ? 'none' : undefined,
+        whiteSpace: preservesPlainTextLineBreaks(elementInfo.content) ? 'pre-line' : undefined,
+      }}
+      dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+    />
+  );
 
   return (
     <div
@@ -34,7 +39,6 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         left: `${elementInfo.left}px`,
         width: `${elementInfo.width}px`,
         height: `${elementInfo.height}px`,
-        overflow: 'hidden',
       }}
     >
       <div
@@ -43,6 +47,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
           width: '100%',
           height: '100%',
           transform: `rotate(${elementInfo.rotate}deg)`,
+          // Fill the full text box and rotate it with the glyphs/outline.
           backgroundColor: elementInfo.fill,
           opacity: elementInfo.opacity,
           display: 'flex',
@@ -51,21 +56,14 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
         }}
       >
         <div
-          ref={containerRef}
           className="element-content slide-renderer-prose"
           style={{
             position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: textFitScale < 0.995 ? 'flex-start' : justifyContent,
-            width: elementInfo.vertical ? 'auto' : '100%',
-            height: '100%',
-            maxWidth: '100%',
-            maxHeight: '100%',
             boxSizing: 'border-box',
-            overflow: 'hidden',
-            overflowWrap: 'anywhere',
-            wordBreak: 'break-word',
+            padding: '10px',
+            overflowWrap: 'break-word',
+            width: elementInfo.vertical ? 'auto' : '100%',
+            height: elementInfo.vertical ? '100%' : 'auto',
             textShadow: shadowStyle,
             lineHeight: elementInfo.lineHeight,
             letterSpacing:
@@ -83,21 +81,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
             height={elementInfo.height}
             outline={elementInfo.outline}
           />
-          <div
-            ref={textRef}
-            className="text ProseMirror-static"
-            style={{
-              position: 'relative',
-              pointerEvents: target === 'thumbnail' ? 'none' : undefined,
-              maxWidth: '100%',
-              maxHeight: '100%',
-              overflow: 'hidden',
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
-              ...getTextFitStyle(textFitScale),
-            }}
-            dangerouslySetInnerHTML={{ __html: content }}
-          />
+          {renderContent?.(elementInfo, defaultContent) ?? defaultContent}
         </div>
       </div>
     </div>

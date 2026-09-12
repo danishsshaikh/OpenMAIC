@@ -1,15 +1,31 @@
 /**
  * Audio Player - Audio player interface
  *
- * Handles audio playback, pause, stop, and other operations
- * Loads pre-generated TTS audio files from IndexedDB
+ * Handles audio playback, pause, stop, and other operations.
+ * Resolves pre-generated TTS audio bytes pool-first through the shared read
+ * path, with the Dexie `audioFiles` table as the legacy fallback.
  *
  */
 
-import { db } from '@/lib/utils/database';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('AudioPlayer');
+
+/** How long a legacy narration URL fetch may take before the media element
+ * fallback takes over. Bounded like the converter's URL probes: one stalled
+ * endpoint must not pin a playback line indefinitely. */
+const LEGACY_URL_FETCH_TIMEOUT_MS = 15_000;
+
+/** Bytes an audio id currently resolves to, pool first. Loaded lazily to keep
+ * this module importable without the media graph. */
+async function resolveBytes(audioId: string): Promise<Blob | null> {
+  try {
+    const { resolveAudioBlob } = await import('@/lib/media/resolve-audio-bytes');
+    return await resolveAudioBlob(audioId);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Audio player implementation
@@ -20,88 +36,128 @@ export class AudioPlayer {
   private muted: boolean = false;
   private volume: number = 1;
   private playbackRate: number = 1;
-  private playRequestId: number = 0;
+  private requestToken: number = 0;
+  /** The object URL backing the current audio element, if any. */
+  private blobUrl: string | null = null;
+  /**
+   * The in-flight legacy narration fetch of the current play, if any. Aborted
+   * when the play is superseded (a replacement play, stop, or destroy), so a
+   * stale fetch is cancelled at the network layer instead of settling before
+   * its supersession is noticed.
+   */
+  private fetchAbort: AbortController | null = null;
 
-  private clearAudio(resetTime = true): void {
-    if (!this.audio) return;
-    this.audio.pause();
-    if (resetTime) {
-      this.audio.currentTime = 0;
+  /** Abort the in-flight legacy narration fetch, if one exists. */
+  private abortLegacyFetch(): void {
+    if (this.fetchAbort) {
+      this.fetchAbort.abort();
+      this.fetchAbort = null;
     }
-    this.audio = null;
-  }
-
-  private isCurrentRequest(requestId: number): boolean {
-    return requestId === this.playRequestId;
   }
 
   /**
-   * Play audio (from URL or IndexedDB pre-generated cache)
-   * @param audioId Audio ID
-   * @param audioUrl Optional server-generated audio URL (takes priority over IndexedDB)
-   * @param startTimeMs Optional start offset in milliseconds
+   * Revoke an object URL this player created, forgetting it when it is still
+   * the current source. Idempotent: natural end, rejected play, stop, and
+   * replacement each call it once for their own URL.
+   */
+  private releaseBlobUrl(blobUrl: string | null | undefined): void {
+    if (!blobUrl) return;
+    URL.revokeObjectURL(blobUrl);
+    if (this.blobUrl === blobUrl) this.blobUrl = null;
+  }
+
+  private stopAudioElement(): void {
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this.audio = null;
+    }
+    // Stop or replacement before natural end must not leak the fetched
+    // narration: the element is dropped here, so its URL is released with it.
+    this.releaseBlobUrl(this.blobUrl);
+  }
+
+  /**
+   * Play audio for a speech reference.
+   *
+   * The reference is resolved pool-first through the shared read path, so a
+   * stable-id regeneration whose mirror write failed does not keep serving
+   * superseded narration; the Dexie `audioFiles` table remains the fallback
+   * for legacy and imported rows that were never pool-backed.
+   *
+   * Conversion to allocated ids is best-effort: a document whose conversion
+   * was skipped (the lock-free load path) or deferred (a transient fetch
+   * failure) still holds its legacy pair, and an `audioId` with no local
+   * bytes is not silence while the URL beside it may still be live. That URL
+   * is the fallback of last resort, fetched at playback time; a converted
+   * document never carries one.
+   *
+   * @param audioId Audio asset reference (allocated asset id, or a legacy TTS-derived id)
+   * @param legacyUrl The legacy `audioUrl` of an unconverted pair, if present
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
-  public async play(audioId: string, audioUrl?: string, startTimeMs = 0): Promise<boolean> {
-    const requestId = ++this.playRequestId;
-    this.clearAudio();
-
+  public async play(audioId: string, legacyUrl?: string): Promise<boolean> {
+    const requestToken = ++this.requestToken;
+    // A new play supersedes any in-flight legacy fetch of the previous one.
+    this.abortLegacyFetch();
     try {
-      // 1. Try audioUrl first (server-generated TTS)
-      if (audioUrl) {
-        const audio = new Audio();
-        this.audio = audio;
-        audio.src = audioUrl;
-        if (this.muted) audio.volume = 0;
-        else audio.volume = this.volume;
-        audio.defaultPlaybackRate = this.playbackRate;
-        audio.playbackRate = this.playbackRate;
-        audio.addEventListener('ended', () => {
-          if (!this.isCurrentRequest(requestId) || this.audio !== audio) return;
-          this.audio = null;
-          this.onEndedCallback?.();
-        });
-        this.seekTo(startTimeMs);
-        await audio.play();
-        if (!this.isCurrentRequest(requestId) || this.audio !== audio) {
-          audio.pause();
-          return false;
+      let blob = await resolveBytes(audioId);
+      if (requestToken !== this.requestToken) return false;
+
+      let directUrl: string | undefined;
+      if (!blob && legacyUrl) {
+        const controller = new AbortController();
+        this.fetchAbort = controller;
+        const timeout = setTimeout(() => controller.abort(), LEGACY_URL_FETCH_TIMEOUT_MS);
+        try {
+          const response = await fetch(legacyUrl, { signal: controller.signal });
+          const fetched = response.ok ? await response.blob() : null;
+          // Zero-byte responses are not narration: fall back to the URL so a
+          // later attempt can retry, and never play silence.
+          if (fetched && fetched.size > 0) blob = fetched;
+        } catch {
+          blob = null;
+        } finally {
+          clearTimeout(timeout);
+          if (this.fetchAbort === controller) this.fetchAbort = null;
         }
-        audio.playbackRate = this.playbackRate;
-        return true;
+        if (requestToken !== this.requestToken) return false;
+        if (!blob) {
+          // A cross-origin legacy URL without CORS headers cannot be fetched,
+          // but a media element is not CORS-bound: hand it the URL directly.
+          // A superseded play never reaches here -- the token check above
+          // already returned false -- so only ordinary fetch/CORS/timeout
+          // failures fall back to the element.
+          directUrl = legacyUrl;
+        }
       }
 
-      // 2. Fall back to IndexedDB (client-generated TTS)
-      const audioRecord = await db.audioFiles.get(audioId);
-      if (!this.isCurrentRequest(requestId)) {
-        return false;
-      }
-
-      if (!audioRecord) {
+      if (!blob && !directUrl) {
         // Pre-generated audio does not exist (generation failed), skip silently
         return false;
       }
 
+      // Stop current playback
+      this.stopAudioElement();
+      if (requestToken !== this.requestToken) return false;
+
       // Create audio element
-      const audio = new Audio();
-      this.audio = audio;
+      this.audio = new Audio();
 
       // Set audio source
-      const blobUrl = URL.createObjectURL(audioRecord.blob);
-      audio.src = blobUrl;
-      if (this.muted) audio.volume = 0;
-      else audio.volume = this.volume;
+      const blobUrl = blob ? URL.createObjectURL(blob) : undefined;
+      this.blobUrl = blobUrl ?? null;
+      this.audio.src = blobUrl ?? (directUrl as string);
+      if (this.muted) this.audio.volume = 0;
+      else this.audio.volume = this.volume;
 
       // Apply playback rate
-      audio.defaultPlaybackRate = this.playbackRate;
-      audio.playbackRate = this.playbackRate;
-      this.seekTo(startTimeMs);
+      this.audio.defaultPlaybackRate = this.playbackRate;
+      this.audio.playbackRate = this.playbackRate;
 
       // Set ended callback
-      audio.addEventListener('ended', () => {
-        URL.revokeObjectURL(blobUrl);
-        if (!this.isCurrentRequest(requestId) || this.audio !== audio) return;
-        this.audio = null;
+      this.audio.addEventListener('ended', () => {
+        this.releaseBlobUrl(blobUrl);
         this.onEndedCallback?.();
       });
 
@@ -109,26 +165,19 @@ export class AudioPlayer {
       // load) the 'ended' listener never fires, so revoke the blob URL here to
       // avoid leaking it for the lifetime of the document.
       try {
-        await audio.play();
+        await this.audio.play();
       } catch (playError) {
-        URL.revokeObjectURL(blobUrl);
-        if (this.isCurrentRequest(requestId) && this.audio === audio) {
-          this.audio = null;
-        }
+        this.releaseBlobUrl(blobUrl);
         throw playError;
       }
-      if (!this.isCurrentRequest(requestId) || this.audio !== audio) {
-        audio.pause();
-        URL.revokeObjectURL(blobUrl);
+      if (requestToken !== this.requestToken) {
+        this.releaseBlobUrl(blobUrl);
         return false;
       }
       // Re-apply after play() — some browsers reset during load
-      audio.playbackRate = this.playbackRate;
+      this.audio.playbackRate = this.playbackRate;
       return true;
     } catch (error) {
-      if (!this.isCurrentRequest(requestId)) {
-        return false;
-      }
       log.error('Failed to play audio:', error);
       throw error;
     }
@@ -138,6 +187,7 @@ export class AudioPlayer {
    * Pause playback
    */
   public pause(): void {
+    this.requestToken += 1;
     if (this.audio && !this.audio.paused) {
       this.audio.pause();
     }
@@ -147,8 +197,11 @@ export class AudioPlayer {
    * Stop playback
    */
   public stop(): void {
-    this.playRequestId += 1;
-    this.clearAudio();
+    this.requestToken += 1;
+    // Cancel a still-fetching legacy narration instead of waiting for it to
+    // settle: the play was superseded and its result is unwanted.
+    this.abortLegacyFetch();
+    this.stopAudioElement();
     // Note: onEndedCallback intentionally NOT cleared here because play()
     // calls stop() internally — clearing would break the callback chain.
     // Stale callbacks are harmless: engine mode check prevents processNext().
@@ -193,22 +246,6 @@ export class AudioPlayer {
    */
   public getDuration(): number {
     return this.audio && !isNaN(this.audio.duration) ? this.audio.duration * 1000 : 0;
-  }
-
-  /**
-   * Seek active audio to a position in milliseconds.
-   */
-  public seekTo(timeMs: number): boolean {
-    if (!this.audio) return false;
-    const durationMs = this.getDuration();
-    const clampedMs =
-      durationMs > 0 ? Math.max(0, Math.min(timeMs, durationMs)) : Math.max(0, timeMs);
-    try {
-      this.audio.currentTime = clampedMs / 1000;
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /**

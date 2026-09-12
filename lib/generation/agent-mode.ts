@@ -1,5 +1,5 @@
 import { isGeneratedClassroomAgentsEnabled } from '@/lib/config/feature-flags';
-import type { AgentInfo } from '@/lib/generation/pipeline-types';
+import type { AgentInfo } from '@openmaic/generation';
 
 export const STANDARD_TEACHER_AGENT_ID = 'default-1';
 

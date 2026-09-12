@@ -15,13 +15,12 @@ import {
   Repeat,
   Maximize2,
   Minimize2,
+  Quote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Slider } from '@/components/ui/slider';
-import type { PlaybackProgress } from '@/lib/playback';
 import { useSoftCloseCountdown } from '@/components/chat/use-soft-close-countdown';
 
 export interface CanvasToolbarProps {
@@ -56,8 +55,10 @@ export interface CanvasToolbarProps {
   readonly onToggleAutoPlay?: () => void;
   readonly playbackSpeed?: number;
   readonly onCycleSpeed?: () => void;
-  readonly playbackProgress?: PlaybackProgress | null;
-  readonly onSeek?: (timeMs: number) => void;
+  readonly showElementReference?: boolean;
+  readonly canPickSlideElement?: boolean;
+  readonly elementPickActive?: boolean;
+  readonly onToggleElementPick?: () => void;
 }
 
 /* Compact control button */
@@ -70,16 +71,6 @@ const ctrlBtn = cn(
 /* Subtle separator */
 function CtrlDivider() {
   return <div className="w-px h-3 bg-gray-200/80 dark:bg-gray-700/60 mx-0.5 shrink-0" />;
-}
-
-// TODO(local): Seek bar temporarily hidden while action-level navigation is stabilized.
-const ENABLE_LOCAL_SEEKBAR_UI = false;
-
-function formatPlaybackTime(timeMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(timeMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 /* Volume icon based on level */
@@ -129,8 +120,10 @@ export function CanvasToolbar({
   onToggleAutoPlay,
   playbackSpeed = 1,
   onCycleSpeed,
-  playbackProgress,
-  onSeek,
+  showElementReference,
+  canPickSlideElement,
+  elementPickActive,
+  onToggleElementPick,
 }: CanvasToolbarProps) {
   const { t } = useI18n();
   const remainingSoftCloseSeconds = useSoftCloseCountdown(softCloseDeadline);
@@ -144,7 +137,6 @@ export function CanvasToolbar({
 
   // Volume slider hover state
   const [volumeHover, setVolumeHover] = useState(false);
-  const [seekDraft, setSeekDraft] = useState<number | null>(null);
   const volumeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
 
@@ -163,19 +155,6 @@ export function CanvasToolbar({
   // Effective volume for display
   const effectiveVolume = ttsMuted ? 0 : ttsVolume;
   const presentationLabel = isPresenting ? t('stage.exitFullscreen') : t('stage.fullscreen');
-  const hasPlaybackProgress = ENABLE_LOCAL_SEEKBAR_UI && !!playbackProgress;
-  const seekable =
-    !!playbackProgress?.seekable && playbackProgress.durationMs > 0 && !!onSeek && !isLiveSession;
-  const seekValue = Math.min(
-    seekDraft ?? playbackProgress?.currentTimeMs ?? 0,
-    playbackProgress?.durationMs ?? 0,
-  );
-  const currentTimeLabel = formatPlaybackTime(seekValue);
-  const durationLabel = formatPlaybackTime(playbackProgress?.durationMs ?? 0);
-  const playbackTimeLabel = t('stage.playbackTime', {
-    current: currentTimeLabel,
-    duration: durationLabel,
-  });
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -206,7 +185,7 @@ export function CanvasToolbar({
       <CtrlDivider />
 
       {/* ── Center: unified playback controls ── */}
-      <div className="flex-1 flex items-center justify-center min-w-0 gap-2">
+      <div className="flex-1 flex items-center justify-center min-w-0">
         <div
           className={cn(
             'inline-flex items-center gap-0.5 px-1 h-7',
@@ -269,10 +248,10 @@ export function CanvasToolbar({
                       'bg-gray-200 dark:bg-gray-600',
                       '[writing-mode:vertical-lr] [direction:rtl]',
                       '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3',
-                      '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary',
+                      '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-violet-500 [&::-webkit-slider-thumb]:dark:bg-violet-400',
                       '[&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:cursor-pointer',
                       '[&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3',
-                      '[&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:border-0',
+                      '[&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-violet-500 [&::-moz-range-thumb]:border-0',
                     )}
                   />
                 </div>
@@ -295,7 +274,7 @@ export function CanvasToolbar({
                       'text-[11px] font-semibold tabular-nums leading-none',
                       'active:scale-90',
                       playbackSpeed !== 1
-                        ? 'text-primary bg-primary/10'
+                        ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 dark:bg-violet-400/10'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
                     )}
                     aria-label="Playback speed"
@@ -352,7 +331,7 @@ export function CanvasToolbar({
                     e.stopPropagation();
                     onContinueDiscussion();
                   }}
-                  className="flex items-center gap-1.5 h-6 px-2.5 rounded-md border border-primary/25 bg-white/70 dark:bg-gray-800/70 text-primary text-[11px] font-semibold whitespace-nowrap hover:bg-primary/10 active:scale-95 transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 h-6 px-2.5 rounded-md border border-purple-200 dark:border-purple-700 bg-white/70 dark:bg-gray-800/70 text-purple-600 dark:text-purple-300 text-[11px] font-semibold whitespace-nowrap hover:bg-purple-50 dark:hover:bg-purple-900/20 active:scale-95 transition-all cursor-pointer"
                   title={t('roundtable.softClosing')}
                 >
                   {t('roundtable.softClosing')}
@@ -370,7 +349,9 @@ export function CanvasToolbar({
               className={cn(
                 ctrlBtn,
                 'w-7 h-6',
-                engineState === 'playing' ? 'text-primary' : 'text-gray-500 dark:text-gray-400',
+                engineState === 'playing'
+                  ? 'text-violet-600 dark:text-violet-400'
+                  : 'text-gray-500 dark:text-gray-400',
               )}
               aria-label={engineState === 'playing' ? 'Pause' : 'Play'}
             >
@@ -409,7 +390,9 @@ export function CanvasToolbar({
                     className={cn(
                       ctrlBtn,
                       'w-8 h-6',
-                      autoPlayLecture ? 'text-primary' : 'text-gray-500 dark:text-gray-400',
+                      autoPlayLecture
+                        ? 'text-violet-600 dark:text-violet-400'
+                        : 'text-gray-500 dark:text-gray-400',
                     )}
                     aria-label="Auto-play"
                   >
@@ -432,43 +415,46 @@ export function CanvasToolbar({
             className={cn(
               ctrlBtn,
               'w-6 h-6',
-              whiteboardOpen ? 'text-primary' : 'text-gray-500 dark:text-gray-400',
+              whiteboardOpen
+                ? 'text-violet-600 dark:text-violet-400'
+                : 'text-gray-500 dark:text-gray-400',
             )}
             title={whiteboardOpen ? t('whiteboard.minimize') : t('whiteboard.open')}
           >
             <PencilLine className="w-3.5 h-3.5" />
             {!whiteboardOpen && whiteboardElementCount > 0 && (
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-primary rounded-full" />
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-violet-500 dark:bg-violet-400 rounded-full" />
             )}
           </button>
-        </div>
 
-        {hasPlaybackProgress && (
-          <div className="hidden sm:flex items-center gap-2 min-w-[140px] w-[min(28vw,260px)]">
-            <Slider
-              value={[seekValue]}
-              min={0}
-              max={Math.max(1, playbackProgress?.durationMs ?? 1)}
-              step={250}
-              disabled={!seekable}
-              aria-label={t('stage.playbackSeekLabel')}
-              aria-valuetext={playbackTimeLabel}
-              onValueChange={([value]) => {
-                if (typeof value === 'number') setSeekDraft(value);
+          {showElementReference && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleElementPick?.();
               }}
-              onValueCommit={([value]) => {
-                setSeekDraft(null);
-                if (typeof value === 'number' && seekable) onSeek?.(value);
-              }}
-              className={cn(!seekable && 'opacity-45')}
-            />
-            <span className="w-[72px] shrink-0 text-[10px] leading-none tabular-nums text-gray-400 dark:text-gray-500 select-none">
-              {currentTimeLabel}
-              <span className="opacity-35 mx-px">/</span>
-              {durationLabel}
-            </span>
-          </div>
-        )}
+              disabled={!canPickSlideElement}
+              className={cn(
+                'relative flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-all',
+                elementPickActive
+                  ? 'bg-violet-500/15 text-violet-700 ring-1 ring-violet-400/40 dark:text-violet-300'
+                  : 'text-gray-500 hover:bg-gray-500/[0.08] dark:text-gray-400',
+                !canPickSlideElement && 'cursor-not-allowed opacity-35',
+              )}
+              aria-label={t('chat.elementReference.button')}
+              aria-pressed={elementPickActive}
+              title={
+                canPickSlideElement
+                  ? t('chat.elementReference.button')
+                  : t('chat.elementReference.unavailable')
+              }
+            >
+              <Quote className="h-3.5 w-3.5" />
+              <span>{t('chat.elementReference.button')}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Right: fullscreen + chat toggle ── */}
@@ -480,7 +466,9 @@ export function CanvasToolbar({
             className={cn(
               ctrlBtn,
               'w-6 h-6',
-              isPresenting ? 'text-primary' : 'text-gray-500 dark:text-gray-400',
+              isPresenting
+                ? 'text-violet-600 dark:text-violet-400'
+                : 'text-gray-500 dark:text-gray-400',
             )}
             aria-label={presentationLabel}
             title={presentationLabel}

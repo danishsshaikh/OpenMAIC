@@ -18,17 +18,35 @@
  * compiler's purity boundary keeps out.
  */
 import type {
+  PPTElement,
+  PPTVideoElement,
   PlayVideoAction,
   SpeechAction,
   SceneCore,
   SpotlightAction,
   LaserAction,
 } from '@openmaic/dsl';
-import type { AssetMeta, AssetSource, GeometryProbe, TimingProbe } from '@/lib/video-export';
-import type { Scene, SlideContent } from '@/lib/types/stage';
+import type {
+  AssetMeta,
+  AssetSource,
+  GeometryProbe,
+  InteractiveHtmlSource,
+  TimingProbe,
+} from '@/lib/video-export';
+import type { Scene, SlideContent, Stage } from '@/lib/types/stage';
+import { enumerateAssetManifest } from '@openmaic/dsl';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import { measureSlideElementGeometry, type MeasuredGeometry } from '@openmaic/renderer/snapshot';
-import { db, type AudioFileRecord, type MediaFileRecord } from '@/lib/utils/database';
+import { db, mediaFileKey, type AudioFileRecord, type MediaFileRecord } from '@/lib/utils/database';
+import {
+  emptyPreparedInteractiveHtmlSet,
+  prepareInteractiveHtmlScenes,
+  type PreparedInteractiveHtmlSet,
+} from './prepare-interactive-html';
+import { useMediaGenerationStore } from '@/lib/store/media-generation';
+import { resolveVideoMediaForElement } from '@/lib/media/media-task-resolution';
+import { resolveAudioBlob } from '@/lib/media/resolve-audio-bytes';
+import { fetchMediaUrl } from '@/lib/media/fetch-media-url';
 
 /** Loaded source records, keyed for both metadata (compiler) and byte collection. */
 export interface VideoTimelineRecords {
@@ -38,12 +56,15 @@ export interface VideoTimelineRecords {
   mediaByElementId: Map<string, MediaFileRecord>;
   /** Probed video durations (ms) by `elementId`; absent when unprobeable. */
   videoDurationMsByElementId: Map<string, number>;
+  /** Prepared self-contained HTML pages, addressable by asset id. */
+  interactiveHtml: PreparedInteractiveHtmlSet;
 }
 
 export interface VideoTimelineDeps {
   timing: TimingProbe;
   assets: AssetSource;
   geometry: GeometryProbe;
+  interactive: InteractiveHtmlSource;
   records: VideoTimelineRecords;
 }
 
@@ -64,16 +85,26 @@ function formatFromMime(mimeType: string | undefined): string | undefined {
 /**
  * The generated-media reference a slide element points at, mirroring the live
  * playback engine's bridge (`lib/action/engine.ts` `resolveMediaPlaceholderId`):
- * prefer the explicit `mediaRef`, then a legacy `src` that is itself a media
- * placeholder id. Returns undefined for elements that carry no generated media.
+ * use the unified video binding so a playable concrete `src` wins over a stale
+ * opaque `mediaRef`; images retain their legacy placeholder selection.
  *
  * A `play_video` action targets the slide element by its `.id`, but the media
  * records are keyed by this ref (`gen_vid_…`), so the asset/duration lookups must
  * bridge id → ref or every generated video misses and is dropped from the export.
  */
-function elementMediaRef(el: { mediaRef?: unknown; src?: unknown }): string | undefined {
-  if (typeof el.mediaRef === 'string' && el.mediaRef) return el.mediaRef;
-  if (typeof el.src === 'string' && isMediaPlaceholder(el.src)) return el.src;
+function elementMediaRef(
+  el: PPTElement,
+  tasks: ReturnType<typeof useMediaGenerationStore.getState>['tasks'],
+  stageId: string,
+  documentElements: readonly PPTElement[],
+): string | undefined {
+  if (el.type === 'video') {
+    return resolveVideoMediaForElement(tasks, el as PPTVideoElement, stageId, documentElements)
+      .sourceRef;
+  }
+  if (el.type === 'image' && typeof el.src === 'string' && isMediaPlaceholder(el.src)) {
+    return el.src;
+  }
   return undefined;
 }
 
@@ -172,7 +203,7 @@ function probeAudioDurationMs(blob: Blob): Promise<number | null> {
  * compiler's sync `videoDurationMs` is a table lookup.
  */
 export async function createVideoTimelineDeps(input: {
-  stage: { id: string };
+  stage: Pick<Stage, 'id' | 'whiteboard' | 'videoManifest'>;
   scenes: Scene[];
   /**
    * Skip the off-screen content-box geometry measurement (an off-screen React
@@ -183,23 +214,92 @@ export async function createVideoTimelineDeps(input: {
    * the burned-in video. Defaults to false (full geometry for the ZIP/render).
    */
   skipGeometry?: boolean;
+  /** Skip HTML inlining for subtitle-only compilation. */
+  skipInteractiveHtml?: boolean;
 }): Promise<VideoTimelineDeps> {
-  const { stage, scenes, skipGeometry = false } = input;
+  const { stage, scenes, skipGeometry = false, skipInteractiveHtml = false } = input;
+
+  const interactiveHtml = skipInteractiveHtml
+    ? emptyPreparedInteractiveHtmlSet()
+    : await prepareInteractiveHtmlScenes(scenes);
+
+  // The standardized asset manifest names exactly the media references this
+  // document holds. Video compilation consumes audio only through speech
+  // actions, so narration ids come from the speech pairs below; slide-audio
+  // elements are renderable document assets but never timeline audio clips.
+  // The media load no longer scans the table -- a row no document reference
+  // names (an orphan) was never reachable through the scene-scoped bridge
+  // anyway, and now is not even read.
+  const assetManifest = enumerateAssetManifest({ stage, scenes });
 
   // Audio: load only the records referenced by speech actions.
-  const audioIds = new Set<string>();
+  const speechPairs: Array<{ audioId?: string; audioUrl?: string }> = [];
   for (const scene of scenes) {
     for (const action of scene.actions ?? []) {
-      if (action.type === 'speech' && (action as SpeechAction).audioId) {
-        audioIds.add((action as SpeechAction).audioId!);
-      }
+      if (action.type !== 'speech') continue;
+      const speech = action as SpeechAction;
+      speechPairs.push({
+        audioId: speech.audioId || undefined,
+        audioUrl: (speech as { audioUrl?: string }).audioUrl || undefined,
+      });
     }
   }
+  const manifestAudioRefs = new Set(
+    assetManifest.entries.filter((entry) => entry.kind === 'audio').map((entry) => entry.ref),
+  );
+  // The manifest gates membership, but speech traversal remains the ordering
+  // source. Slide-audio slots can make the same ref appear earlier in manifest
+  // order even though the timeline first consumes a different narration.
+  const audioIds = new Set(
+    speechPairs.flatMap((pair) =>
+      pair.audioId && manifestAudioRefs.has(pair.audioId) ? [pair.audioId] : [],
+    ),
+  );
   const audioById = new Map<string, AudioFileRecord>();
   for (const audioId of audioIds) {
+    // Bytes come only from the shared resolver: pool-first, so a stable-id
+    // regeneration whose mirror write failed (the row then holds the
+    // superseded narration) still exports what the classroom plays; the row's
+    // own blob is the resolver's legacy fallback. The row read here supplies
+    // duration/format/ossKey metadata for the compiler's sync lookups.
     const record = await db.audioFiles.get(audioId);
-    if (record) audioById.set(audioId, record);
+    const blob = await resolveAudioBlob(audioId);
+    if (blob)
+      audioById.set(
+        audioId,
+        record ? { ...record, blob } : ({ id: audioId, blob } as AudioFileRecord),
+      );
+    else if (record) audioById.set(audioId, record);
   }
+  // An unconverted document can carry narration only as a legacy URL: the
+  // playback paths fall back to it, and the export must too, or a playable
+  // clip renders as missing. Fetched bytes are keyed by the URL itself, which
+  // the lookup below prefers exactly when no id resolves. A URL is fetched
+  // only when its action's id produced no usable bytes -- server-backed
+  // conversion deliberately retains these URLs, and fetching them anyway
+  // would double-download every clip.
+  const legacyAudioUrls = new Set<string>();
+  for (const pair of speechPairs) {
+    if (!pair.audioUrl) continue;
+    const record = pair.audioId ? audioById.get(pair.audioId) : undefined;
+    if (record && (record.blob?.size > 0 || record.ossKey)) continue;
+    legacyAudioUrls.add(pair.audioUrl);
+  }
+  await mapWithConcurrency([...legacyAudioUrls], PROBE_CONCURRENCY, async (url) => {
+    try {
+      const response = await fetchMediaUrl(url, 15_000);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      audioById.set(url, {
+        id: url,
+        blob,
+        format: blob.type.split('/')[1] || 'mp3',
+        createdAt: 0,
+      } as AudioFileRecord);
+    } catch {
+      // An unfetchable legacy URL leaves the clip missing, as before.
+    }
+  });
 
   // Probe real audio durations from the local blobs up front, so the compiler's
   // sync `audioDurationMs` is an accurate table lookup rather than a text-length
@@ -215,14 +315,16 @@ export async function createVideoTimelineDeps(input: {
     if (ms !== null) audioDurationMsByAudioId.set(audioId, ms);
   });
 
-  // Media: all generated media for this stage, keyed by media ref (`gen_vid_…` /
-  // `gen_img_…` — the stored `stageId:` prefix stripped), NOT the slide element
-  // id that `play_video` actions target.
-  const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
+  // Media: the records of every media ref the manifest names, keyed by that
+  // ref (`gen_vid_…` / allocated id -- the stored `stageId:` prefix stripped),
+  // NOT the slide element id that `play_video` actions target.
   const mediaByElementId = new Map<string, MediaFileRecord>();
-  for (const record of mediaRecords) {
-    const elementId = record.id.includes(':') ? record.id.split(':').slice(1).join(':') : record.id;
-    mediaByElementId.set(elementId, record);
+  for (const entry of assetManifest.entries) {
+    if (entry.kind === 'audio') continue;
+    const record = await db.mediaFiles
+      .get(mediaFileKey(stage.id, entry.ref))
+      .catch(() => undefined);
+    if (record) mediaByElementId.set(entry.ref, record);
   }
 
   // Bridge slide element `.id` → media ref, so a `play_video`/media lookup by the
@@ -237,12 +339,18 @@ export async function createVideoTimelineDeps(input: {
   // later scene's media ref — the wrong asset and duration. Keying by scene id
   // keeps each slide's bridge isolated.
   const mediaRefBySceneElement = new Map<string, Map<string, string>>();
+  const mediaTasks = useMediaGenerationStore.getState().tasks;
+  const documentElements = scenes.flatMap((scene) =>
+    scene.type === 'slide'
+      ? (((scene.content as SlideContent)?.canvas?.elements ?? []) as PPTElement[])
+      : [],
+  );
   for (const scene of scenes) {
     if (scene.type !== 'slide') continue;
     const elements = (scene.content as SlideContent)?.canvas?.elements ?? [];
     const byElement = new Map<string, string>();
     for (const el of elements) {
-      const ref = elementMediaRef(el as { mediaRef?: unknown; src?: unknown });
+      const ref = elementMediaRef(el as PPTElement, mediaTasks, stage.id, documentElements);
       if (ref) byElement.set((el as { id: string }).id, ref);
     }
     if (byElement.size > 0) mediaRefBySceneElement.set(scene.id, byElement);
@@ -280,14 +388,25 @@ export async function createVideoTimelineDeps(input: {
     if (ms !== null) videoDurationMsByElementId.set(elementId, ms);
   });
 
+  // The key a speech action's audio lives under: its id when that resolves,
+  // otherwise the retained legacy URL of an unconverted pair, otherwise the
+  // id again so a miss reports against the id rather than the URL.
+  const audioLookupKey = (action: SpeechAction): string | undefined => {
+    if (action.audioId && audioById.has(action.audioId)) return action.audioId;
+    const legacyUrl = (action as { audioUrl?: string }).audioUrl;
+    if (legacyUrl && audioById.has(legacyUrl)) return legacyUrl;
+    return action.audioId;
+  };
+
   const timing: TimingProbe = {
     audioDurationMs(action: SpeechAction): number | null {
-      if (!action.audioId) return null;
+      const key = audioLookupKey(action);
+      if (!key) return null;
       // Prefer the real probed duration; fall back to the stored TTS duration
       // (older records), then null (→ compiler estimates from text length).
-      const probed = audioDurationMsByAudioId.get(action.audioId);
+      const probed = audioDurationMsByAudioId.get(key);
       if (probed != null) return probed;
-      const record = audioById.get(action.audioId);
+      const record = audioById.get(key);
       if (!record || typeof record.duration !== 'number') return null;
       return Math.round(record.duration * 1000);
     },
@@ -299,12 +418,13 @@ export async function createVideoTimelineDeps(input: {
 
   const assets: AssetSource = {
     audio(action: SpeechAction): AssetMeta | null {
-      if (!action.audioId) return null;
-      const record = audioById.get(action.audioId);
-      if (!record) return { id: action.audioId, present: false };
-      const probed = audioDurationMsByAudioId.get(action.audioId);
+      const key = audioLookupKey(action);
+      if (!key) return null;
+      const record = audioById.get(key);
+      if (!record) return { id: key, present: false };
+      const probed = audioDurationMsByAudioId.get(key);
       return {
-        id: action.audioId,
+        id: key,
         mimeType: record.blob.type || undefined,
         format: record.format || 'mp3',
         durationMs:
@@ -319,13 +439,23 @@ export async function createVideoTimelineDeps(input: {
       // scoped to this scene (element ids recur across slides).
       const key = resolveMediaKey(elementId, scene.id);
       const record = mediaByElementId.get(key);
-      if (!record) return null;
+      const hasExplicitRef = mediaRefBySceneElement.get(scene.id)?.has(elementId) ?? false;
+      if (!record) {
+        if (!hasExplicitRef) return null;
+        return {
+          id: key,
+          format: key.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/)?.[1],
+          // Collection still has the pre-resolution browser fetch path. Plan
+          // the asset so that path gets a chance before declaring it missing.
+          present: true,
+        };
+      }
       return {
         id: record.id,
         mimeType: record.mimeType,
         format: formatFromMime(record.mimeType),
         durationMs: videoDurationMsByElementId.get(key),
-        present: mediaPresent(record),
+        present: mediaPresent(record) || hasExplicitRef,
       };
     },
   };
@@ -374,6 +504,7 @@ export async function createVideoTimelineDeps(input: {
     timing,
     assets,
     geometry,
-    records: { audioById, mediaByElementId, videoDurationMsByElementId },
+    interactive: interactiveHtml,
+    records: { audioById, mediaByElementId, videoDurationMsByElementId, interactiveHtml },
   };
 }

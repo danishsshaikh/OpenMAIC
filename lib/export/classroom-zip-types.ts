@@ -1,5 +1,10 @@
 // lib/export/classroom-zip-types.ts
-import type { GeneratedAgentConfig, SceneType, SceneContent } from '@/lib/types/stage';
+import type {
+  GeneratedAgentConfig,
+  SceneType,
+  SceneContent,
+  VideoManifest,
+} from '@/lib/types/stage';
 import type { Action } from '@/lib/types/action';
 import type { AgentVoiceConfig, Slide, VoiceDesign } from '@openmaic/dsl';
 
@@ -21,6 +26,7 @@ export interface ManifestStage {
   description?: string;
   language?: string;
   style?: string;
+  videoManifest?: VideoManifest;
   createdAt: number;
   updatedAt: number;
   // Note: Stage.interactiveMode is intentionally NOT exported — it reflects the
@@ -66,9 +72,10 @@ export function manifestAgentFromConfig(config: GeneratedAgentConfig): ManifestA
  */
 function sanitizeManifestVoiceConfig(value: unknown): AgentVoiceConfig | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { providerId, voiceId } = value as Record<string, unknown>;
+  const { providerId, modelId, voiceId } = value as Record<string, unknown>;
   if (typeof providerId !== 'string' || typeof voiceId !== 'string') return undefined;
-  return { providerId, voiceId };
+  if (modelId !== undefined && typeof modelId !== 'string') return undefined;
+  return { providerId, ...(modelId ? { modelId } : {}), voiceId };
 }
 
 /** Same contract as {@link sanitizeManifestVoiceConfig}, for the 3-layer descriptor. */
@@ -130,6 +137,8 @@ export type ManifestAction = Omit<Action, 'audioId'> & {
 
 export interface MediaIndexEntry {
   type: 'audio' | 'image' | 'generated';
+  /** Original document ref; ZIP paths and refs are separate namespaces. */
+  sourceRef?: string;
   mimeType?: string;
   format?: string;
   duration?: number;

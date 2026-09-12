@@ -631,6 +631,42 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     requiresApiKey: true,
     icon: '/logos/glm.svg',
     models: [
+      // GLM-5.3 Series - Flagship; thinking cannot be disabled, only scaled
+      // via reasoning_effort low/high/max (the API rejects "disabled").
+      {
+        id: 'glm-5.3',
+        name: 'GLM-5.3',
+        contextWindow: 1000000,
+        outputWindow: 128000,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: false,
+          thinking: {
+            toggleable: false,
+            budgetAdjustable: false,
+            defaultEnabled: true,
+          },
+        },
+      },
+      // GLM-5.3-Flash - Native multimodal (320B MoE, 18B active); thinking is
+      // always on with the same low/high/max effort scale as GLM-5.3.
+      {
+        id: 'glm-5.3-flash',
+        name: 'GLM-5.3-Flash',
+        contextWindow: 1000000,
+        outputWindow: 128000,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: true,
+          thinking: {
+            toggleable: false,
+            budgetAdjustable: false,
+            defaultEnabled: true,
+          },
+        },
+      },
       // GLM-5.2 Series - Long-horizon coding model
       {
         id: 'glm-5.2',
@@ -918,6 +954,22 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
           streaming: true,
           tools: true,
           vision: false,
+          thinking: {
+            toggleable: true,
+            budgetAdjustable: true,
+            defaultEnabled: true,
+          },
+        },
+      },
+      {
+        id: 'deepseek-v4-flash-vision-exp',
+        name: 'DeepSeek V4 Flash Vision (Exp)',
+        contextWindow: 1048576,
+        outputWindow: 393216,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: true,
           thinking: {
             toggleable: true,
             budgetAdjustable: true,
@@ -1233,6 +1285,22 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     requiresApiKey: true,
     icon: '/logos/grok.svg',
     models: [
+      {
+        id: 'grok-4.6',
+        name: 'Grok 4.6',
+        contextWindow: 500000,
+        outputWindow: 500000,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: true,
+          thinking: {
+            toggleable: false,
+            budgetAdjustable: true,
+            defaultEnabled: true,
+          },
+        },
+      },
       {
         id: 'grok-4.5',
         name: 'Grok 4.5',
@@ -1585,6 +1653,17 @@ function getCompatThinkingBodyParams(
   modelId: string,
   config: ThinkingConfig,
 ): Record<string, unknown> | undefined {
+  // This model is served through an OpenAI-compatible gateway even when the
+  // deployment uses the `openai` provider slot. The gateway's chat template
+  // toggle is neither OpenAI's `reasoning_effort` nor DeepSeek's native
+  // `thinking` object: it requires this exact vLLM template argument.
+  if (providerId === 'openai' && modelId === 'deepseek-v4-flash-vision-exp') {
+    const mode = getThinkingMode(config);
+    return mode === undefined
+      ? undefined
+      : { chat_template_kwargs: { thinking: mode === 'enabled' } };
+  }
+
   const capability = getCatalogThinkingCapability(providerId, modelId);
   if (!capability || capability.control === 'none') return undefined;
 
@@ -1606,6 +1685,15 @@ function getCompatThinkingBodyParams(
     case 'glm': {
       if (capability.control === 'effort') {
         if (mode === 'disabled' || config.effort === 'none') {
+          // Forced-thinking models (GLM-5.3/5.3-Flash) reject
+          // {type:'disabled'} ("该模型始终思考,不支持关闭思考"); use the
+          // lightest effort instead of failing the whole request.
+          if (capability.toggleable === false) {
+            const lightest = capability.effortValues?.[0];
+            return lightest
+              ? { thinking: { type: 'enabled' }, reasoning_effort: lightest }
+              : undefined;
+          }
           return { thinking: { type: 'disabled' } };
         }
 
@@ -1792,6 +1880,241 @@ function shouldUseOpenAIResponsesApi(providerId: ProviderId, modelId: string): b
   );
 }
 
+function usesCustomOpenAIBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return false;
+
+  try {
+    const url = new URL(trimmed);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return url.origin !== 'https://api.openai.com' || pathname !== '/v1';
+  } catch {
+    return true;
+  }
+}
+
+function shouldUseOpenAIStreamingChatCompat(providerId: ProviderId, baseUrl?: string): boolean {
+  return (
+    providerId === 'openai' &&
+    usesCustomOpenAIBaseUrl(baseUrl) &&
+    process.env.OPENAI_COMPAT_USE_STREAMING_CHAT === 'true'
+  );
+}
+
+function requestUrlString(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function appendChatDelta(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const record = part as Record<string, unknown>;
+      return typeof record.text === 'string' ? record.text : '';
+    })
+    .join('');
+}
+
+function openAIJsonResponseHeaders(response: Response): Headers {
+  const headers = new Headers(response.headers);
+  headers.set('content-type', 'application/json');
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  headers.delete('transfer-encoding');
+  return headers;
+}
+
+function openAIStreamErrorStatus(error: Record<string, unknown>): number {
+  const status =
+    typeof error.code === 'number'
+      ? error.code
+      : typeof error.code === 'string'
+        ? Number(error.code)
+        : NaN;
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500;
+}
+
+/**
+ * Non-streaming LLM completions only receive response headers once the whole
+ * completion exists, and thinking models routinely think for more than five
+ * minutes on a large prompt (observed: glm-5.2 at reasoning_effort=max on
+ * scene generation). undici's default 300 s headers timeout turns that into
+ * `Cannot connect to API: Headers Timeout Error` at exactly 300 s, before the
+ * model ever answers. LLM-bound fetches attach this dispatcher instead, with
+ * a budget that covers the slowest thinking model.
+ */
+export const LLM_FETCH_TIMEOUT_MS = 15 * 60 * 1000;
+
+let llmDispatcherPromise: Promise<unknown> | undefined;
+let warnedLlmDispatcherFailure = false;
+
+function getLlmDispatcher(): Promise<unknown> {
+  // `??=` caches whatever promise this produces — including a rejected one.
+  // Drop the cache on failure so a single transient undici import (or Agent
+  // construction) error can't brick every transportFetch call for the life
+  // of the worker; the next call retries instead of reusing the rejection.
+  llmDispatcherPromise ??= import(/* webpackIgnore: true */ 'undici')
+    .then(
+      ({ Agent }) =>
+        new Agent({
+          headersTimeout: LLM_FETCH_TIMEOUT_MS,
+          bodyTimeout: LLM_FETCH_TIMEOUT_MS,
+        }),
+    )
+    .catch((error: unknown) => {
+      llmDispatcherPromise = undefined;
+      throw error;
+    });
+  return llmDispatcherPromise;
+}
+
+async function fetchCustomOpenAIChat(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  fetchImpl: typeof fetch = (fetchInput, fetchInit) => globalThis.fetch(fetchInput, fetchInit),
+): Promise<Response> {
+  const requestUrl = requestUrlString(input);
+  if (!requestUrl.includes('/chat/completions') || !init?.body || typeof init.body !== 'string') {
+    return fetchImpl(input, init);
+  }
+
+  let requestBody: Record<string, unknown>;
+  try {
+    requestBody = JSON.parse(init.body) as Record<string, unknown>;
+  } catch {
+    return fetchImpl(input, init);
+  }
+
+  if (requestBody.stream === true) return fetchImpl(input, init);
+
+  const streamOptions =
+    requestBody.stream_options &&
+    typeof requestBody.stream_options === 'object' &&
+    !Array.isArray(requestBody.stream_options)
+      ? (requestBody.stream_options as Record<string, unknown>)
+      : {};
+
+  const response = await fetchImpl(input, {
+    ...init,
+    body: JSON.stringify({
+      ...requestBody,
+      stream: true,
+      stream_options: { ...streamOptions, include_usage: true },
+    }),
+  });
+  if (!response.ok) return response;
+
+  const rawStream = await response.text();
+  const streamLines = rawStream.split(/\r?\n/);
+  if (!streamLines.some((line) => line.startsWith('data:'))) {
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.delete('content-encoding');
+    headers.delete('transfer-encoding');
+    return new Response(rawStream, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  let id = '';
+  let created = 0;
+  let model = typeof requestBody.model === 'string' ? requestBody.model : '';
+  let content = '';
+  let finishReason: unknown = null;
+  let usage: unknown;
+  const toolCalls = new Map<
+    number,
+    { id: string; type: string; function: { name: string; arguments: string } }
+  >();
+
+  for (const line of streamLines) {
+    if (!line.startsWith('data:')) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+
+    try {
+      const chunk = JSON.parse(data) as Record<string, unknown>;
+      const error =
+        chunk.error && typeof chunk.error === 'object' && !Array.isArray(chunk.error)
+          ? (chunk.error as Record<string, unknown>)
+          : undefined;
+      if (error && typeof error.message === 'string') {
+        return new Response(JSON.stringify(chunk), {
+          status: openAIStreamErrorStatus(error),
+          headers: openAIJsonResponseHeaders(response),
+        });
+      }
+
+      if (typeof chunk.id === 'string') id = chunk.id;
+      if (typeof chunk.created === 'number') created = chunk.created;
+      if (typeof chunk.model === 'string') model = chunk.model;
+      if (chunk.usage) usage = chunk.usage;
+
+      const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
+      for (const rawChoice of choices) {
+        if (!rawChoice || typeof rawChoice !== 'object') continue;
+        const choice = rawChoice as Record<string, unknown>;
+        if (typeof choice.index === 'number' && choice.index !== 0) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        if (!choice.delta || typeof choice.delta !== 'object') continue;
+        const delta = choice.delta as Record<string, unknown>;
+        content += appendChatDelta(delta.content);
+
+        if (!Array.isArray(delta.tool_calls)) continue;
+        for (const rawToolCall of delta.tool_calls) {
+          if (!rawToolCall || typeof rawToolCall !== 'object') continue;
+          const toolCall = rawToolCall as Record<string, unknown>;
+          const index = typeof toolCall.index === 'number' ? toolCall.index : 0;
+          const current = toolCalls.get(index) || {
+            id: '',
+            type: 'function',
+            function: { name: '', arguments: '' },
+          };
+          if (typeof toolCall.id === 'string') current.id = toolCall.id;
+          if (typeof toolCall.type === 'string') current.type = toolCall.type;
+          if (toolCall.function && typeof toolCall.function === 'object') {
+            const fn = toolCall.function as Record<string, unknown>;
+            if (typeof fn.name === 'string' && fn.name) current.function.name = fn.name;
+            if (typeof fn.arguments === 'string') current.function.arguments += fn.arguments;
+          }
+          toolCalls.set(index, current);
+        }
+      }
+    } catch {
+      // Ignore non-JSON SSE lines and continue collecting valid chunks.
+    }
+  }
+
+  const message: Record<string, unknown> = { role: 'assistant', content };
+  if (toolCalls.size > 0) {
+    message.tool_calls = [...toolCalls.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, toolCall]) => toolCall);
+  }
+
+  return new Response(
+    JSON.stringify({
+      id: id || `chatcmpl_${Date.now()}`,
+      object: 'chat.completion',
+      created: created || Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, message, finish_reason: finishReason }],
+      ...(usage ? { usage } : {}),
+    }),
+    {
+      status: response.status,
+      statusText: response.statusText,
+      headers: openAIJsonResponseHeaders(response),
+    },
+  );
+}
+
 /** Returns true if the provider requires an API key (defaults to true for unknown providers). */
 export function isProviderKeyRequired(providerId: string): boolean {
   return getProviderConfig(providerId as ProviderId)?.requiresApiKey ?? true;
@@ -1835,30 +2158,80 @@ export function getModel(config: ModelConfig): ModelWithInfo {
     config.baseUrl || provider?.defaultBaseUrl || undefined,
   );
 
+  // The outbound transport. resolveModel installs a redirect-validating fetch
+  // here so every hop of a request to a client-supplied base URL is re-checked;
+  // without one, requests go through the global fetch exactly as before
+  // (resolved at call time, so tests that stub it keep working).
+  const baseTransportFetch: typeof fetch =
+    config.fetchImpl ?? ((fetchInput, fetchInit) => globalThis.fetch(fetchInput, fetchInit));
+  // See LLM_FETCH_TIMEOUT_MS: every outbound LLM request — whatever transport
+  // it ends up on — carries the extended-timeout dispatcher.
+  const transportFetch: typeof fetch = async (fetchInput, fetchInit) => {
+    // A caller-supplied dispatcher (config.fetchImpl may carry one) wins over
+    // ours; only inject ours when the request doesn't already carry one.
+    if ((fetchInit as (RequestInit & { dispatcher?: unknown }) | undefined)?.dispatcher) {
+      return baseTransportFetch(fetchInput, fetchInit);
+    }
+    let dispatcher: unknown;
+    try {
+      dispatcher = await getLlmDispatcher();
+      warnedLlmDispatcherFailure = false;
+    } catch (error) {
+      // No dispatcher still beats failing the call outright — the request
+      // just rides undici's default 300 s cap, as it did before this seam.
+      // Warn once per failure episode so a persistent failure (not just a
+      // transient one) stays visible: this mitigation silently disengaging
+      // looks exactly like the original 300 s incident.
+      if (!warnedLlmDispatcherFailure) {
+        warnedLlmDispatcherFailure = true;
+        log.warn(
+          '[LLM transport] dispatcher unavailable — requests fall back to undici defaults (300 s headers timeout):',
+          error,
+        );
+      }
+      return baseTransportFetch(fetchInput, fetchInit);
+    }
+    return baseTransportFetch(fetchInput, {
+      ...fetchInit,
+      dispatcher,
+    } as RequestInit);
+  };
+
   let model: LanguageModel;
 
   switch (providerType) {
     case 'azure': {
-      const azure = createAzure({
+      const azureOptions: Parameters<typeof createAzure>[0] = {
         apiKey: effectiveApiKey,
         baseURL: normalizeAzureBaseUrl(effectiveBaseUrl),
-      });
+      };
+      azureOptions.fetch = transportFetch;
+      const azure = createAzure(azureOptions);
       model = azure(config.modelId);
       break;
     }
 
     case 'openai': {
+      const useStreamingChatCompat = shouldUseOpenAIStreamingChatCompat(
+        config.providerId,
+        effectiveBaseUrl,
+      );
       const openaiOptions: Parameters<typeof createOpenAI>[0] = {
         apiKey: effectiveApiKey,
         baseURL: effectiveBaseUrl,
         name: config.providerId,
       };
 
-      // For OpenAI-compatible providers (not native OpenAI), add a fetch
-      // wrapper that injects vendor-specific thinking params into the HTTP
-      // body. The thinking config is read from AsyncLocalStorage, set by
-      // callLLM / streamLLM at call time.
-      if (config.providerId !== 'openai') {
+      // A custom base URL makes the `openai` slot an OpenAI-compatible gateway,
+      // not the native OpenAI service. Give it the same request/response seam
+      // as named compatible providers: inject the gateway's thinking control
+      // and recover reasoning_content before the SDK schema can discard it.
+      const usesOpenAIResponses =
+        !useStreamingChatCompat && shouldUseOpenAIResponsesApi(config.providerId, config.modelId);
+      const usesCompatTransport =
+        config.providerId !== 'openai' ||
+        (usesCustomOpenAIBaseUrl(config.baseUrl) && !usesOpenAIResponses);
+      if (usesCompatTransport) {
         const providerId = config.providerId;
         const compatFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
           // Read thinking config from globalThis (set by thinking-context.ts)
@@ -1901,7 +2274,9 @@ export function getModel(config: ModelConfig): ModelWithInfo {
               /* leave body as-is */
             }
           }
-          const response = await globalThis.fetch(url, init);
+          const response = useStreamingChatCompat
+            ? await fetchCustomOpenAIChat(url, init, transportFetch)
+            : await transportFetch(url, init);
 
           // Recover reasoning that @ai-sdk/openai's chat schema drops: rewrite
           // streamed `reasoning_content` deltas into an inline <think> block
@@ -1959,19 +2334,21 @@ export function getModel(config: ModelConfig): ModelWithInfo {
           return response;
         };
         openaiOptions.fetch = compatFetch as typeof globalThis.fetch;
+      } else {
+        // Native OpenAI / Responses transport: route requests through the
+        // shared transport so they carry the extended-timeout dispatcher too.
+        openaiOptions.fetch = transportFetch;
       }
 
       const openai = createOpenAI(openaiOptions);
-      model = shouldUseOpenAIResponsesApi(config.providerId, config.modelId)
-        ? openai.responses(config.modelId)
-        : openai.chat(config.modelId);
-      // OpenAI-compatible providers (e.g. DeepSeek, Qwen) stream reasoning
+      model = usesOpenAIResponses ? openai.responses(config.modelId) : openai.chat(config.modelId);
+      // OpenAI-compatible providers (e.g. DeepSeek, Qwen), including a custom
+      // gateway configured through the `openai` slot, stream reasoning
       // either as a separate `reasoning_content` field (normalized to an inline
       // <think> block by compatFetch) or as native inline <think>.
       // Split it into first-class reasoning parts so the agent stream and UI can
-      // show a thinking panel and the answer text stays clean. Native OpenAI
-      // handles reasoning itself, so it is excluded.
-      if (config.providerId !== 'openai') {
+      // show a thinking panel and the answer text stays clean.
+      if (usesCompatTransport) {
         const middleware =
           config.providerId === 'kimi' && config.modelId === 'kimi-k3'
             ? [
@@ -2020,8 +2397,10 @@ export function getModel(config: ModelConfig): ModelWithInfo {
             }
           }
 
-          return globalThis.fetch(url, init);
+          return transportFetch(url, init);
         }) as typeof globalThis.fetch;
+      } else {
+        anthropicOptions.fetch = transportFetch;
       }
 
       const anthropic = createAnthropic(anthropicOptions);
@@ -2035,6 +2414,7 @@ export function getModel(config: ModelConfig): ModelWithInfo {
         region: resolveBedrockRegion(),
         baseURL: effectiveBaseUrl,
         credentialProvider: createBedrockCredentialProvider(),
+        fetch: transportFetch,
       });
       model = bedrock(config.modelId);
       break;
@@ -2052,19 +2432,29 @@ export function getModel(config: ModelConfig): ModelWithInfo {
           const { ProxyAgent, fetch: undiciFetch } = (await import(
             /* webpackIgnore: true */ 'undici'
           )) as {
-            ProxyAgent: new (proxyUrl: string) => unknown;
+            ProxyAgent: new (options: { uri: string } & Record<string, unknown>) => unknown;
             fetch: (
               input: string | URL | Request,
               init?: Record<string, unknown>,
             ) => Promise<unknown>;
           };
-          agent ??= new ProxyAgent(proxy);
+          // Same budget as the direct dispatcher: proxied or not, this is an
+          // LLM request whose headers may only arrive after minutes of thinking.
+          // (http/https proxies only — undici's Socks5ProxyAgent drops these
+          // options, so socks5:// proxies keep undici's default 300 s cap.)
+          agent ??= new ProxyAgent({
+            uri: proxy,
+            headersTimeout: LLM_FETCH_TIMEOUT_MS,
+            bodyTimeout: LLM_FETCH_TIMEOUT_MS,
+          });
           const response = await undiciFetch(input, {
             ...(init as Record<string, unknown>),
             dispatcher: agent,
           });
           return response as Response;
         }) as typeof fetch;
+      } else {
+        googleOptions.fetch = transportFetch;
       }
       const google = createGoogleGenerativeAI(googleOptions);
       model = google.chat(config.modelId);
@@ -2079,6 +2469,33 @@ export function getModel(config: ModelConfig): ModelWithInfo {
   const modelInfo = findModelById(config.providerId, provider?.models, config.modelId) ?? null;
 
   return { model, modelInfo };
+}
+
+/**
+ * Deprecation notice for bare model ids (no `provider:` prefix). parseModelString
+ * keeps defaulting them to `openai` for backward compatibility, but that fallback
+ * is deprecated: configs should write `provider:model` explicitly. Emitted only
+ * by the boot-time config validation for config-derived sites — never for
+ * request-derived strings, which would let clients drive log volume.
+ */
+export const BARE_MODEL_ID_DEPRECATION_MSG =
+  'bare model ids default to openai for backward compatibility; this fallback is deprecated — write provider:model';
+
+/** Bare model ids already surfaced, so the deprecation fires once per unique id. */
+const warnedBareModelIds = new Set<string>();
+
+/**
+ * Warn once per unique bare model id. `where` names the config site (e.g.
+ * `DEFAULT_MODEL` or a MODEL_ROUTES stage). Callers must pass only
+ * config-derived ids (the config surface is finite, so the dedupe set is
+ * bounded); request-derived strings must never reach this function.
+ */
+export function warnBareModelIdDeprecation(bareModelId: string, where?: string): boolean {
+  if (warnedBareModelIds.has(bareModelId)) return false;
+  warnedBareModelIds.add(bareModelId);
+  const context = where ? `${where}: ` : '';
+  console.warn(`[config] ${context}${BARE_MODEL_ID_DEPRECATION_MSG} (bare id "${bareModelId}")`);
+  return true;
 }
 
 /**
@@ -2098,7 +2515,10 @@ export function parseModelString(modelString: string): {
     };
   }
 
-  // Default to OpenAI for backward compatibility
+  // Default to OpenAI for backward compatibility (deprecated; boot-time config
+  // validation warns for config-derived bare ids). Deliberately no warning
+  // here: this path is reachable with request-controlled strings, which must
+  // not drive logging or dedupe-set growth.
   return {
     providerId: 'openai',
     modelId: modelString,

@@ -4,10 +4,16 @@ import type { WidgetConfig } from '@/lib/types/widgets';
 import type { PBLProjectConfig } from '@/lib/pbl/types';
 
 const FLAG_KEYS = [
+  'DATABASE_URL',
+  'OPENMAIC_AGENT_RUNTIME_ENABLED',
+  'NEXT_PUBLIC_PRO_WORKBENCH_ENABLED',
   'NEXT_PUBLIC_MAIC_EDITOR_ENABLED',
+  'NEXT_PUBLIC_MAIC_EDITOR_RENDERER_ENABLED',
   'NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED',
   'NEXT_PUBLIC_PI_CHAT_ENABLED',
-  'OPENMAIC_ENABLE_PI_WEB_SEARCH',
+  'NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED',
+  'OPENMAIC_ENABLE_PI_NATIVE_CHILD_RUNTIME',
+  'OPENMAIC_ENABLE_PI_NATIVE_CHILD_SPOTLIGHT',
   'OPENMAIC_ENABLE_VOCATIONAL',
   'NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI',
   'NEXT_PUBLIC_ENABLE_VIDEO_EXPORT',
@@ -109,7 +115,7 @@ afterEach(() => {
 });
 
 describe('readFeatureFlagBoolean', () => {
-  it('accepts local-build truthy values only', async () => {
+  it('accepts Sahaya truthy values only', async () => {
     const { readFeatureFlagBoolean } = await loadFlags();
 
     expect(readFeatureFlagBoolean('true')).toBe(true);
@@ -124,38 +130,65 @@ describe('readFeatureFlagBoolean', () => {
   });
 });
 
+describe('agent runtime and persistence flags', () => {
+  it.each([
+    ['off with no DATABASE_URL', undefined, undefined, false, false, false],
+    ['off with DATABASE_URL set', undefined, 'postgres://runtime', false, false, true],
+    ['on with no DATABASE_URL', 'true', undefined, true, false, false],
+    ['on with a blank DATABASE_URL', 'true', '   ', true, false, false],
+    ['on with DATABASE_URL set', 'true', 'postgres://runtime', true, true, true],
+  ])('%s', async (_case, runtimeFlag, databaseUrl, enabled, configured, persisted) => {
+    if (runtimeFlag !== undefined) process.env.OPENMAIC_AGENT_RUNTIME_ENABLED = runtimeFlag;
+    if (databaseUrl !== undefined) process.env.DATABASE_URL = databaseUrl;
+
+    const flags = await loadFlags();
+    expect(flags.isAgentRuntimeEnabled()).toBe(enabled);
+    expect(flags.isAgentRuntimeConfigured()).toBe(configured);
+    expect(flags.isServerPersistenceConfigured()).toBe(persisted);
+  });
+});
+
 describe('standalone feature flags', () => {
-  it('keeps MAIC editor default off and supports true-like values', async () => {
-    delete process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED;
+  it('keeps MAIC editor default off, accepts true-like values, and follows Pro workbench', async () => {
     let flags = await loadFlags();
     expect(flags.isMaicEditorEnabled()).toBe(false);
 
     process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED = 'on';
     flags = await loadFlags();
     expect(flags.isMaicEditorEnabled()).toBe(true);
+
+    process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED = 'false';
+    process.env.NEXT_PUBLIC_PRO_WORKBENCH_ENABLED = 'true';
+    flags = await loadFlags();
+    expect(flags.isMaicEditorEnabled()).toBe(true);
   });
 
-  it('keeps playback renderer, Pi chat, Pi web search, and PPTX import default off', async () => {
-    delete process.env.NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED;
-    delete process.env.NEXT_PUBLIC_PI_CHAT_ENABLED;
-    delete process.env.OPENMAIC_ENABLE_PI_WEB_SEARCH;
-    delete process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT;
+  it('keeps upstream renderer, chat, reference, native child, and import flags default off', async () => {
     let flags = await loadFlags();
 
     expect(flags.isPlaybackRendererEnabled()).toBe(false);
+    expect(flags.isEditorRendererEnabled()).toBe(false);
     expect(flags.isPiChatEnabled()).toBe(false);
-    expect(flags.isPiWebSearchEnabled()).toBe(false);
+    expect(flags.isCoursewareReferenceEnabled()).toBe(false);
+    expect(flags.isPiNativeChildRuntimeEnabled()).toBe(false);
+    expect(flags.isPiNativeChildSpotlightEnabled()).toBe(false);
     expect(flags.isPptxImportEnabled()).toBe(false);
 
     process.env.NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED = 'true';
-    process.env.NEXT_PUBLIC_PI_CHAT_ENABLED = '1';
-    process.env.OPENMAIC_ENABLE_PI_WEB_SEARCH = 'yes';
+    process.env.NEXT_PUBLIC_MAIC_EDITOR_RENDERER_ENABLED = '1';
+    process.env.NEXT_PUBLIC_PI_CHAT_ENABLED = 'yes';
+    process.env.NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED = 'on';
+    process.env.OPENMAIC_ENABLE_PI_NATIVE_CHILD_RUNTIME = 'true';
+    process.env.OPENMAIC_ENABLE_PI_NATIVE_CHILD_SPOTLIGHT = '1';
     process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT = 'on';
     flags = await loadFlags();
 
     expect(flags.isPlaybackRendererEnabled()).toBe(true);
+    expect(flags.isEditorRendererEnabled()).toBe(true);
     expect(flags.isPiChatEnabled()).toBe(true);
-    expect(flags.isPiWebSearchEnabled()).toBe(true);
+    expect(flags.isCoursewareReferenceEnabled()).toBe(true);
+    expect(flags.isPiNativeChildRuntimeEnabled()).toBe(true);
+    expect(flags.isPiNativeChildSpotlightEnabled()).toBe(true);
     expect(flags.isPptxImportEnabled()).toBe(true);
   });
 
@@ -173,9 +206,6 @@ describe('standalone feature flags', () => {
   });
 
   it('keeps vocational test UI, video export, and burned-in captions default off', async () => {
-    delete process.env.NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI;
-    delete process.env.NEXT_PUBLIC_ENABLE_VIDEO_EXPORT;
-    delete process.env.NEXT_PUBLIC_VIDEO_EXPORT_BURN_IN_CAPTIONS;
     let flags = await loadFlags();
     expect(flags.shouldShowVocationalTestUi()).toBe(false);
     expect(flags.isVideoExportEnabled()).toBe(false);

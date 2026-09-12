@@ -16,6 +16,13 @@ export const WEB_SEARCH_PROVIDERS: Record<WebSearchProviderId, WebSearchProvider
     endpointPath: '/search',
     icon: '/logos/tavily.svg',
   },
+  exa: {
+    id: 'exa',
+    name: 'Exa',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.exa.ai',
+    endpointPath: '/search',
+  },
   bocha: {
     id: 'bocha',
     name: 'Bocha',
@@ -39,6 +46,14 @@ export const WEB_SEARCH_PROVIDERS: Record<WebSearchProviderId, WebSearchProvider
     defaultBaseUrl: 'https://qianfan.baidubce.com',
     endpointPath: '/v2/ai_search/web_search',
     icon: '/logos/baidu.png',
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    endpointPath: '/messages',
+    icon: '/logos/claude.svg',
   },
   minimax: {
     id: 'minimax',
@@ -67,10 +82,28 @@ export const WEB_SEARCH_PROVIDERS: Record<WebSearchProviderId, WebSearchProvider
   },
 };
 
+/** Default model for Claude web search (Sonnet tier: balanced speed/cost for search + summarize). */
+export const CLAUDE_WEB_SEARCH_DEFAULT_MODEL = 'claude-sonnet-5';
+
+/** Curated model list offered in the Claude web-search settings. */
+export const CLAUDE_WEB_SEARCH_MODELS: ReadonlyArray<{ id: string; name: string }> = [
+  { id: 'claude-opus-5', name: 'Claude Opus 5' },
+  { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+];
+
 export function isWebSearchProviderConfigured(
   provider: WebSearchProviderConfig,
-  cfg?: { apiKey?: string; baseUrl?: string; isServerConfigured?: boolean },
+  cfg?: {
+    apiKey?: string;
+    baseUrl?: string;
+    isServerConfigured?: boolean;
+    serverDisabled?: boolean;
+  },
 ): boolean {
+  if (cfg?.serverDisabled) return false;
   if (cfg?.isServerConfigured) return true;
   // SearXNG base URLs are operator-managed only; client settings must not count.
   if (provider.id === 'searxng') return false;
@@ -86,9 +119,11 @@ function isWebSearchConfigUsable(
     baseUrl?: string;
     isServerConfigured?: boolean;
     requiresApiKey?: boolean;
+    serverDisabled?: boolean;
   },
 ): boolean {
   if (!cfg) return false;
+  if (cfg.serverDisabled) return false;
   if (cfg.isServerConfigured) return true;
 
   const provider = WEB_SEARCH_PROVIDERS[providerId];
@@ -106,7 +141,13 @@ export function buildWebSearchFallbackOrder(
   config: Partial<
     Record<
       WebSearchProviderId,
-      { apiKey?: string; baseUrl?: string; isServerConfigured?: boolean; requiresApiKey?: boolean }
+      {
+        apiKey?: string;
+        baseUrl?: string;
+        isServerConfigured?: boolean;
+        requiresApiKey?: boolean;
+        serverDisabled?: boolean;
+      }
     >
   >,
 ): WebSearchProviderId[] {

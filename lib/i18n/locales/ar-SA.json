@@ -3,7 +3,11 @@
     "you": "أنت",
     "confirm": "تأكيد",
     "cancel": "إلغاء",
-    "loading": "جارٍ التحميل..."
+    "loading": "جارٍ التحميل...",
+    "errorPrefix": "خطأ: ",
+    "loadingClassroom": "جارٍ تحميل الفصل...",
+    "retry": "إعادة المحاولة",
+    "close": "إغلاق"
   },
   "home": {
     "slogan": "التعلّم التوليدي في فصل تفاعلي متعدد الوكلاء",
@@ -15,6 +19,8 @@
     "removePdf": "إزالة الملف",
     "documentExtractor": "مستخرج المستندات",
     "courseMaterialUpload": "رفع مادة المقرر",
+    "courseMaterialsSelected": "تم تحديد {{n}} مواد",
+    "courseMaterialMergeOrder": "سيتم دمج المواد بالترتيب المعروض أدناه.",
     "removeCourseMaterial": "إزالة الملف",
     "webSearchOn": "مُفعّل",
     "webSearchOff": "انقر للتفعيل",
@@ -38,9 +44,7 @@
     "ttsTitle": "تحويل النص إلى كلام",
     "ttsHint": "اختر صوتًا للمعلم الذكي",
     "ttsPreview": "معاينة",
-    "ttsPreviewing": "جارٍ التشغيل...",
-    "courseMaterialsSelected": "تم تحديد {{n}} مواد",
-    "courseMaterialMergeOrder": "سيتم دمج المواد بالترتيب المعروض أدناه."
+    "ttsPreviewing": "جارٍ التشغيل..."
   },
   "export": {
     "pptx": "تصدير PPTX",
@@ -48,9 +52,58 @@
     "resourcePackDesc": "PPTX + صفحات تفاعلية",
     "classroomZip": "تصدير ملف الفصل ZIP",
     "classroomZipDesc": "هيكل المقرر + ملفات الوسائط",
+    "scriptMd": "تنزيل النص (.md)",
+    "scriptMdDesc": "نص السرد بتنسيق Markdown",
+    "script": "تنزيل النص",
+    "scriptDocx": "تنزيل النص (.docx)",
+    "scriptDocxDesc": "مستند Word أصلي بتنسيق DOCX",
+    "slideFallback": "الشريحة {{order}}",
+    "textOnly": "تصدير النص",
+    "mediaPending": "في انتظار انتهاء إنشاء الوسائط",
     "exporting": "جارٍ التصدير...",
     "exportSuccess": "تم التصدير بنجاح",
     "exportFailed": "فشل التصدير",
+    "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت.",
+    "video": "تصدير الفيديو",
+    "videoDesc": "مشروع Hyperframes مكتفٍ ذاتيًا (يمكن تحويله إلى MP4)",
+    "videoNoScenes": "لا توجد مشاهد متاحة للتصدير.",
+    "videoCompiling": "جارٍ تجميع الخط الزمني للفيديو...",
+    "videoRendering": "جارٍ عرض الشرائح وجمع الموارد...",
+    "videoPackaging": "جارٍ تحزيم مشروع الفيديو...",
+    "videoSuccess": "تم تصدير مشروع الفيديو",
+    "videoFailed": "فشل تصدير الفيديو",
+    "videoWarnings": "{{assets}} من الموارد مفقودة و {{diagnostics}} من المشكلات في تقرير التصدير.",
+    "videoMp4Success": "Video rendered",
+    "videoServiceUnavailable": "Render service not configured - downloaded the project ZIP for local rendering.",
+    "videoResolution": "Resolution",
+    "videoFps": "Frame rate",
+    "videoQuality": "Quality",
+    "videoQuality_draft": "Draft",
+    "videoQuality_standard": "Standard",
+    "videoQuality_high": "High",
+    "videoProgress": "{{percent}}%",
+    "videoProgressWithEta": "{{percent}}% - about {{remaining}} left",
+    "videoEtaMinSec": "{{min}} min {{sec}} sec",
+    "videoEtaSec": "{{sec}} sec",
+    "videoQueueBusy": "قائمة انتظار التصيير مشغولة. يُرجى التحقق مجددًا بعد قليل.",
+    "videoRecheckQueue": "التحقق مجددًا",
+    "videoCheckingQueue": "جارٍ التحقق…",
+    "videoRenderMp4": "Render MP4",
+    "videoDownloadZip": "Download project ZIP",
+    "videoServiceHint": "MP4 rendering needs the render service. Download the ZIP to render locally.",
+    "videoBurnSubtitles": "دمج الترجمة في الفيديو",
+    "videoBurnSubtitlesDesc": "عند الإيقاف: صدّر فيديو نظيفًا وأضف ملف الترجمة في برنامج التحرير لديك.",
+    "videoQuizCtaPrompt": "هل تريد تجربة اختبار تفاعلي؟",
+    "videoPblCtaPrompt": "هل تريد استكشاف التعلم القائم على المشاريع؟",
+    "videoCtaVisit": "تفضل بزيارة",
+    "videoDownloadSubtitles": "تنزيل الترجمة (.srt)",
+    "subtitlesCompiling": "جارٍ تجميع الترجمة...",
+    "subtitlesSuccess": "تم تنزيل الترجمة",
+    "subtitlesEmpty": "لا يوجد سرد لإنشاء الترجمة منه",
+    "subtitlesFailed": "فشل تنزيل الترجمة",
+    "noSlides": "لا توجد شرائح للتصدير",
+    "noSlidesSkipped": "لا توجد شرائح في هذه الدورة — تم تخطي PPTX",
+    "nothingToExport": "لا يوجد محتوى للتصدير",
     "videoFrames": {
       "title": "تصدير أداة فيديو",
       "desc": "إطارات + بيان + ملفات جانبية ZIP",
@@ -85,60 +138,7 @@
         "composing": "جارٍ تركيب MP4 على الخادم...",
         "downloading": "جارٍ تنزيل MP4..."
       }
-    },
-    "inlinePartial": "تعذّر تضمين {{count}} من الموارد الخارجية؛ قد لا يتم عرض الدورة بشكل صحيح دون اتصال بالإنترنت.",
-    "video": "تصدير الفيديو",
-    "videoDesc": "مشروع Hyperframes مكتفٍ ذاتيًا (يمكن تحويله إلى MP4)",
-    "videoNoScenes": "لا توجد مشاهد متاحة للتصدير.",
-    "videoCompiling": "جارٍ تجميع الخط الزمني للفيديو...",
-    "videoRendering": "جارٍ عرض الشرائح وجمع الموارد...",
-    "videoPackaging": "جارٍ تحزيم مشروع الفيديو...",
-    "videoSuccess": "تم تصدير مشروع الفيديو",
-    "videoFailed": "فشل تصدير الفيديو",
-    "videoWarnings": "{{assets}} من الموارد مفقودة و {{diagnostics}} من المشكلات في تقرير التصدير.",
-    "videoMp4Success": "تم عرض الفيديو",
-    "videoServiceUnavailable": "خدمة العرض غير مُهيأة — تم تنزيل ملف ZIP للمشروع للعرض محليًا.",
-    "videoResolution": "الدقة",
-    "videoFps": "معدل الإطارات",
-    "videoQuality": "الجودة",
-    "videoQuality_draft": "مسودة",
-    "videoQuality_standard": "قياسي",
-    "videoQuality_high": "عالية",
-    "videoProgress": "{{percent}}%",
-    "videoProgressWithEta": "{{percent}}% · يتبقّى ~{{remaining}}",
-    "videoEtaMinSec": "{{min}} د {{sec}} ث",
-    "videoEtaSec": "{{sec}} ث",
-    "videoRenderMp4": "عرض MP4",
-    "videoDownloadZip": "تنزيل ملف ZIP للمشروع",
-    "videoServiceHint": "يتطلب عرض MP4 خدمة العرض. نزّل ملف ZIP للعرض محليًا.",
-    "videoBurnSubtitles": "دمج الترجمة في الفيديو",
-    "videoBurnSubtitlesDesc": "عند الإيقاف: صدّر فيديو نظيفًا وأضف ملف الترجمة في برنامج التحرير لديك.",
-    "videoQuizCtaPrompt": "هل تريد تجربة اختبار تفاعلي؟",
-    "videoPblCtaPrompt": "هل تريد استكشاف التعلم القائم على المشاريع؟",
-    "videoCtaVisit": "تفضل بزيارة",
-    "videoDownloadSubtitles": "تنزيل الترجمة (.srt)",
-    "subtitlesCompiling": "جارٍ تجميع الترجمة...",
-    "subtitlesSuccess": "تم تنزيل الترجمة",
-    "subtitlesEmpty": "لا يوجد سرد لإنشاء الترجمة منه",
-    "subtitlesFailed": "فشل تنزيل الترجمة",
-    "noSlides": "لا توجد شرائح للتصدير",
-    "noSlidesSkipped": "لا توجد شرائح في هذه الدورة — تم تخطي PPTX",
-    "nothingToExport": "لا يوجد محتوى للتصدير",
-    "videoMp4Success": "Video rendered",
-    "videoServiceUnavailable": "Render service not configured - downloaded the project ZIP for local rendering.",
-    "videoResolution": "Resolution",
-    "videoFps": "Frame rate",
-    "videoQuality": "Quality",
-    "videoQuality_draft": "Draft",
-    "videoQuality_standard": "Standard",
-    "videoQuality_high": "High",
-    "videoProgress": "{{percent}}%",
-    "videoProgressWithEta": "{{percent}}% - about {{remaining}} left",
-    "videoEtaMinSec": "{{min}} min {{sec}} sec",
-    "videoEtaSec": "{{sec}} sec",
-    "videoRenderMp4": "Render MP4",
-    "videoDownloadZip": "Download project ZIP",
-    "videoServiceHint": "MP4 rendering needs the render service. Download the ZIP to render locally."
+    }
   },
   "import": {
     "classroom": "استيراد فصل",
@@ -172,6 +172,22 @@
     "error": {
       "emptyAgentResponses": "أعاد الوكلاء استجابات فارغة; توقف النقاش. حاول مرة أخرى أو راجع إعدادات النموذج.",
       "streamInterrupted": "انتهى تدفق البيانات بشكل غير متوقع; لم يكتمل النقاش. يرجى المحاولة مرة أخرى."
+    },
+    "elementReference": {
+      "button": "الإشارة إلى المحتوى التعليمي",
+      "unavailable": "يمكن الإشارة فقط إلى شريحة PPT الحالية أو مكوّن تفاعلي مدعوم",
+      "instruction": "انقر على عنصر في المادة التعليمية · Esc للخروج",
+      "fallback": "عناصر أخرى في الشريحة ({{count}})",
+      "clear": "إزالة مرجع المحتوى التعليمي",
+      "summary": {
+        "noText": "لا يوجد نص",
+        "emptyContent": "لا يوجد محتوى",
+        "code": "رمز",
+        "line": "خط",
+        "imageMetadata": "صورة (بيانات وصفية فقط)",
+        "videoMetadata": "فيديو (بيانات وصفية فقط)",
+        "audioMetadata": "صوت (بيانات وصفية فقط)"
+      }
     },
     "tabs": {
       "lecture": "الملاحظات",
@@ -251,15 +267,14 @@
     "courseComplete": "اكتملت الدورة",
     "fullscreen": "ملء الشاشة",
     "exitFullscreen": "الخروج من ملء الشاشة",
-    "playbackSeekLabel": "موضع التشغيل",
-    "playbackTime": "{{current}} / {{duration}}",
     "editCourse": "تحرير الدورة",
     "doneEditing": "إنهاء التحرير",
-    "proModeDisabledHint": "التحرير غير متاح في هذه الصفحة — افتح شريحة من الدورة لاستخدام وضع التحرير."
+    "proModeDisabledHint": "التحرير غير متاح في هذه الصفحة — افتح شريحة من الدورة لاستخدام وضع التحرير.",
+    "playbackSeekLabel": "موضع التشغيل",
+    "playbackTime": "{{current}} / {{duration}}"
   },
   "edit": {
     "proMode": "تحرير",
-    "editMode": "وضع التحرير",
     "undo": "تراجع",
     "redo": "إعادة",
     "delete": "حذف",
@@ -272,14 +287,8 @@
       "interactive": "تفاعلي",
       "pbl": "PBL"
     },
-    "multiTab": {
-      "conflict": {
-        "title": "علامة تبويب أخرى تحرّر هذه الدورة",
-        "body": "وضع التحرير محصور بعلامة تبويب واحدة في كل مرة لتجنب تعارض التغييرات. أغلق علامة التبويب الأخرى (أو انتظر انتهاء جلستها) قبل الدخول إلى وضع التحرير هنا.",
-        "actionDismiss": "حسناً"
-      }
-    },
     "text": {
+      "toolbar": "شريط أدوات النص",
       "label": "نص",
       "font": "الخط",
       "fontDefault": "افتراضي",
@@ -293,19 +302,101 @@
       "alignLeft": "محاذاة لليسار",
       "alignCenter": "توسيط",
       "alignRight": "محاذاة لليمين",
-      "bullet": "قائمة نقطية"
+      "bullet": "قائمة نقطية",
+      "colorHex": "رمز اللون"
+    },
+    "line": {
+      "toolbar": "شريط أدوات الخط",
+      "kind": "نوع الخط",
+      "color": "لون الخط",
+      "width": "عرض الخط",
+      "style": "نمط الخط",
+      "start": "نمط البداية",
+      "end": "نمط النهاية",
+      "straight": "مستقيم",
+      "broken": "منكسر",
+      "broken2": "منكسر مزدوج",
+      "curve": "منحني",
+      "cubic": "منحنى تكعيبي",
+      "solid": "متصل",
+      "dashed": "متقطع",
+      "dotted": "منقط",
+      "none": "بلا",
+      "arrow": "سهم",
+      "dot": "نقطة"
     },
     "insert": {
+      "toolbar": "شريط أدوات الإدراج",
       "textBox": "مربع نص",
-      "expandToolbar": "إظهار أدوات الإدراج",
+      "line": "خط",
+      "linePresets": {
+        "straight": "خط مستقيم",
+        "dashed": "خط متقطع",
+        "arrow": "خط بسهم",
+        "dashedArrow": "خط متقطع بسهم",
+        "dottedEnd": "خط بنقطة في النهاية",
+        "broken": "خط منكسر",
+        "doubleBroken": "خط منكسر مزدوج",
+        "curve": "منحنى",
+        "cubic": "منحنى تكعيبي"
+      },
+      "table": "جدول",
+      "formula": "معادلة",
+      "chart": "مخطط",
+      "chartBar": "مخطط أعمدة",
+      "chartLine": "مخطط خطي",
+      "chartPie": "مخطط دائري",
+      "tableDimensions": "جدول {{rows}} x {{columns}}",
+      "dragToolbar": "نقل أدوات الإدراج",
+      "dragToolbarKeyboard": "نقل أدوات الإدراج: اضغط Enter أو مسافة، ثم استخدم مفاتيح الأسهم",
       "collapseToolbar": "إخفاء أدوات الإدراج",
+      "expandToolbar": "إظهار أدوات الإدراج",
       "image": "صورة",
       "imageDrop": "أفلِت صورة أو انقر لاختيار ملف",
       "imageOr": "أو الصق رابط صورة",
       "imageUrlPlaceholder": "https://…",
       "imageInsert": "إدراج",
-      "dragToolbar": "نقل أدوات الإدراج",
-      "dragToolbarKeyboard": "نقل أدوات الإدراج: اضغط Enter أو مسافة، ثم استخدم مفاتيح الأسهم"
+      "video": "فيديو",
+      "videoDrop": "أفلِت فيديو أو انقر لاختيار ملف",
+      "videoOr": "أو الصق رابط فيديو",
+      "videoUrlPlaceholder": "https://…",
+      "videoInsert": "إدراج",
+      "audio": "صوت",
+      "audioDrop": "أفلِت ملفاً صوتياً أو انقر لاختيار ملف",
+      "audioOr": "أو الصق رابطاً صوتياً",
+      "audioUrlPlaceholder": "https://…",
+      "audioInsert": "إدراج"
+    },
+    "asset": {
+      "drop": "اسحب ملفًا أو انقر للاختيار",
+      "orUrl": "أو الصق رابط الملف",
+      "urlPlaceholder": "https://…",
+      "insert": "إدراج",
+      "invalidType": "نوع ملف غير مدعوم",
+      "readFailed": "تعذرت قراءة الملف"
+    },
+    "latex": {
+      "toolbar": "شريط أدوات المعادلات",
+      "editFormula": "تحرير المعادلة",
+      "dialog": "محرر المعادلات",
+      "source": "مصدر LaTeX",
+      "preview": "معاينة",
+      "symbols": "رموز",
+      "presets": "معادلات جاهزة",
+      "invalidSource": "مصدر LaTeX غير صالح."
+    },
+    "video": {
+      "toolbar": "شريط أدوات الفيديو",
+      "poster": "تعيين الغلاف"
+    },
+    "audio": {
+      "toolbar": "شريط أدوات الصوت",
+      "preview": "معاينة الصوت",
+      "pause": "إيقاف المعاينة مؤقتاً",
+      "loop": "تكرار"
+    },
+    "table": {
+      "doubleClickToEdit": "انقر نقراً مزدوجاً للتحرير"
     },
     "nav": {
       "addSlide": "إضافة شريحة",
@@ -321,21 +412,48 @@
       "deckLabel": "المشاهد",
       "moreActions": "إجراءات إضافية",
       "rename": "إعادة تسمية",
-      "sceneIncomplete": "محتوى هذه الصفحة غير مكتمل"
+      "sceneIncomplete": "محتوى هذه الصفحة غير مكتمل",
+      "addPage": "إضافة صفحة",
+      "nextPage": "الصفحة التالية",
+      "prevPage": "الصفحة السابقة"
     },
     "zorder": {
       "toFront": "إحضار إلى الأمام",
       "toBack": "إرسال إلى الخلف"
     },
     "image": {
+      "toolbar": "شريط أدوات الصورة",
       "replace": "استبدال الصورة",
       "flipH": "قلب أفقي",
-      "flipV": "قلب رأسي"
+      "flipV": "قلب رأسي",
+      "crop": "اقتصاص الصورة"
+    },
+    "contextMenu": {
+      "horizontalAlignment": "محاذاة أفقية",
+      "verticalAlignment": "محاذاة عمودية",
+      "selectAll": "تحديد الكل",
+      "copy": "نسخ",
+      "cut": "قص",
+      "paste": "لصق",
+      "unlock": "إلغاء القفل",
+      "lock": "قفل",
+      "group": "تجميع",
+      "ungroup": "إلغاء التجميع",
+      "bringForward": "إحضار إلى الأمام",
+      "sendBackward": "إرسال إلى الخلف",
+      "alignTop": "محاذاة للأعلى",
+      "alignMiddle": "محاذاة للوسط",
+      "alignBottom": "محاذاة للأسفل"
     },
     "background": {
       "label": "الخلفية",
       "solid": "لون خالص",
-      "image": "صورة"
+      "image": "صورة",
+      "color": "اللون"
+    },
+    "common": {
+      "cancel": "إلغاء",
+      "confirm": "تأكيد"
     },
     "quiz": {
       "addQuestion": "إضافة سؤال",
@@ -385,6 +503,7 @@
       "discussion": "مناقشة"
     },
     "element": {
+      "toolbar": "شريط أدوات العنصر",
       "text": "نص",
       "image": "صورة",
       "shape": "شكل",
@@ -447,16 +566,6 @@
       "title": "نص السرد",
       "regenAllTts": "إعادة توليد كل التعليق الصوتي",
       "voiceAll": "صوّت الكل",
-      "narrationStale": "النص الصوتي قديم",
-      "audioStale": "الصوت قديم",
-      "syncing": "جارٍ المزامنة",
-      "syncFailed": "فشلت المزامنة",
-      "syncNarrationAudio": "مزامنة النص والصوت لهذه الشريحة",
-      "regenSlideAudio": "إعادة توليد صوت هذه الشريحة",
-      "syncNow": "زامن الآن",
-      "regenAudio": "إعادة توليد الصوت",
-      "syncAllStale": "مزامنة كل النصوص والأصوات القديمة",
-      "syncAll": "مزامنة الكل",
       "counts": "{{speech}} سرد · {{cue}} إجراءات",
       "panLeft": "تحريك لليسار",
       "panRight": "تحريك لليمين",
@@ -479,7 +588,17 @@
       "discussionPromptPlaceholder": "توجيه (اختياري)",
       "discussionAgent": "المُبادر",
       "discussionAgentUnset": "غير محدد",
-      "addAction": "إضافة إجراء"
+      "addAction": "إضافة إجراء",
+      "narrationStale": "النص الصوتي قديم",
+      "audioStale": "الصوت قديم",
+      "syncing": "جارٍ المزامنة",
+      "syncFailed": "فشلت المزامنة",
+      "syncNarrationAudio": "مزامنة النص والصوت لهذه الشريحة",
+      "regenSlideAudio": "إعادة توليد صوت هذه الشريحة",
+      "syncNow": "زامن الآن",
+      "regenAudio": "إعادة توليد الصوت",
+      "syncAllStale": "مزامنة كل النصوص والأصوات القديمة",
+      "syncAll": "مزامنة الكل"
     },
     "picker": {
       "title": "إدراج إجراء",
@@ -489,11 +608,13 @@
       "discussionDesc": "اطرح سؤالاً وحدّد من يبدأ النقاش"
     },
     "tts": {
+      "cancelPreview": "إلغاء المعاينة",
       "preview": "معاينة",
       "regenerate": "إعادة توليد التعليق الصوتي",
       "statusReady": "مُصوّت",
       "statusNone": "غير مُصوّت",
       "statusGenerating": "جارٍ التوليد",
+      "stopPreview": "إيقاف المعاينة",
       "statusError": "فشل"
     },
     "pick": {
@@ -503,7 +624,10 @@
       "expand": "توسيع",
       "collapse": "طي",
       "noElements": "لا توجد عناصر يمكن تحديدها في هذه الشريحة.",
-      "bindHint": "انقر على عنصر مميز على اللوحة للربط"
+      "bindHint": "انقر على عنصر مميز على اللوحة للربط",
+      "refCapHint": "تم الوصول إلى الحد — أزل عنصرًا للاستبدال · Esc للإنهاء",
+      "refHint": "انقر للإضافة أو الإزالة · Esc للإنهاء",
+      "refLead": "الإشارة إلى العناصر · {{count}}/{{max}}"
     },
     "regen": {
       "title": "إعادة توليد السرد",
@@ -558,7 +682,26 @@
       "moveDown": "نقل لأسفل",
       "removeFromClass": "إزالة من الفصل",
       "aiClassmates": "زملاء AI · {{count}}",
-      "addRole": "إضافة دور"
+      "addRole": "إضافة دور",
+      "shortTitle": "التشكيلة"
+    },
+    "elementRef": {
+      "remove": "移除引用 {{label}}",
+      "counts": "تمت الإشارة إلى {{count}}/{{max}}",
+      "exitPicking": "إنهاء التحديد",
+      "startPicking": "الإشارة إلى العناصر"
+    },
+    "dock": {
+      "elementRefHint": "مراجع العناصر — اختر عناصر لإرسالها مع رسالتك التالية",
+      "globalTools": "أدوات عامة"
+    },
+    "editMode": "وضع التحرير",
+    "multiTab": {
+      "conflict": {
+        "title": "علامة تبويب أخرى تحرّر هذه الدورة",
+        "body": "وضع التحرير محصور بعلامة تبويب واحدة في كل مرة لتجنب تعارض التغييرات. أغلق علامة التبويب الأخرى (أو انتظر انتهاء جلستها) قبل الدخول إلى وضع التحرير هنا.",
+        "actionDismiss": "حسناً"
+      }
     }
   },
   "classroomComplete": {
@@ -638,77 +781,17 @@
     "autoPlay": "تشغيل تلقائي",
     "autoPlayOff": "إيقاف التشغيل التلقائي",
     "speed": "السرعة",
+    "previousLine": "Previous line",
+    "nextLine": "Next line",
+    "lineProgress": "Line {{current}} / {{total}}",
     "voiceInput": "إدخال صوتي",
     "voiceInputDisabled": "الإدخال الصوتي معطّل",
     "textInput": "إدخال نصي",
     "stopRecording": "إيقاف التسجيل",
-    "startRecording": "بدء التسجيل",
-    "previousLine": "Previous line",
-    "nextLine": "Next line",
-    "lineProgress": "Line {{current}} / {{total}}"
+    "startRecording": "بدء التسجيل"
   },
   "pbl": {
-    "legacyFormat": "يستخدم مشهد التعلم القائم على المشاريع هذا تنسيقًا قديمًا. يرجى إعادة توليد المقرر.",
     "emptyProject": "لم يتم توليد مشروع التعلم القائم على المشاريع بعد. يرجى إنشاؤه عبر توليد المقرر.",
-    "roleSelection": {
-      "title": "اختر دورك",
-      "description": "حدد دورًا لبدء التعاون في المشروع"
-    },
-    "workspace": {
-      "restart": "إعادة البدء",
-      "confirmRestart": "إعادة تعيين كل التقدم؟",
-      "confirm": "تأكيد",
-      "cancel": "إلغاء"
-    },
-    "issueboard": {
-      "title": "لوحة المهام",
-      "noIssues": "لا توجد مهام بعد",
-      "statusDone": "مكتمل",
-      "statusActive": "نشط",
-      "statusPending": "معلّق"
-    },
-    "chat": {
-      "title": "نقاش المشروع",
-      "currentIssue": "المهمة الحالية",
-      "mentionHint": "استخدم @question للسؤال، و@judge للتقديم للمراجعة",
-      "placeholder": "اكتب رسالة...",
-      "send": "إرسال",
-      "issueCompleteMessage": "تم إكمال المهمة \"{{completed}}\"! الانتقال إلى المهمة التالية: \"{{next}}\"",
-      "allCompleteMessage": "🎉 تم إكمال جميع المهام! عمل رائع في المشروع!"
-    },
-    "guide": {
-      "howItWorks": "كيف يعمل",
-      "help": "مساعدة",
-      "title": "مساعدة",
-      "step1": {
-        "title": "الخطوة 1: اختر دورًا",
-        "desc": "بعد توليد المشروع، حدد دورًا من القائمة (الأدوار غير النظامية مميزة بـ 🟢)"
-      },
-      "step2": {
-        "title": "الخطوة 2: أكمل المهام",
-        "desc": "كل مهمة تمثل نشاطًا تعليميًا:",
-        "s1": {
-          "title": "عرض المهمة الحالية",
-          "desc": "تحقق من عنوان المهمة ووصفها والمسؤول عنها"
-        },
-        "s2": {
-          "title": "الحصول على إرشادات",
-          "example": "@question من أين أبدأ؟\n@question كيف أنفذ هذه الميزة؟",
-          "desc": "يقدم وكيل الأسئلة أسئلة إرشادية وتلميحات (بدون إجابات مباشرة)"
-        },
-        "s3": {
-          "title": "تقديم عملك",
-          "example": "@judge لقد انتهيت، يرجى مراجعة ملاحظاتي",
-          "desc": "يقوم وكيل التقييم بتقييم عملك وتقديم ملاحظات:",
-          "complete": "ينتقل تلقائيًا إلى المهمة التالية",
-          "revision": "حسّن بناءً على الملاحظات"
-        }
-      },
-      "step3": {
-        "title": "الخطوة 3: أكمل المشروع",
-        "desc": "عند إتمام جميع المهام، يعرض النظام \"🎉 اكتمل المشروع!\""
-      }
-    },
     "v2": {
       "hero": {
         "title": "التعلم القائم على المشاريع · Project-Based Learning",
@@ -930,6 +1013,66 @@
         "subtitle": "تهانينا! لقد أكملت المشروع.",
         "description": "بناءً على بياناتك (الوقت، المحادثات، تصحيح الأخطاء، المفاهيم المستوعبة…) قمنا بإعداد تقرير إنجاز يتضمن ما أنجزته وما تعلمته والخطوات التالية."
       }
+    },
+    "legacyFormat": "يستخدم مشهد التعلم القائم على المشاريع هذا تنسيقًا قديمًا. يرجى إعادة توليد المقرر.",
+    "roleSelection": {
+      "title": "اختر دورك",
+      "description": "حدد دورًا لبدء التعاون في المشروع"
+    },
+    "workspace": {
+      "restart": "إعادة البدء",
+      "confirmRestart": "إعادة تعيين كل التقدم؟",
+      "confirm": "تأكيد",
+      "cancel": "إلغاء"
+    },
+    "issueboard": {
+      "title": "لوحة المهام",
+      "noIssues": "لا توجد مهام بعد",
+      "statusDone": "مكتمل",
+      "statusActive": "نشط",
+      "statusPending": "معلّق"
+    },
+    "chat": {
+      "title": "نقاش المشروع",
+      "currentIssue": "المهمة الحالية",
+      "mentionHint": "استخدم @question للسؤال، و@judge للتقديم للمراجعة",
+      "placeholder": "اكتب رسالة...",
+      "send": "إرسال",
+      "issueCompleteMessage": "تم إكمال المهمة \"{{completed}}\"! الانتقال إلى المهمة التالية: \"{{next}}\"",
+      "allCompleteMessage": "🎉 تم إكمال جميع المهام! عمل رائع في المشروع!"
+    },
+    "guide": {
+      "howItWorks": "كيف يعمل",
+      "help": "مساعدة",
+      "title": "مساعدة",
+      "step1": {
+        "title": "الخطوة 1: اختر دورًا",
+        "desc": "بعد توليد المشروع، حدد دورًا من القائمة (الأدوار غير النظامية مميزة بـ 🟢)"
+      },
+      "step2": {
+        "title": "الخطوة 2: أكمل المهام",
+        "desc": "كل مهمة تمثل نشاطًا تعليميًا:",
+        "s1": {
+          "title": "عرض المهمة الحالية",
+          "desc": "تحقق من عنوان المهمة ووصفها والمسؤول عنها"
+        },
+        "s2": {
+          "title": "الحصول على إرشادات",
+          "example": "@question من أين أبدأ؟\n@question كيف أنفذ هذه الميزة؟",
+          "desc": "يقدم وكيل الأسئلة أسئلة إرشادية وتلميحات (بدون إجابات مباشرة)"
+        },
+        "s3": {
+          "title": "تقديم عملك",
+          "example": "@judge لقد انتهيت، يرجى مراجعة ملاحظاتي",
+          "desc": "يقوم وكيل التقييم بتقييم عملك وتقديم ملاحظات:",
+          "complete": "ينتقل تلقائيًا إلى المهمة التالية",
+          "revision": "حسّن بناءً على الملاحظات"
+        }
+      },
+      "step3": {
+        "title": "الخطوة 3: أكمل المشروع",
+        "desc": "عند إتمام جميع المهام، يعرض النظام \"🎉 اكتمل المشروع!\""
+      }
     }
   },
   "share": {
@@ -950,7 +1093,40 @@
     "searchPlaceholder": "البحث عن الدروس...",
     "searchAriaLabel": "البحث عن الدروس",
     "clearSearch": "مسح",
-    "searchEmpty": "لا توجد دروس مطابقة"
+    "searchEmpty": "لا توجد دروس مطابقة",
+    "newFolderTitle": "مجلد جديد",
+    "newFolderDesc": "نظّم الدورات حسب الموضوع لتسهيل الوصول إليها.",
+    "newFolderInline": "مجلد جديد",
+    "folderNameLabel": "اسم المجلد",
+    "folderNamePlaceholder": "مثال: رياضيات، إنجليزي، دورات التخصص",
+    "folderNameHint": "الأحرف واسعة وضيقة كلاهما مقبول؛ المسافات تُحتسب.",
+    "folderNameExists": "توجد مجلد بنفس الاسم بالفعل.",
+    "folderCountLimit": "تم بلوغ حد عدد المجلدات.",
+    "folderWidth": "العرض {{width}}/{{max}}",
+    "folderCreate": "إنشاء",
+    "folderBadge": "مجلد",
+    "folderCourseCountUnit": "دورة",
+    "deleteFolderTitle": "حذف المجلد «{{name}}»",
+    "deleteFolderEmptyDesc": "هذا المجلد فارغ. لا يمكن التراجع عن الحذف.",
+    "deleteFolderUngroupDesc": "تبقى الدورات في «دوراتي»، تصبح غير مصنّفة.",
+    "moveToFolder": "نقل إلى مجلد",
+    "moveToFolderLabel": "نقل إلى مجلد",
+    "ungrouped": "غير مصنّف",
+    "searchResults": "نتائج البحث",
+    "folderCreateFailed": "فشل إنشاء المجلد",
+    "folderRenameFailed": "فشلت إعادة تسمية المجلد",
+    "folderDeleteFailed": "فشل حذف المجلد",
+    "moveFailed": "فشل نقل الدورة",
+    "emptyFolderHint": "هذا المجلد فارغ",
+    "emptyLibraryHint": "لا توجد دورات بعد — أنشئ واحدة بالأعلى أو استورد دورة.",
+    "folderNameEmpty": "لا يمكن أن يكون اسم المجلد فارغًا",
+    "deleteFolderOnly": "حذف المجلد فقط",
+    "deleteFolderAndCourses": "حذف المجلد و {{count}} دورة",
+    "deleteFolderConfirmRemove": "سيؤدي هذا إلى حذف المجلد ودوراته، بما في ذلك سجل الدردشة.",
+    "deleteFolderAndCourses_other": "حذف المجلد و {{count}} دورة",
+    "notFound": "لم يتم العثور على الدورة",
+    "notFoundDesc": "هذه الدورة غير موجودة أو تم حذفها.",
+    "backToHome": "العودة إلى الصفحة الرئيسية"
   },
   "upload": {
     "pdfSizeLimit": "يدعم ملفات PDF حتى 50 ميغابايت",
@@ -959,9 +1135,9 @@
     "requirementPlaceholder": "أخبرني بأي شيء تريد تعلمه، مثلاً:\n\"علمني بايثون من الصفر في 30 دقيقة\"\n\"اشرح تحويل فورييه على السبورة\"\n\"كيف تلعب لعبة أفالون\"",
     "requirementRequired": "يرجى إدخال متطلبات المقرر",
     "fileTooLarge": "الملف كبير جدًا. يرجى اختيار ملف أصغر من 50 ميغابايت",
-    "unsupportedCourseMaterial": "المستخرج الحالي لا يدعم هذه الصيغة. غيّر المستخرج أو اختر ملفًا آخر.",
     "courseMaterialCountLimit": "يمكنك رفع ما يصل إلى 5 ملفات لمواد المقرر",
-    "courseMaterialTotalSizeLimit": "يجب أن يكون الحجم الإجمالي لمواد المقرر أقل من 150 ميغابايت"
+    "courseMaterialTotalSizeLimit": "يجب أن يكون الحجم الإجمالي لمواد المقرر أقل من 150 ميغابايت",
+    "unsupportedCourseMaterial": "المستخرج الحالي لا يدعم هذه الصيغة. غيّر المستخرج أو اختر ملفًا آخر."
   },
   "generation": {
     "pdfLoadFailed": "فشل تحميل ملف PDF، يرجى المحاولة مرة أخرى",
@@ -979,11 +1155,6 @@
     "generatingActionsDesc": "جارٍ تنسيق السرد والتسليط والتفاعلات...",
     "generationComplete": "اكتمل التوليد!",
     "generationFailed": "فشل التوليد",
-    "generatingCourse": "جارٍ توليد المقرر",
-    "openingClassroom": "جارٍ فتح الفصل...",
-    "outlineReady": "تم توليد مخطط المقرر",
-    "generatingFirstPage": "جارٍ توليد الصفحة الأولى...",
-    "firstPageReady": "الصفحة الأولى جاهزة! جارٍ فتح الفصل...",
     "speechFailed": "فشل توليد الكلام",
     "retryScene": "إعادة المحاولة",
     "retryingScene": "جارٍ إعادة التوليد...",
@@ -1004,6 +1175,10 @@
     "outlineEmptyResponse": "لم يُرجع النموذج مخططات صالحة. يرجى التحقق من تكوين النموذج والمحاولة مرة أخرى",
     "outlineGenerateFailed": "فشل توليد المخطط، يرجى المحاولة لاحقًا",
     "sceneGenerateFailed": "فشل توليد المشهد، يرجى المحاولة لاحقًا",
+    "sceneGenerateAuthFailed": "فشل توليد المشهد لأن مزود النموذج رفض بيانات الاعتماد. يرجى التحقق من إعدادات النموذج.",
+    "sceneGenerateRateLimited": "تم تقييد توليد المشهد بمعدل الطلبات. انتظر قليلًا ثم حاول مرة أخرى.",
+    "sceneGenerateProviderUnavailable": "مزود النموذج غير متاح مؤقتًا. يرجى المحاولة لاحقًا.",
+    "sceneGenerateInvalidResponse": "لم يُرجع النموذج محتوى مشهد صالحًا. جرّب نموذجًا آخر أو عدّل متطلبات المقرر.",
     "reviewOutlineTitle": "مراجعة مخطط المقرر",
     "reviewOutlineDesc": "يمكنك تعديل المشاهد أو إعادة ترتيبها أو حذفها أو إضافتها قبل توليد المحتوى.",
     "reviewOutlineAutoContinue": "سيستمر توليد المحتوى تلقائيًا ما لم تراجع المخطط.",
@@ -1073,11 +1248,12 @@
     "webSearchFailed": "فشل البحث في الإنترنت",
     "outlinesReadyCount": "{{ready}} / {{total}} أقسام جاهزة",
     "jumpToBlankTitle": "الانتقال إلى قسم بحاجة إلى عنوان",
-    "sceneGenerateAuthFailed": "فشل توليد المشهد لأن مزود النموذج رفض بيانات الاعتماد. يرجى التحقق من إعدادات النموذج.",
-    "sceneGenerateRateLimited": "تم تقييد توليد المشهد بمعدل الطلبات. انتظر قليلًا ثم حاول مرة أخرى.",
-    "sceneGenerateProviderUnavailable": "مزود النموذج غير متاح مؤقتًا. يرجى المحاولة لاحقًا.",
-    "sceneGenerateInvalidResponse": "لم يُرجع النموذج محتوى مشهد صالحًا. جرّب نموذجًا آخر أو عدّل متطلبات المقرر.",
-    "analyzingMediaMaterial": "تحليل الصوت/الفيديو"
+    "analyzingMediaMaterial": "تحليل الصوت/الفيديو",
+    "generatingCourse": "جارٍ توليد المقرر",
+    "openingClassroom": "جارٍ فتح الفصل...",
+    "outlineReady": "تم توليد مخطط المقرر",
+    "generatingFirstPage": "جارٍ توليد الصفحة الأولى...",
+    "firstPageReady": "الصفحة الأولى جاهزة! جارٍ فتح الفصل..."
   },
   "settings": {
     "title": "الإعدادات",
@@ -1158,6 +1334,7 @@
     "addProviderDescription": "أضف مزوّدي نماذج مخصصين لتوسيع نماذج الذكاء الاصطناعي المتاحة",
     "providerNames": {
       "openai": "OpenAI",
+      "azure": "Azure OpenAI",
       "anthropic": "Claude",
       "google": "Gemini",
       "bedrock": "Amazon Bedrock",
@@ -1175,17 +1352,18 @@
       "lemonade": "Lemonade (محلي)",
       "ollama": "Ollama (محلي)",
       "tavily": "Tavily",
+      "exa": "Exa",
       "bocha": "Bocha",
       "brave": "Brave Search",
       "baidu": "Baidu",
-      "azure": "Azure OpenAI",
+      "claude": "Claude",
       "searxng": "SearXNG"
     },
     "providerTypes": {
       "openai": "بروتوكول OpenAI",
+      "azure": "Azure OpenAI",
       "anthropic": "بروتوكول Claude",
       "google": "بروتوكول Gemini",
-      "azure": "Azure OpenAI",
       "bedrock": "Amazon Bedrock"
     },
     "modelCount": "نماذج",
@@ -1203,6 +1381,7 @@
     "importFromClipboard": "استيراد من الحافظة",
     "apiSecret": "مفتاح API",
     "apiHost": "العنوان الأساسي",
+    "azureDeploymentHint": "أدخل نقطة نهاية Azure OpenAI أعلاه، ثم أضف اسم كل عملية نشر في Azure كنموذج.",
     "baseUrlRegion": {
       "china": "الصين",
       "international": "دولي",
@@ -1213,6 +1392,14 @@
     },
     "requestUrl": "عنوان الطلب",
     "models": "النماذج",
+    "comfyuiWorkflows": "سير العمل",
+    "comfyuiRefresh": "تحديث",
+    "comfyuiNoWorkflowsFoundPrefix": "لم يتم العثور على ملفات JSON لسير العمل في",
+    "comfyuiAddWorkflowPrefix": "أضف ملف",
+    "comfyuiAddWorkflowSuffix": "للبدء.",
+    "comfyuiFolderHintPrefix": "ضع ملفات JSON الخاصة بسير العمل في مجلد",
+    "comfyuiFolderHintMiddle": "الخاص بك. يصبح اسم الملف هو الاسم المعروض — على سبيل المثال",
+    "comfyuiLoadError": "فشل تحميل سير العمل: {error}",
     "addModel": "جديد",
     "reset": "إعادة تعيين",
     "fetch": "جلب",
@@ -1375,6 +1562,16 @@
     "voxcpmStopPreview": "إيقاف المعاينة",
     "voxcpmPreviewVoice": "معاينة الصوت",
     "voxcpmDeleteVoice": "حذف الصوت",
+    "qwenCloneVoicesTitle": "Qwen TTS Cloned Voices",
+    "qwenCloneRefText": "Enter the verbatim transcript of the reference audio",
+    "qwenCloneRefAudioHint": "Use a clean 1–60 second voice sample. A 10–20 second sample is recommended; audio is converted to 24 kHz mono PCM WAV.",
+    "qwenCloneSaved": "Qwen cloned voice registered and saved",
+    "qwenCloneSaveFailed": "Failed to register the Qwen cloned voice",
+    "qwenCloneUnsupported": "Recording is not supported in this browser; upload an audio file instead.",
+    "qwenCloneSpeedHint": "Cloned voices always synthesize at 1× speed.",
+    "qwenCloneDeleteWarning": "The voice was removed locally, but provider deletion failed.",
+    "qwenCloneNarrationUnavailable": "The assigned voice is unavailable. Narration will use another enabled voice instead.",
+    "qwenCloneDiscussionUnavailable": "The assigned voice is unavailable. Discussion will use another enabled voice instead.",
     "providerOpenAIWhisper": "OpenAI ASR (gpt-4o-mini-transcribe)",
     "providerBrowserNative": "التعرّف على الكلام المدمج في المتصفح",
     "providerQwenASR": "Qwen ASR (سحابة علي بابا بايليان)",
@@ -1598,6 +1795,9 @@
     "lang_af-ZA": "Afrikaans (Suid-Afrika)",
     "lang_uk-UA": "Українська (Україна)",
     "pdfSettings": "تحليل PDF",
+    "documentParsingSettings": "تحليل المستندات",
+    "supportedFormats": "الصيغ المدعومة",
+    "mineruSelfHostFormatsNote": "يتطلب تحليل ملفات PDF والصور تثبيت الإضافات mineru[pipeline] أو mineru[core] على خادم MinerU. قد تدعم عمليات تثبيت mineru-api الخفيفة مستندات Office فقط.",
     "pdfParsingSettings": "إعدادات تحليل PDF",
     "pdfDescription": "اختر محرك تحليل PDF مع دعم استخراج النص ومعالجة الصور والتعرف على الجداول",
     "pdfProvider": "محلل PDF",
@@ -1632,6 +1832,7 @@
     "providerNanoBanana": "Nano Banana (Gemini)",
     "providerMiniMaxImage": "MiniMax Image",
     "providerGrokImage": "Grok Image (xAI)",
+    "providerComfyUIImage": "ComfyUI Image",
     "providerLemonadeImage": "Lemonade Image (محلي)",
     "testImageGeneration": "اختبار توليد الصور",
     "testImageConnectivity": "اختبار الاتصال",
@@ -1668,6 +1869,7 @@
     "videoGenerationWarning": "توليد الفيديو يستغرق عادةً 1-2 دقيقة، يرجى الصبر",
     "mediaRetry": "إعادة المحاولة",
     "mediaContentSensitive": "عذرًا، هذا المحتوى لم يجتز فحص السلامة.",
+    "mediaStorageFull": "مساحة التخزين ممتلئة، لذا تعذّر حفظ هذه الوسائط.",
     "mediaGenerationDisabled": "التوليد معطّل في الإعدادات",
     "singleAgent": "وكيل فردي",
     "multiAgent": "وكلاء متعددون",
@@ -1693,6 +1895,7 @@
     "clearCacheButton": "حذف جميع البيانات نهائيًا",
     "clearCacheSuccess": "تم مسح الذاكرة المؤقتة، ستتم إعادة تحميل الصفحة قريبًا",
     "clearCacheFailed": "فشل مسح الذاكرة المؤقتة، يرجى المحاولة مرة أخرى",
+    "clearCacheBlockedByOtherTabs": "أغلق علامات تبويب التطبيق الأخرى وأعد المحاولة.",
     "persistUnavailable": "لا يتم حفظ تغييراتك لأن التطبيق لا يستطيع الوصول إلى بياناته المخزّنة. إذا لم تُجدِ إعادة التحميل نفعًا، فامسح ذاكرة التخزين المؤقت المحلية من الإعدادات.",
     "persistChangesLost": "عاد التخزين إلى العمل، لكن تعذّر حفظ التغييرات التي أجريتها أثناء تعطّله، وتم استبدالها بآخر نسخة محفوظة.",
     "webSearchSettings": "بحث الإنترنت",
@@ -1700,7 +1903,10 @@
     "webSearchApiKeyPlaceholder": "أدخل مفتاح API للبحث",
     "webSearchApiKeyPlaceholderServer": "تم تكوين مفتاح الخادم، يمكنك التجاوز اختياريًا",
     "webSearchApiKeyHint": "احصل على مفتاح API من مزود البحث المحدد",
+    "claudeSearchModel": "نموذج البحث",
+    "claudeSearchModelHint": "نموذج Claude الذي يقوم بالبحث في الويب وتلخيص النتائج.",
     "webSearchApiKeyOptional": "مفتاح API اختياري. بدونه، سيتم استخدام استخراج الصفحة العامة كبديل.",
+    "searxngServerOnlyNotice": "يجب تكوين SearXNG على الخادم. عيّن متغير البيئة SEARXNG_BASE_URL (أو قسم web-search في server-providers.yml). لا يُقبل عناوين URL للمثيلات المقدمة من العميل.",
     "baiduSubSources": "مصادر بحث Baidu",
     "baiduSubSourcesDescription": "اختر مصدر Baidu واحدًا على الأقل.",
     "baiduSubSourceWeb": "بحث الويب",
@@ -1763,23 +1969,132 @@
       "capabilities": "Capabilities offered",
       "offeredNote": "Models offered by this plan. Pick the ones you want on the generation bar — availability depends on your plan tier, and unsupported models will error at generation time."
     },
+    "skills": {
+      "nav": "المهارات",
+      "title": "إعدادات المهارات",
+      "description": "تصفّح المهارات المثبّتة لحسابك، وافحص مهارة، ونزّلها كملف zip للمشاركة أو النسخ الاحتياطي.",
+      "mySkills": "مهاراتي",
+      "builtinSkills": "المهارات المدمجة",
+      "emptyMySkills": "لا مهارات خاصة بك بعد — اطلب من الوكيل في محادثة إنشاء واحدة من السجل.",
+      "emptyBuiltinSkills": "لا تتوفر مهارات مدمجة.",
+      "listFailed": "تعذّر تحميل قائمة المهارات",
+      "retry": "إعادة المحاولة",
+      "badgeBuiltin": "مدمجة",
+      "badgeOwner": "مهارتي",
+      "badgeConstraints": "قيود",
+      "details": "التفاصيل",
+      "download": "تنزيل",
+      "detailFailed": "تعذّر تحميل تفاصيل المهارة",
+      "contentLabel": "المحتوى",
+      "builtinDetailNote": "هذه المهارة مرفقة مع OpenMAIC. نزّلها لاستيرادها إلى مساحة عمل وكيل أخرى.",
+      "upload": "رفع",
+      "uploading": "جارٍ الرفع…",
+      "uploadFailed": "تعذّر رفع المهارة. تحقّق من الملف وحاول مرة أخرى.",
+      "delete": "حذف",
+      "deleting": "جارٍ الحذف…",
+      "deleteTitle": "حذف المهارة؟",
+      "deleteConfirm": "سيؤدي هذا إلى إزالة المهارة من حسابك، ولا يمكن التراجع عن هذا الإجراء.",
+      "deleteFailed": "تعذّر حذف المهارة. حاول مرة أخرى."
+    },
     "ttsBrowserNativeTimelineNotice": "لا يدعم تحويل النص إلى كلام المدمج في المتصفح ميزات الصوت في الخط الزمني للمحرر (المعاينة وإعادة التوليد والتعليق الصوتي الجماعي). بدّل إلى مزود TTS مُدار لتوليد صوت كل سطر وإدارته.",
-    "azureDeploymentHint": "أدخل نقطة نهاية Azure OpenAI أعلاه، ثم أضف اسم كل عملية نشر في Azure كنموذج.",
-    "comfyuiWorkflows": "سير العمل",
-    "comfyuiRefresh": "تحديث",
-    "comfyuiNoWorkflowsFoundPrefix": "لم يتم العثور على ملفات JSON لسير العمل في",
-    "comfyuiAddWorkflowPrefix": "أضف ملف",
-    "comfyuiAddWorkflowSuffix": "للبدء.",
-    "comfyuiFolderHintPrefix": "ضع ملفات JSON الخاصة بسير العمل في مجلد",
-    "comfyuiFolderHintMiddle": "الخاص بك. يصبح اسم الملف هو الاسم المعروض — على سبيل المثال",
-    "comfyuiLoadError": "فشل تحميل سير العمل: {error}",
-    "documentParsingSettings": "تحليل المستندات",
-    "supportedFormats": "الصيغ المدعومة",
-    "mineruSelfHostFormatsNote": "يتطلب تحليل ملفات PDF والصور تثبيت الإضافات mineru[pipeline] أو mineru[core] على خادم MinerU. قد تدعم عمليات تثبيت mineru-api الخفيفة مستندات Office فقط.",
-    "providerComfyUIImage": "ComfyUI Image",
-    "searxngServerOnlyNotice": "يجب تكوين SearXNG على الخادم. عيّن متغير البيئة SEARXNG_BASE_URL (أو قسم web-search في server-providers.yml). لا يُقبل عناوين URL للمثيلات المقدمة من العميل.",
     "alidocmindAccessKeyId": "AccessKey ID",
     "alidocmindAccessKeySecret": "AccessKey Secret"
+  },
+  "workspace": {
+    "untitledCourse": "未命名课堂",
+    "sceneCount": "{{count}} 页",
+    "sceneCount_one": "{{count}} 页",
+    "sceneCount_other": "{{count}} 页",
+    "courseLinkHint": "在右侧打开《{{name}}》",
+    "courseLinkMore": "还有 {{count}} 节课堂",
+    "courseMention": {
+      "title": "为这条消息引用课堂",
+      "empty": "没有匹配的课堂",
+      "alreadyNamed": "已引用",
+      "remove": "移除{{name}}",
+      "pillHint": "这条消息引用了「{{name}}」",
+      "notAccepted": "الخادم غير متاح مؤقتًا. يُرجى إعادة المحاولة بعد قليل.",
+      "reference": "引用「{{name}}」",
+      "capped": "仅显示前 {{count}} 个，继续输入以缩小范围"
+    },
+    "heroTitle": "What will you create today?",
+    "heroSubtitle": "Share an idea and turn it into a learning journey people can step into",
+    "newSession": "New chat",
+    "sections": {
+      "courses": "Courses",
+      "sessions": "Chats"
+    },
+    "coursesEmpty": "No courses yet",
+    "sessionsEmpty": "No chats yet",
+    "loading": "Loading",
+    "loadFailed": "Couldn't load",
+    "retry": "Retry",
+    "untitledSession": "Untitled chat",
+    "pagePosition": "Page {{index}} of {{total}}",
+    "exitPro": "Exit Pro",
+    "navAria": "Workspace navigation",
+    "homeAria": "Back to home",
+    "currentSession": "Current chat",
+    "startLearning": "ابدأ التعلم",
+    "time": {
+      "justNow": "Just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    },
+    "sessionStatus": {
+      "connecting": "Connecting",
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Ready",
+      "failed": "Needs attention",
+      "cancelled": "Stopped"
+    },
+    "backToWorkspace": "Back to workspace",
+    "searchPlaceholder": "Filter by name",
+    "searchAria": "Search {{section}}",
+    "searchEmpty": "No matches",
+    "showMore": "Show {{count}} more",
+    "showLess": "Show less",
+    "utilitiesAria": "Preferences and account",
+    "resizeAria": "Drag to resize the sidebar",
+    "chatPaneAria": "Chat panel",
+    "classroomPaneAria": "Classroom",
+    "collapseNav": "Collapse navigation",
+    "expandNav": "Expand navigation",
+    "expandNavInto": "Expand navigation · {{section}}",
+    "collapseChat": "Collapse conversation",
+    "expandChat": "Conversation",
+    "collapseClassroom": "Collapse classroom",
+    "expandClassroom": "Classroom",
+    "readOnlyBadge": "Read-only",
+    "noCourseTitle": "No course open",
+    "noCourseHint": "افتحها من رابط دورة في المحادثة، أو اختر واحدة من القائمة على اليسار — تبقى المحادثة كما هي",
+    "resizeChatAria": "Drag to resize the conversation pane",
+    "firstPageLanding": "The first page is landing…",
+    "autoSaving": "جارٍ الحفظ التلقائي…",
+    "autoSaved": "تم الحفظ",
+    "collapsedTitle": "Both panes are collapsed",
+    "collapsedHint": "Use the tabs on the left to bring the conversation or the classroom back",
+    "moreUtilities": "More",
+    "rowMore": "إجراءات أخرى لـ {{name}}",
+    "folderDeleteHint": "ستعود الدورات داخله إلى المستوى الأعلى، ولن يُحذف شيء.",
+    "dropToUnfile": "أفلِت هنا لإخراجه من المجلد",
+    "renameInvalid": "يجب أن يتكوّن الاسم من 1 إلى 120 حرفًا",
+    "renameForbidden": "هذه الدورة ليست من إنشائك، لذا لا يمكنك تغيير اسمها",
+    "renameGone": "هذه الدورة لم تعد موجودة",
+    "renameSession": "إعادة تسمية المحادثة",
+    "renameSessionAria": "إعادة تسمية المحادثة «{{name}}»",
+    "renameSessionFailed": "تعذّرت إعادة التسمية، حاول مرة أخرى",
+    "delete": "حذف",
+    "confirmDelete": "تأكيد الحذف",
+    "deleting": "جارٍ الحذف…",
+    "deleteFailed": "تعذر الحذف. حاول مرة أخرى.",
+    "tabsAria": "Chats and courses",
+    "courseTabsAria": "الدورات المفتوحة",
+    "courseTabClose": "إغلاق التبويب: {{name}}",
+    "courseTabRunning": "قيد التوليد",
+    "foldersUnavailable": "المجلدات غير متوفرة في هذا الإصدار"
   },
   "profile": {
     "title": "الملف الشخصي",
@@ -1811,5 +2126,34 @@
     "title": "أدخل رمز الوصول",
     "placeholder": "رمز الوصول",
     "error": "رمز الوصول غير صالح. يرجى المحاولة مرة أخرى."
+  },
+  "proMode": {
+    "attach": "إرفاق مواد",
+    "mentionCourse": "引用课堂",
+    "loadSkill": "加载 skill",
+    "skillMenuTitle": "选择课程设计技能",
+    "skillsLoading": "正在加载 skill…",
+    "noSkillsAvailable": "暂无可用 skill",
+    "userSkillsGroup": "我的 Skill",
+    "builtinSkillsGroup": "内置 Skill",
+    "skillsLoadFailed": "Skill 加载失败，点击重试",
+    "retrySkills": "重试",
+    "noSkillMatch": "没有匹配“{{query}}”的 Skill",
+    "badgeAria": "وضع Pro",
+    "badgeEnter": "وضع Pro",
+    "badgeExit": "العودة إلى الوضع العادي",
+    "launchPlaceholder": "صِف تجربة التعلم التي تريد إنشاءها",
+    "launchSend": "بدء الإنشاء"
+  },
+  "workbench": {
+    "tool": {
+      "label": {
+        "extractMaterial": null,
+        "waitMaterials": null
+      },
+      "error": {
+        "materialExtraction": null
+      }
+    }
   }
 }

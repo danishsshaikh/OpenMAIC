@@ -1,6 +1,6 @@
 {
   "name": "@openmaic/renderer",
-  "version": "0.0.5",
+  "version": "0.1.7",
   "description": "React component for rendering PPTist-style Slide JSON, extracted from OpenMAIC.",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,10 +23,6 @@
       "types": "./dist/snapshot/index.d.ts",
       "import": "./dist/snapshot/index.js"
     },
-    "./editing": {
-      "types": "./dist/editing/index.d.ts",
-      "import": "./dist/editing/index.js"
-    },
     "./fonts.css": "./fonts.css"
   },
   "files": [
@@ -39,11 +35,10 @@
     "font-licenses"
   ],
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "genfonts": "node scripts/generate-fonts-css.mjs",
     "gen-katex-fonts": "node scripts/generate-katex-fonts.mjs",
-    "build": "node scripts/generate-fonts-css.mjs && node scripts/generate-katex-fonts.mjs && rm -rf dist && rollup -c && tsc --emitDeclarationOnly --declarationDir dist",
-    "build:runtime": "node scripts/generate-fonts-css.mjs && node scripts/generate-katex-fonts.mjs && rollup -c && tsc --emitDeclarationOnly --declarationDir dist",
+    "build": "node scripts/generate-fonts-css.mjs && node scripts/generate-katex-fonts.mjs && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && rollup -c && tsc --emitDeclarationOnly --declarationDir dist",
     "dev": "rollup -c -w",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -106,12 +106,29 @@ export function setSpeechTextById(actions: Action[], id: string, text: string): 
 }
 
 /**
- * Legacy name kept for callers/tests: editing speech now preserves stamped
- * audio fields. Scene-level sync metadata marks the line/audio stale, so the
- * last successful audio remains playable until replacement succeeds.
+ * Edit a speech line's text AND drop its stamped audio fields (index-stale-safe).
+ * The cached audio blob is keyed by sceneOrder+actionId, not the text, so an
+ * edit must invalidate it or the stale audio would replay for the new wording —
+ * after this the line reads as un-voiced until regenerated. (Deleting the blob
+ * itself is done separately via `discardSpeechAudio`.)
  */
 export function setSpeechTextClearAudioById(actions: Action[], id: string, text: string): Action[] {
-  return setSpeechTextById(actions, id, text);
+  const index = actions.findIndex((a) => a.id === id);
+  const a = actions[index];
+  if (!a || a.type !== 'speech') return actions;
+  const next = actions.slice();
+  const cleaned = {
+    ...a,
+    text,
+    audioInvalidated: true,
+  } as Action & { audioId?: string; audioUrl?: string; audioInvalidated?: boolean };
+  delete cleaned.audioId;
+  // The legacy URL of an unconverted pair points at the old wording's
+  // narration just as much as the id does; keeping it would let a later
+  // conversion ingest superseded audio for the new text.
+  delete cleaned.audioUrl;
+  next[index] = cleaned;
+  return next;
 }
 
 /** Remove an action by id (index-stale-safe). */
@@ -156,7 +173,9 @@ export function setAudioId(actions: Action[], index: number, audioId: string): A
   const a = actions[index];
   if (!a || a.type !== 'speech') return actions;
   const next = actions.slice();
-  next[index] = { ...a, audioId } as Action;
+  const updated = { ...a, audioId } as Action & { audioInvalidated?: boolean };
+  delete updated.audioInvalidated;
+  next[index] = updated;
   return next;
 }
 

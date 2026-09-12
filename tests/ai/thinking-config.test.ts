@@ -90,7 +90,21 @@ describe('thinking config metadata', () => {
     );
     expect(googleModels).toContain('gemini-3.1-pro-preview');
     expect(googleModels).not.toContain('gemini-3-pro-preview');
-    expect(deepseekModels).toEqual(['deepseek-v4-pro', 'deepseek-v4-flash']);
+    expect(deepseekModels).toEqual([
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+    ]);
+    // Pin the vision model's capabilities so a regression to vision: false
+    // (silently dropping document images during generation) fails this test.
+    const visionModel = getProvider('deepseek')?.models.find(
+      (m) => m.id === 'deepseek-v4-flash-vision-exp',
+    );
+    expect(visionModel?.capabilities).toMatchObject({
+      streaming: true,
+      tools: true,
+      vision: true,
+    });
     expect(hunyuanModels).toEqual(['hy3-preview']);
     expect(minimaxModels).toEqual(['MiniMax-M3', 'MiniMax-M2.7']);
     expect(siliconflowModels).not.toContain('MiniMaxAI/MiniMax-M2');
@@ -229,6 +243,28 @@ describe('thinking config normalization', () => {
     });
   });
 
+  it('models Grok 4.6 thinking as non-toggleable effort including xhigh', () => {
+    const thinking = getThinking('grok', 'grok-4.6');
+
+    expect(supportsConfigurableThinking(thinking)).toBe(true);
+    expect(thinking?.control).toBe('effort');
+    expect(thinking?.requestAdapter).toBe('openai');
+    expect(thinking?.toggleable).toBe(false);
+    expect(thinking?.effortValues).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(getDefaultThinkingConfig(thinking)).toEqual({
+      mode: 'enabled',
+      effort: 'high',
+    });
+    expect(normalizeThinkingConfig(thinking, { mode: 'disabled' })).toEqual({
+      mode: 'enabled',
+      effort: 'low',
+    });
+    expect(normalizeThinkingConfig(thinking, { effort: 'xhigh' })).toEqual({
+      mode: 'enabled',
+      effort: 'xhigh',
+    });
+  });
+
   it('normalizes DeepSeek V4 thinking as high/max effort levels', () => {
     const thinking = getThinking('deepseek', 'deepseek-v4-pro');
 
@@ -269,6 +305,22 @@ describe('thinking config normalization', () => {
       mode: 'enabled',
       effort: 'minimal',
     });
+  });
+
+  it('normalizes GLM-5.3 thinking as forced low/high/max effort levels', () => {
+    for (const modelId of ['glm-5.3', 'glm-5.3-flash']) {
+      const thinking = getThinking('glm', modelId);
+
+      expect(supportsConfigurableThinking(thinking)).toBe(true);
+      expect(thinking?.control).toBe('effort');
+      expect(thinking?.requestAdapter).toBe('glm');
+      expect(thinking?.toggleable).toBe(false);
+      expect(thinking?.effortValues).toEqual(['low', 'high', 'max']);
+      expect(getDefaultThinkingConfig(thinking)).toEqual({
+        mode: 'enabled',
+        effort: 'max',
+      });
+    }
   });
 
   it('normalizes Tencent HY3 thinking as no_think/low/high effort levels', () => {

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { PPTShapeElement, ShapeText } from '@openmaic/dsl';
 import { useElementOutline } from '../shared/useElementOutline';
 import { useElementShadow } from '../shared/useElementShadow';
@@ -7,11 +8,12 @@ import { useElementFlip } from '../shared/useElementFlip';
 import { useElementFill } from '../shared/useElementFill';
 import { GradientDefs } from './GradientDefs';
 import { PatternDefs } from './PatternDefs';
-import { formatInlineMarkdownBold } from '../../utils/inlineMarkdown';
-import { getTextFitStyle, useTextAutoFit } from '../../utils/textAutoFit';
+import { preservesPlainTextLineBreaks } from '../../utils/richText';
 
 export interface BaseShapeElementProps {
   elementInfo: PPTShapeElement;
+  /** Replace the static Shape label with editor content. */
+  renderLabel?: (element: PPTShapeElement, defaultContent: ReactNode) => ReactNode;
 }
 
 /**
@@ -91,7 +93,7 @@ function pathCoordBBox(
   return { minX, minY, maxX, maxY };
 }
 
-export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
+export function BaseShapeElement({ elementInfo, renderLabel }: BaseShapeElementProps) {
   const { fill } = useElementFill(elementInfo, 'base');
   const { outlineWidth, outlineColor, strokeDashArray } = useElementOutline(elementInfo.outline);
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
@@ -103,21 +105,38 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
     defaultFontName: 'Microsoft YaHei',
     defaultColor: '#333333',
   };
-  const textContent = formatInlineMarkdownBold(
-    typeof text.content === 'string' ? text.content : '',
-  );
-  const { containerRef, textRef, textFitScale } = useTextAutoFit(
-    `${textContent}:${elementInfo.width}:${elementInfo.height}:${text.lineHeight ?? ''}:${text.defaultFontName ?? ''}`,
-  );
 
   const justifyContent =
-    textFitScale < 0.995
-      ? 'flex-start'
-      : text.align === 'top'
-        ? 'flex-start'
-        : text.align === 'bottom'
-          ? 'flex-end'
-          : 'center';
+    text.align === 'top' ? 'flex-start' : text.align === 'bottom' ? 'flex-end' : 'center';
+  const defaultLabelContent = (
+    <div
+      className="shape-text"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent,
+        overflowWrap: 'break-word',
+        lineHeight: text.lineHeight,
+        letterSpacing: `${text.wordSpace || 0}px`,
+        // PowerPoint/WPS 在 group flipH/flipV 时只镜像几何与位置，文字字形保持
+        // 正向。父层 element-content 已应用 flipStyle 镜像 SVG path；这里给文字
+        // 叠加同一个 flipStyle，两次 flip 抵消，让文字保持正向。
+        transform: flipStyle,
+      }}
+    >
+      <div
+        className="ProseMirror-static slide-renderer-prose"
+        style={{
+          // @ts-expect-error CSS custom properties
+          '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
+          whiteSpace: preservesPlainTextLineBreaks(text.content) ? 'pre-line' : undefined,
+        }}
+        dangerouslySetInnerHTML={{ __html: text.content }}
+      />
+    </div>
+  );
 
   return (
     <div
@@ -217,40 +236,7 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
             );
           })()}
 
-          <div
-            ref={containerRef}
-            className="shape-text"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent,
-              boxSizing: 'border-box',
-              padding: '10px',
-              overflow: 'hidden',
-              overflowWrap: 'break-word',
-              lineHeight: text.lineHeight,
-              letterSpacing: `${text.wordSpace || 0}px`,
-              // PowerPoint/WPS 在 group flipH/flipV 时只镜像几何与位置，文字字形保持
-              // 正向。父层 element-content 已应用 flipStyle 镜像 SVG path；这里给文字
-              // 叠加同一个 flipStyle，两次 flip 抵消，让文字保持正向。
-              transform: flipStyle,
-            }}
-          >
-            <div
-              ref={textRef}
-              className="ProseMirror-static slide-renderer-prose"
-              style={{
-                // @ts-expect-error CSS custom properties
-                '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
-                overflowWrap: 'anywhere',
-                wordBreak: 'break-word',
-                ...getTextFitStyle(textFitScale),
-              }}
-              dangerouslySetInnerHTML={{ __html: textContent }}
-            />
-          </div>
+          {renderLabel ? renderLabel(elementInfo, defaultLabelContent) : defaultLabelContent}
         </div>
       </div>
     </div>

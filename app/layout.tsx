@@ -12,6 +12,8 @@ import { ServerProvidersInit } from '@/components/server-providers-init';
 import { StorageHealthNotice } from '@/components/storage-health-notice';
 import { brandConfig } from '@/lib/branding/brand-config';
 import '@fontsource/source-serif-4/500-italic.css';
+import { AccessCodeGuard } from '@/components/access-code-guard';
+import { ProSwapWatcher } from '@/components/workbench/ProSwapWatcher';
 
 // The UI font is loaded from @fontsource's stylesheet rather than next/font,
 // because only the stylesheet carries the per-subset `unicode-range`
@@ -51,7 +53,8 @@ export default function RootLayout({
         <ThemeProvider>
           <I18nProvider>
             <ServerProvidersInit />
-            {children}
+            <ProSwapWatcher />
+            <AccessCodeGuard>{children}</AccessCodeGuard>
             <Toaster position="top-center" />
             {/* After the Toaster: this one raises a toast on mount when
                 persistence is already broken, and a toast raised before its

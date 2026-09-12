@@ -7,9 +7,11 @@
  */
 export type WebSearchProviderId =
   | 'tavily'
+  | 'exa'
   | 'bocha'
   | 'brave'
   | 'baidu'
+  | 'claude'
   | 'minimax'
   | 'doubao'
   | 'searxng';

@@ -18,6 +18,8 @@ Create a simulation widget for: {{conceptName}}
 
 ## Language
 
+Requested output language: {{requestedLanguage}}
+
 {{languageDirective}}
 
 ---

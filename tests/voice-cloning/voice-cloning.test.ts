@@ -140,7 +140,9 @@ describe('explicit cloned voice TTS routing', () => {
     vi.doMock('@/lib/voice-cloning/synthesis', () => ({ synthesizeFacultyVoice }));
     vi.doMock('@/lib/audio/tts-providers', () => ({
       generateTTS,
+      QwenTTSError: class QwenTTSError extends Error {},
       TTSRateLimitError: class TTSRateLimitError extends Error {},
+      TTSInvalidResponseError: class TTSInvalidResponseError extends Error {},
     }));
     vi.doMock('@/lib/server/usage-storage', () => ({ recordGenerationUsage: vi.fn() }));
     vi.doMock('@/lib/server/provider-config', () => ({
@@ -149,6 +151,7 @@ describe('explicit cloned voice TTS routing', () => {
       resolveTTSApiKey: vi.fn(() => undefined),
       resolveTTSBaseUrl: vi.fn(() => undefined),
       resolveTTSModel: vi.fn((_providerId, modelId) => modelId),
+      TTSModelNotAllowedError: class TTSModelNotAllowedError extends Error {},
     }));
     vi.doMock('@/lib/server/ssrf-guard', () => ({ validateUrlForSSRF: vi.fn(() => null) }));
     vi.doMock('@/lib/auth/server', () => ({

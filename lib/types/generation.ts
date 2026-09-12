@@ -19,6 +19,13 @@ export interface PdfImage {
   pageNumber: number; // Page number in PDF
   description?: string; // Optional description for AI context
   storageId?: string; // Reference to IndexedDB (session_xxx_img_1)
+  /**
+   * Pool asset id of the image bytes. Present on server-backed deployments
+   * (RFC #1153 part 2 B): the extracted images are pool assets, so generation
+   * is fed by id and no IndexedDB bytes are materialized. Browser-backed
+   * images carry `storageId` instead — never both.
+   */
+  assetId?: string; // Allocated asset-pool id (server-backed transport)
   width?: number; // Image width (px or normalized)
   height?: number; // Image height (px or normalized)
   originalId?: string; // ID assigned by the extractor before bundle-level normalization
@@ -41,6 +48,14 @@ export interface SelectedCourseMaterial {
   lastModified: number;
   type: string;
   order: number;
+  /** Allocated asset-pool id once the file has been ingested (part 0). */
+  assetId?: string;
+  /**
+   * SHA-256 of the file bytes, computed at upload time. This is the stable
+   * half of the extraction-cache key: two uploads of the same bytes get
+   * different allocated asset ids but the same digest (part 1).
+   */
+  contentDigest?: string;
 }
 
 export interface SessionDocumentSource {
@@ -51,6 +66,17 @@ export interface SessionDocumentSource {
   mimeType?: string;
   order: number;
   storageKey: string;
+  /**
+   * Allocated asset-pool id for this source. New sessions write it; legacy
+   * sessions carry only `storageKey` and keep working (back-compat).
+   */
+  assetId?: string;
+  /**
+   * SHA-256 of the source bytes, computed at upload time. Together with the
+   * extractor identity it keys the extraction derivation cache (part 1);
+   * legacy sessions predating the digest carry only `storageKey`.
+   */
+  contentDigest?: string;
   providerId?: string;
 }
 
@@ -191,18 +217,15 @@ export interface GeneratedQuizContent {
 
 // ==================== PBL Generation Types ====================
 
-import type { PBLProjectConfig } from '@/lib/pbl/types';
 import type { PBLProjectV2 } from '@/lib/pbl/v2/types';
 
 /**
  * AI-generated PBL content.
  *
- * PBL v2 generation returns a legacy-compatible `projectConfig` plus the full
- * v2 payload so existing storage/rendering paths can migrate incrementally.
+ * PBL generation produces only the v2 project payload.
  */
 export interface GeneratedPBLContent {
-  projectConfig: PBLProjectConfig;
-  projectV2?: PBLProjectV2;
+  projectV2: PBLProjectV2;
 }
 
 // ==================== Interactive Generation Types ====================
