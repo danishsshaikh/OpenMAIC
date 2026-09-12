@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PlaybackEngine, isPlaybackSceneSeekable } from '@/lib/playback/engine';
+import { PlaybackEngine } from '@/lib/playback/engine';
+import {
+  canJumpWithinReconstructablePrefix,
+  getActionLineProgress,
+} from '@/lib/playback/action-navigation';
 import type { ActionEngine } from '@/lib/action/engine';
 import type { AudioPlayer } from '@/lib/utils/audio-player';
+import type { Action } from '@/lib/types/action';
 import type { Scene } from '@/lib/types/stage';
 
-function scene(actions: NonNullable<Scene['actions']>): Scene {
+function speech(id: string, text = id, audioId?: string): Action {
+  return { id, type: 'speech', text, ...(audioId ? { audioId } : {}) } as Action;
+}
+
+function scene(actions: Action[]): Scene {
   return {
     id: 'scene-1',
     stageId: 'stage-1',
@@ -30,9 +39,9 @@ function fakeActionEngine(): ActionEngine {
   } as unknown as ActionEngine;
 }
 
-function fakeAudio(overrides: Partial<AudioPlayer> = {}): AudioPlayer {
+function fakeAudio(play: AudioPlayer['play'] = vi.fn().mockResolvedValue(false)): AudioPlayer {
   return {
-    play: vi.fn().mockResolvedValue(false),
+    play,
     pause: vi.fn(),
     stop: vi.fn(),
     resume: vi.fn(),
@@ -40,296 +49,83 @@ function fakeAudio(overrides: Partial<AudioPlayer> = {}): AudioPlayer {
     hasActiveAudio: vi.fn(() => false),
     getCurrentTime: vi.fn(() => 0),
     getDuration: vi.fn(() => 0),
-    seekTo: vi.fn(() => false),
     onEnded: vi.fn(),
     setMuted: vi.fn(),
     setVolume: vi.fn(),
     setPlaybackRate: vi.fn(),
     destroy: vi.fn(),
-    ...overrides,
   } as unknown as AudioPlayer;
 }
 
-describe('PlaybackEngine seek', () => {
-  it('classifies speech and whiteboard scenes as seekable', () => {
-    expect(
-      isPlaybackSceneSeekable([
-        { id: 'speech-1', type: 'speech', text: 'A line.' },
-        { id: 'wb-1', type: 'wb_open' },
-        {
-          id: 'wb-2',
-          type: 'wb_draw_text',
-          content: 'Written state',
-          x: 0,
-          y: 0,
-        },
-      ]),
-    ).toBe(true);
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+describe('PlaybackEngine action-boundary seek compatibility', () => {
+  it('classifies speech and deterministic whiteboard prefixes as jumpable', () => {
+    const actions = [
+      speech('speech-1', 'A line.'),
+      { id: 'wb-1', type: 'wb_open' },
+      { id: 'wb-2', type: 'wb_draw_text', content: 'Written state', x: 0, y: 0 },
+      speech('speech-2', 'Second line.'),
+    ] as Action[];
+
+    expect(canJumpWithinReconstructablePrefix(actions, 0, 0)).toBe(true);
+    expect(canJumpWithinReconstructablePrefix(actions, 0, 3)).toBe(true);
+    expect(getActionLineProgress(actions, 3)).toEqual({ currentLine: 2, totalLines: 2 });
   });
 
   it.each([
     ['widget action', { id: 'widget-1', type: 'widget_reveal', target: 'part-a' }],
     ['discussion action', { id: 'discussion-1', type: 'discussion', topic: 'Question?' }],
     ['play_video action', { id: 'video-1', type: 'play_video', elementId: 'video-1' }],
-  ])('classifies a scene with %s as not seekable', (_label, unsafeAction) => {
-    expect(
-      isPlaybackSceneSeekable([
-        { id: 'speech-1', type: 'speech', text: 'A line.' },
-        unsafeAction,
-      ] as NonNullable<Scene['actions']>),
-    ).toBe(false);
-  });
+  ] as Array<[string, Action]>)(
+    'does not jump across %s reconstruction',
+    async (_label, unsafe) => {
+      const actions = [speech('speech-1', 'A line.'), unsafe, speech('speech-2', 'Second line.')];
+      const actionEngine = fakeActionEngine();
+      const engine = new PlaybackEngine([scene(actions)], actionEngine, fakeAudio());
 
-  it('freezes estimated progress immediately when paused', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
+      expect(engine.canJumpToAction(2)).toBe(false);
+      expect(await engine.jumpToAction(2)).toBe(false);
+      expect(engine.getSnapshot().actionIndex).toBe(0);
+      expect(actionEngine.resetPlaybackVisualState).not.toHaveBeenCalled();
+    },
+  );
 
-    try {
-      const engine = new PlaybackEngine(
-        [
-          scene([
-            { id: 'speech-1', type: 'speech', text: 'A longer line for estimated progress.' },
-          ]),
-        ],
-        fakeActionEngine(),
-        fakeAudio({
-          play: vi.fn(() => new Promise<boolean>(() => {})),
-        }),
-        { getPlaybackSpeed: () => 1 },
-      );
-
-      engine.start();
-      vi.setSystemTime(3000);
-      engine.pause();
-      const pausedProgress = engine.getProgress().currentTimeMs;
-
-      vi.setSystemTime(9000);
-
-      expect(engine.getProgress().currentTimeMs).toBe(pausedProgress);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('seeks to an estimated action boundary while paused', async () => {
+  it('positions playback at the requested speech action and reports snapshot progress', async () => {
+    const onProgress = vi.fn();
     const engine = new PlaybackEngine(
-      [
-        scene([
-          { id: 'speech-1', type: 'speech', text: 'First line.' },
-          { id: 'speech-2', type: 'speech', text: 'Second line.' },
-        ]),
-      ],
+      [scene([speech('speech-1', 'First line.'), speech('speech-2', 'Second line.')])],
       fakeActionEngine(),
       fakeAudio(),
-      { getPlaybackSpeed: () => 1 },
+      { onProgress },
     );
 
-    expect(engine.getProgress()).toMatchObject({
-      currentTimeMs: 0,
-      durationMs: 4000,
-      seekable: true,
-    });
+    expect(await engine.jumpToAction(1, { autoplay: false })).toBe(true);
 
-    const progress = await engine.seekTo(2500);
-
-    expect(engine.getMode()).toBe('paused');
-    expect(progress).toMatchObject({
-      currentTimeMs: 2500,
-      durationMs: 4000,
-      actionIndex: 1,
-    });
-    expect(engine.getSnapshot().actionIndex).toBe(1);
-  });
-
-  it('delegates precise seek to the active generated speech audio', async () => {
-    let currentTimeMs = 1000;
-    const seekTo = vi.fn((timeMs: number) => {
-      currentTimeMs = timeMs;
-      return true;
-    });
-    const audio = fakeAudio({
-      play: vi.fn().mockResolvedValue(true),
-      hasActiveAudio: vi.fn(() => true),
-      getCurrentTime: vi.fn(() => currentTimeMs),
-      getDuration: vi.fn(() => 10000),
-      seekTo,
-    });
-    const engine = new PlaybackEngine(
-      [scene([{ id: 'speech-1', type: 'speech', text: 'Generated audio line.' }])],
-      fakeActionEngine(),
-      audio,
-      { getPlaybackSpeed: () => 1 },
+    expect(engine.getMode()).toBe('idle');
+    expect(engine.getSnapshot()).toMatchObject({ sceneIndex: 0, actionIndex: 1 });
+    expect(onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sceneIndex: 0, actionIndex: 1 }),
     );
-
-    engine.start();
-    const progress = await engine.seekTo(5000);
-
-    expect(seekTo).toHaveBeenCalledWith(5000);
-    expect(progress.currentTimeMs).toBe(5000);
-    expect(progress.durationMs).toBe(10000);
+    expect('getProgress' in engine).toBe(false);
+    expect('seekTo' in engine).toBe(false);
   });
 
-  it('clears transient effects during precise seek within active generated speech', async () => {
-    let onEnded: () => void = () => {};
+  it('silently replays reconstructable whiteboard state before the target speech', async () => {
     const actionEngine = fakeActionEngine();
-    const audio = fakeAudio({
-      play: vi.fn().mockResolvedValue(true),
-      hasActiveAudio: vi.fn(() => true),
-      getDuration: vi.fn(() => 10000),
-      seekTo: vi.fn(() => true),
-      onEnded: vi.fn((callback) => {
-        onEnded = callback;
-      }),
-    });
-    const engine = new PlaybackEngine(
-      [
-        scene([
-          { id: 'speech-1', type: 'speech', text: 'First line.' },
-          { id: 'spotlight-1', type: 'spotlight', elementId: 'shape-1' },
-          { id: 'speech-2', type: 'speech', text: 'Second line.' },
-        ]),
-      ],
-      actionEngine,
-      audio,
-      { getPlaybackSpeed: () => 1 },
-    );
+    const actions = [
+      speech('speech-1', 'First line.'),
+      { id: 'wb-1', type: 'wb_open' },
+      { id: 'wb-2', type: 'wb_draw_text', content: 'Important state', x: 10, y: 20 },
+      speech('speech-2', 'Second line.'),
+    ] as Action[];
+    const engine = new PlaybackEngine([scene(actions)], actionEngine, fakeAudio());
 
-    engine.start();
-    onEnded();
-    await Promise.resolve();
-    await Promise.resolve();
-    vi.mocked(actionEngine.clearEffects).mockClear();
+    expect(await engine.jumpToAction(3, { autoplay: false })).toBe(true);
 
-    await engine.seekTo(11000);
-
-    expect(actionEngine.clearEffects).toHaveBeenCalledTimes(1);
-    expect(actionEngine.execute).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'spotlight' }),
-      { silent: true },
-    );
-  });
-
-  it('keeps seek progress at the selected offset while active audio currentTime is still zero', async () => {
-    const audio = fakeAudio({
-      play: vi.fn().mockResolvedValue(true),
-      hasActiveAudio: vi.fn(() => true),
-      getCurrentTime: vi.fn(() => 0),
-      getDuration: vi.fn(() => 10000),
-      seekTo: vi.fn(() => true),
-    });
-    const engine = new PlaybackEngine(
-      [scene([{ id: 'speech-1', type: 'speech', text: 'Generated audio line.' }])],
-      fakeActionEngine(),
-      audio,
-      { getPlaybackSpeed: () => 1 },
-    );
-
-    engine.start();
-    const progress = await engine.seekTo(5000);
-
-    expect(progress.currentTimeMs).toBe(5000);
-    expect(progress.durationMs).toBe(10000);
-  });
-
-  it('keeps observed generated-audio duration stable after the action is no longer active', () => {
-    const engine = new PlaybackEngine(
-      [scene([{ id: 'speech-1', type: 'speech', text: 'Short estimate.' }])],
-      fakeActionEngine(),
-      fakeAudio({
-        play: vi.fn().mockResolvedValue(true),
-        hasActiveAudio: vi.fn(() => true),
-        getDuration: vi.fn(() => 10000),
-      }),
-      { getPlaybackSpeed: () => 1 },
-    );
-
-    engine.start();
-    expect(engine.getProgress().durationMs).toBe(10000);
-
-    engine.stop();
-
-    expect(engine.getProgress().durationMs).toBe(10000);
-  });
-
-  it('starts generated speech audio at the pending seek offset', async () => {
-    const play = vi.fn().mockResolvedValue(true);
-    const engine = new PlaybackEngine(
-      [
-        scene([
-          {
-            id: 'speech-1',
-            type: 'speech',
-            text: 'Generated audio line with enough words for seeking.',
-            audioId: 'tts-1',
-            audioUrl: '/audio/tts-1.mp3',
-          },
-        ]),
-      ],
-      fakeActionEngine(),
-      fakeAudio({ play }),
-      { getPlaybackSpeed: () => 1 },
-    );
-
-    await engine.seekTo(1000);
-    engine.resume();
-
-    expect(play).toHaveBeenCalledWith('tts-1', '/audio/tts-1.mp3', 1000);
-  });
-
-  it('marks unsafe scene progress as not seekable and no-ops seekTo', async () => {
-    const actionEngine = fakeActionEngine();
-    const engine = new PlaybackEngine(
-      [
-        scene([
-          { id: 'speech-1', type: 'speech', text: 'First line.' },
-          { id: 'widget-1', type: 'widget_reveal', target: 'part-a' },
-          { id: 'speech-2', type: 'speech', text: 'Second line.' },
-        ] as NonNullable<Scene['actions']>),
-      ],
-      actionEngine,
-      fakeAudio(),
-      { getPlaybackSpeed: () => 1 },
-    );
-
-    expect(engine.getProgress()).toMatchObject({ currentTimeMs: 0, seekable: false });
-
-    const progress = await engine.seekTo(2500);
-
-    expect(progress).toMatchObject({ currentTimeMs: 0, seekable: false });
-    expect(engine.getSnapshot().actionIndex).toBe(0);
-    expect(actionEngine.resetPlaybackVisualState).not.toHaveBeenCalled();
-  });
-
-  it('silently replays whiteboard actions before the target speech', async () => {
-    const actionEngine = fakeActionEngine();
-    const engine = new PlaybackEngine(
-      [
-        scene([
-          { id: 'speech-1', type: 'speech', text: 'First line.' },
-          { id: 'wb-1', type: 'wb_open' },
-          {
-            id: 'wb-2',
-            type: 'wb_draw_text',
-            content: 'Important state',
-            x: 10,
-            y: 20,
-          },
-          { id: 'spotlight-1', type: 'spotlight', elementId: 'shape-1' },
-          { id: 'speech-2', type: 'speech', text: 'Second line.' },
-        ] as NonNullable<Scene['actions']>),
-      ],
-      actionEngine,
-      fakeAudio(),
-      {
-        getPlaybackSpeed: () => 1,
-        onEffectFire: vi.fn(),
-        onSpeechStart: vi.fn(),
-      },
-    );
-
-    const progress = await engine.seekTo(2500);
-
-    expect(progress).toMatchObject({ currentTimeMs: 2500, actionIndex: 4, seekable: true });
     expect(actionEngine.resetPlaybackVisualState).toHaveBeenCalledTimes(1);
     expect(actionEngine.execute).toHaveBeenCalledTimes(2);
     expect(actionEngine.execute).toHaveBeenNthCalledWith(
@@ -344,103 +140,24 @@ describe('PlaybackEngine seek', () => {
     );
   });
 
-  it('seeking backward resets whiteboard state without replaying later whiteboard actions', async () => {
-    const actionEngine = fakeActionEngine();
+  it('autoplay continues from the jumped-to speech action with canonical audioId playback', async () => {
+    const play = vi.fn().mockResolvedValue(true);
     const engine = new PlaybackEngine(
       [
         scene([
-          { id: 'speech-1', type: 'speech', text: 'First line.' },
-          { id: 'wb-1', type: 'wb_open' },
-          {
-            id: 'wb-2',
-            type: 'wb_draw_text',
-            content: 'Important state',
-            x: 10,
-            y: 20,
-          },
-          { id: 'speech-2', type: 'speech', text: 'Second line.' },
-        ] as NonNullable<Scene['actions']>),
+          speech('speech-1', 'First line.', 'audio-1'),
+          speech('speech-2', 'Second line.', 'audio-2'),
+        ]),
       ],
-      actionEngine,
-      fakeAudio(),
-      { getPlaybackSpeed: () => 1 },
+      fakeActionEngine(),
+      fakeAudio(play),
     );
 
-    await engine.seekTo(2500);
-    vi.mocked(actionEngine.execute).mockClear();
+    expect(await engine.jumpToAction(1, { autoplay: true })).toBe(true);
+    await flushPromises();
 
-    const progress = await engine.seekTo(0);
-
-    expect(progress).toMatchObject({ currentTimeMs: 0, actionIndex: 0 });
-    expect(actionEngine.resetPlaybackVisualState).toHaveBeenCalledTimes(2);
-    expect(actionEngine.execute).not.toHaveBeenCalled();
-  });
-
-  it('does not schedule an old reading timer when stale audio play resolves after seek', async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveFirstPlay: (value: boolean) => void = () => {};
-      const play = vi
-        .fn()
-        .mockImplementationOnce(
-          () =>
-            new Promise<boolean>((resolve) => {
-              resolveFirstPlay = resolve;
-            }),
-        )
-        .mockImplementationOnce(() => new Promise<boolean>(() => {}));
-      const onSpeechEnd = vi.fn();
-      const engine = new PlaybackEngine(
-        [
-          scene([
-            { id: 'speech-1', type: 'speech', text: 'First line.' },
-            { id: 'speech-2', type: 'speech', text: 'Second line.' },
-          ]),
-        ],
-        fakeActionEngine(),
-        fakeAudio({ play }),
-        { getPlaybackSpeed: () => 1, onSpeechEnd },
-      );
-
-      engine.start();
-      await engine.seekTo(2500);
-      resolveFirstPlay(false);
-      await vi.runAllTicks();
-      vi.advanceTimersByTime(3000);
-
-      expect(onSpeechEnd).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('pause invalidates a pending audio play fallback timer', async () => {
-    vi.useFakeTimers();
-    try {
-      let resolvePlay: (value: boolean) => void = () => {};
-      const play = vi.fn(
-        () =>
-          new Promise<boolean>((resolve) => {
-            resolvePlay = resolve;
-          }),
-      );
-      const onSpeechEnd = vi.fn();
-      const engine = new PlaybackEngine(
-        [scene([{ id: 'speech-1', type: 'speech', text: 'First line.' }])],
-        fakeActionEngine(),
-        fakeAudio({ play }),
-        { getPlaybackSpeed: () => 1, onSpeechEnd },
-      );
-
-      engine.start();
-      engine.pause();
-      resolvePlay(false);
-      await vi.runAllTicks();
-      vi.advanceTimersByTime(3000);
-
-      expect(onSpeechEnd).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(engine.getMode()).toBe('playing');
+    expect(play).toHaveBeenCalledWith('audio-2', undefined);
+    expect(engine.getSnapshot().actionIndex).toBe(2);
   });
 });

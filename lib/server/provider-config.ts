@@ -351,7 +351,6 @@ function collectDisabledProviders(yamlData: YamlData): Record<CapabilitySection,
 // ---------------------------------------------------------------------------
 
 const DEFAULT_FILENAME = 'server-providers.yml';
-const OPENAI_IMAGE_PROVIDER_ID = 'openai-image';
 const ALIDOCMIND_PROVIDER_ID = 'alidocmind';
 const BEDROCK_PROVIDER_ID = 'bedrock';
 
@@ -434,26 +433,6 @@ export function resolveServerMediaExtractorConfig(): {
   };
 }
 
-function applyOpenAIImageFallback(
-  imageConfig: Record<string, ServerProviderEntry>,
-  yamlImageSection: Record<string, Partial<ServerProviderEntry>> | undefined,
-): Record<string, ServerProviderEntry> {
-  if (imageConfig[OPENAI_IMAGE_PROVIDER_ID]) return imageConfig;
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return imageConfig;
-
-  const yamlOpenAIImage = yamlImageSection?.[OPENAI_IMAGE_PROVIDER_ID];
-  imageConfig[OPENAI_IMAGE_PROVIDER_ID] = {
-    apiKey,
-    baseUrl:
-      yamlOpenAIImage?.baseUrl || process.env.IMAGE_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL,
-    models: yamlOpenAIImage?.models,
-    proxy: yamlOpenAIImage?.proxy,
-  };
-  return imageConfig;
-}
-
 function splitModels(models: string | undefined): string[] | undefined {
   const parsed = models
     ?.split(',')
@@ -497,12 +476,9 @@ function applyBedrockProviderConfig(
 }
 
 function buildConfig(yamlData: YamlData): ServerConfig {
-  const image = applyOpenAIImageFallback(
-    loadEnvSection(IMAGE_ENV_MAP, yamlData.image, {
-      keylessProviders: new Set(['lemonade']),
-    }),
-    yamlData.image,
-  );
+  const image = loadEnvSection(IMAGE_ENV_MAP, yamlData.image, {
+    keylessProviders: new Set(['lemonade']),
+  });
   const providers = applyBedrockProviderConfig(
     loadEnvSection(LLM_ENV_MAP, yamlData.providers, {
       keylessProviders: new Set(['ollama', 'lemonade', BEDROCK_PROVIDER_ID]),

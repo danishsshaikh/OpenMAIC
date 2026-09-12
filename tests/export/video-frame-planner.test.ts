@@ -264,6 +264,8 @@ describe('video frame export planner', () => {
       [
         {
           zipPath: 'media/image-1.png',
+          posterZipPath: 'media/image-1.poster.jpg',
+          sourceRef: 'image-1',
           elementId: 'image-1',
           record: {
             id: 'stage-1:image-1',
@@ -279,6 +281,8 @@ describe('video frame export planner', () => {
         },
         {
           zipPath: 'media/video-1.mp4',
+          posterZipPath: 'media/video-1.poster.jpg',
+          sourceRef: 'video-1',
           elementId: 'video-1',
           record: {
             id: 'stage-1:video-1',

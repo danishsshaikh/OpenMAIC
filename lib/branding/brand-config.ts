@@ -1,6 +1,12 @@
+import {
+  VIDEO_EXPORT_DEFAULT_COMPOSITION_ID,
+  VIDEO_EXPORT_DEFAULT_MANIFEST_FILE_NAME,
+  VIDEO_EXPORT_DEFAULT_PRODUCT_NAME,
+} from '@/lib/video-export/brand-defaults';
+
 export const brandConfig = {
-  productName: 'Sahaya',
-  shortName: 'Sahaya',
+  productName: VIDEO_EXPORT_DEFAULT_PRODUCT_NAME,
+  shortName: VIDEO_EXPORT_DEFAULT_PRODUCT_NAME,
   productDescriptor: 'AI Teaching Studio',
   heroEyebrow: 'Built for faculty, shaped for teaching',
   productDescription:
@@ -31,8 +37,8 @@ export const brandConfig = {
   },
   export: {
     ctaDestination: 'mituniversity.ac.in',
-    compositionId: 'sahaya',
-    manifestFileName: 'sahaya-video-manifest.json',
+    compositionId: VIDEO_EXPORT_DEFAULT_COMPOSITION_ID,
+    manifestFileName: VIDEO_EXPORT_DEFAULT_MANIFEST_FILE_NAME,
   },
   openSource: {
     upstreamName: 'OpenMAIC',

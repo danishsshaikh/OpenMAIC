@@ -20,19 +20,25 @@ describe('official render-service configuration', () => {
 
     expect(service.getRenderServiceUrl()).toBeNull();
     expect(service.resolveRenderServiceUrl()).toEqual({ error: 'not_configured' });
-    await expect(service.checkRenderServiceHealth()).resolves.toBe(false);
+    await expect(service.getRenderServiceCapability()).resolves.toEqual({ enabled: false });
   });
 
-  it('trims configured render-service URLs and probes health', async () => {
+  it('trims configured render-service URLs and probes health capability', async () => {
     process.env.RENDER_SERVICE_URL = ' http://127.0.0.1:9000/// ';
-    const proxyFetch = vi.fn().mockResolvedValue({ ok: true });
+    const proxyFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ accepting: false }),
+    });
     vi.doMock('@/lib/server/proxy-fetch', () => ({ proxyFetch }));
 
     const service = await import('@/lib/server/render-service');
 
     expect(service.getRenderServiceUrl()).toBe('http://127.0.0.1:9000');
     expect(service.resolveRenderServiceUrl()).toEqual({ url: 'http://127.0.0.1:9000' });
-    await expect(service.checkRenderServiceHealth()).resolves.toBe(true);
+    await expect(service.getRenderServiceCapability()).resolves.toEqual({
+      enabled: true,
+      accepting: false,
+    });
     expect(proxyFetch).toHaveBeenCalledWith(
       'http://127.0.0.1:9000/health',
       expect.objectContaining({ method: 'GET' }),

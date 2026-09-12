@@ -1,5 +1,11 @@
 import tinycolor from 'tinycolor2';
-import type { Action, LaserAction, SpeechAction, SpotlightAction } from '@/lib/types/action';
+import type {
+  Action,
+  LaserAction,
+  LegacySpeechAction,
+  SpeechAction,
+  SpotlightAction,
+} from '@/lib/types/action';
 import type { Scene } from '@/lib/types/stage';
 import type { VideoFrameEntry } from '@/lib/export/video-frame-types';
 import {
@@ -115,7 +121,7 @@ export function buildLocalMp4Manifest({
         actionIndex: segment.actionIndex,
         reason: segment.action.audioId
           ? 'generated audio file not found'
-          : segment.action.audioUrl
+          : (segment.action as LegacySpeechAction).audioUrl
             ? 'audioUrl could not be bundled'
             : 'missing generated audioId/audioUrl',
       });

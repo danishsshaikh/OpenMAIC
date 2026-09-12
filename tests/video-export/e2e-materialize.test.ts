@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Locale } from '@/lib/i18n';
+import { brandConfig } from '@/lib/branding/brand-config';
 import type { Scene } from '@/lib/types/stage';
 import { compileVideoTimeline, emitHyperframes } from '@/lib/video-export';
 import type { CompilerScene } from '@/lib/video-export';
@@ -242,7 +243,7 @@ const COMPLETE_PROJECT_FILES = [
   'README.md',
   'assets/vendor/gsap.min.js',
   'index.html',
-  'openmaic-video-manifest.json',
+  brandConfig.export.manifestFileName,
   'subtitles.srt',
   'subtitles.vtt',
 ].sort();

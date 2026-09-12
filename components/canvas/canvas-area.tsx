@@ -52,8 +52,6 @@ export function CanvasArea({
   onTogglePresentation,
   showStopDiscussion,
   onStopDiscussion,
-  playbackProgress,
-  onSeek,
   onContinueDiscussion,
   hideToolbar,
   isPendingScene,
@@ -299,8 +297,6 @@ export function CanvasArea({
           onTogglePresentation={onTogglePresentation}
           showStopDiscussion={showStopDiscussion}
           onStopDiscussion={onStopDiscussion}
-          playbackProgress={playbackProgress}
-          onSeek={onSeek}
           onContinueDiscussion={onContinueDiscussion}
         />
       )}

@@ -1,5 +1,5 @@
-import type { Action, SpeechAction } from '@/lib/types/action';
-import type { Scene, SceneContent } from '@/lib/types/stage';
+import type { Action, LegacySpeechAction, SpeechAction } from '@/lib/types/action';
+import type { QuizOption, QuizQuestion, Scene, SceneContent } from '@/lib/types/stage';
 import type { PPTElement } from '@openmaic/dsl';
 
 export type NarrationSyncStatus =
@@ -230,7 +230,7 @@ export function getNarrationSyncState(
   const narrationSourceFingerprint = getNarrationSourceFingerprint(scene as Scene);
   const audioSourceFingerprint = getAudioSourceFingerprint(scene as Scene, settings);
   const hasSpeechAudio = speechActions(scene.actions).some(
-    (action) => !!action.audioId || !!action.audioUrl,
+    (action) => !!action.audioId || !!(action as LegacySpeechAction).audioUrl,
   );
   const metadata = scene.sync;
 
@@ -437,9 +437,10 @@ function visibleContentLines(content: SceneContent): string[] {
     case 'slide':
       return buildVisualNarrationBlocks(content.canvas.elements).map((block) => block.text);
     case 'quiz':
-      return content.questions.flatMap((question) => [
+      return content.questions.flatMap((question: QuizQuestion) => [
         normalizeNarrationText(question.question),
-        ...(question.options?.map((option) => normalizeNarrationText(option.value)) ?? []),
+        ...(question.options?.map((option: QuizOption) => normalizeNarrationText(option.value)) ??
+          []),
         normalizeNarrationText(question.analysis),
       ]);
     case 'interactive':
@@ -451,6 +452,7 @@ function visibleContentLines(content: SceneContent): string[] {
         normalizeNarrationText(content.projectV2 ? stableStringify(content.projectV2) : ''),
       ];
   }
+  return [];
 }
 
 interface TextualElement {

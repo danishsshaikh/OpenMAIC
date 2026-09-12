@@ -11,6 +11,7 @@ import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import type { Scene } from '@/lib/types/stage';
 import type { SpeechAction } from '@/lib/types/action';
 import { db, type MediaFileRecord } from '@/lib/utils/database';
+import { buildStageAssetManifest } from '@/lib/media/asset-manifest';
 import { buildVideoFrameExportPlan, sanitizeVideoFrameFilenamePart } from './video-frame-planner';
 import { type VideoFrameEntry } from './video-frame-types';
 import { collectAudioFiles, collectMediaFiles } from './classroom-zip-utils';
@@ -73,8 +74,11 @@ export function useExportVideoFrames() {
       const plan = buildVideoFrameExportPlan({ stageTitle, scenes });
       const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
       const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
-      const audioRecords = await collectAudioFiles(scenes);
-      const generatedMedia = await collectMediaFiles(stage.id);
+      const assetManifest = await buildStageAssetManifest(stage, scenes, stage.id);
+      const audioEntries = assetManifest.entries.filter((entry) => entry.kind === 'audio');
+      const mediaEntries = assetManifest.entries.filter((entry) => entry.kind !== 'audio');
+      const audioRecords = await collectAudioFiles(audioEntries);
+      const generatedMedia = await collectMediaFiles(stage.id, mediaEntries);
       const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
       const manifest = withVideoFrameSidecarMetadata(
         plan.manifest,

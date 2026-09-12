@@ -229,7 +229,10 @@ describe('emitHyperframes frozen interactive HTML', () => {
     const ready = html.indexOf(
       'window.__openmaicInteractiveReady = initializeOpenMaicInteractiveStaticFrames()',
     );
-    const registration = html.indexOf('window.__timelines["openmaic"] = tl;', ready);
+    const registration = html.indexOf(
+      `window.__timelines["${brandConfig.export.compositionId}"] = tl;`,
+      ready,
+    );
     expect(ready).toBeGreaterThan(0);
     expect(registration).toBeGreaterThan(ready);
     expect(html).toContain("'interactive-runtime-failure'");

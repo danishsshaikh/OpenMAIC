@@ -9,7 +9,6 @@ import { db } from '@/lib/utils/database';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useStageStore } from '@/lib/store/stage';
 import { generateAndStoreTTS } from '@/lib/hooks/use-scene-generator';
-import { useStageStore } from '@/lib/store/stage';
 import { proveExclusiveAssetOwnership } from '@/lib/media/collect-stage-asset-refs';
 import { resolveAudioBlob } from '@/lib/media/resolve-audio-bytes';
 import { assetRefExists } from '@/lib/media/use-asset-url';

@@ -3,10 +3,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
-import type { SpeechAction } from '@/lib/types/action';
+import type { LegacySpeechAction, SpeechAction } from '@/lib/types/action';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
 import { collectAudioFiles } from './classroom-zip-utils';
+import { buildStageAssetManifest } from '@/lib/media/asset-manifest';
 import { compressFrameForMp4Upload } from './mp4/frame-compression';
 import {
   buildLocalMp4Manifest,
@@ -101,7 +102,9 @@ export function useExportVideoMp4() {
       const language = latestStage?.languageDirective || stage.languageDirective;
       const plan = buildVideoFrameExportPlan({ stageTitle, scenes });
       const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
-      const audioRecords = await collectAudioFiles(scenes);
+      const assetManifest = await buildStageAssetManifest(stage, scenes, stage.id);
+      const audioEntries = assetManifest.entries.filter((entry) => entry.kind === 'audio');
+      const audioRecords = await collectAudioFiles(audioEntries);
       const audioById = new Map(audioRecords.map((audio) => [audio.record.id, audio.record]));
       const frameBlobs = new Map<string, Blob>();
       const compressedFrameBlobs = new Map<string, Blob>();
@@ -347,15 +350,16 @@ async function resolveSpeechAudioBlob(
     }
   }
 
-  if (speech.audioUrl) {
+  const legacyUrl = (speech as LegacySpeechAction).audioUrl;
+  if (legacyUrl) {
     try {
-      const response = await fetch(speech.audioUrl);
+      const response = await fetch(legacyUrl);
       if (!response.ok) return null;
       const blob = await response.blob();
       return {
         blob,
         extension: normalizeAudioExtension(
-          extensionFromMime(blob.type) || extensionFromUrl(speech.audioUrl),
+          extensionFromMime(blob.type) || extensionFromUrl(legacyUrl),
         ),
       };
     } catch {

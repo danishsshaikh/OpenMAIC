@@ -534,27 +534,35 @@ pdf:
   });
 
   describe('image and video provider metadata', () => {
-    it('uses standard OpenAI env vars for OpenAI image generation fallback', async () => {
+    it('does not infer OpenAI image generation from generic OpenAI LLM env vars', async () => {
       vi.stubEnv('OPENAI_API_KEY', 'sk-openai');
       vi.stubEnv('OPENAI_BASE_URL', 'https://proxy.example.com/v1');
-      const { getServerImageProviders, resolveImageApiKey, resolveImageBaseUrl } =
-        await import('@/lib/server/provider-config');
+      const {
+        getServerImageProviders,
+        resolveImageApiKey,
+        resolveImageBaseUrl,
+        resolveServerImageProviderId,
+        isServerConfiguredProvider,
+      } = await import('@/lib/server/provider-config');
 
       const providers = getServerImageProviders();
-      // No base URL exposed; resolution still works server-side.
-      expect(providers['openai-image']).toEqual({});
-      expect(resolveImageApiKey('openai-image')).toBe('sk-openai');
-      expect(resolveImageBaseUrl('openai-image')).toBe('https://proxy.example.com/v1');
+      expect(providers['openai-image']).toBeUndefined();
+      expect(resolveServerImageProviderId()).toBeUndefined();
+      expect(isServerConfiguredProvider('providers', 'openai')).toBe(true);
+      expect(isServerConfiguredProvider('image', 'openai-image')).toBe(false);
+      expect(resolveImageApiKey('openai-image')).toBe('');
+      expect(resolveImageBaseUrl('openai-image')).toBeUndefined();
     });
 
     it('maps IMAGE_OPENAI and exposes image baseUrl', async () => {
       vi.stubEnv('IMAGE_OPENAI_API_KEY', 'sk-openai-image');
       vi.stubEnv('IMAGE_OPENAI_BASE_URL', 'https://proxy.example.com/v1');
-      const { getServerImageProviders, resolveImageBaseUrl } =
+      const { getServerImageProviders, resolveImageApiKey, resolveImageBaseUrl } =
         await import('@/lib/server/provider-config');
 
       const providers = getServerImageProviders();
       expect(providers['openai-image']).toEqual({});
+      expect(resolveImageApiKey('openai-image')).toBe('sk-openai-image');
       expect(resolveImageBaseUrl('openai-image')).toBe('https://proxy.example.com/v1');
     });
 

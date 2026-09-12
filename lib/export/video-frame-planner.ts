@@ -1,5 +1,5 @@
 import type { Scene } from '@/lib/types/stage';
-import type { SpeechAction } from '@/lib/types/action';
+import type { LegacySpeechAction, SpeechAction } from '@/lib/types/action';
 import { brandConfig } from '@/lib/branding/brand-config';
 import {
   VIDEO_FRAME_COMPILER_NAME,
@@ -197,7 +197,7 @@ function planSceneAudioEntries(
 
 function getMissingAudioReason(speech: SpeechAction): string {
   if (!speech.text?.trim()) return 'empty speech text';
-  if (speech.audioUrl) return 'audioUrl not bundled';
+  if ((speech as LegacySpeechAction).audioUrl) return 'audioUrl not bundled';
   return 'no audioId';
 }
 

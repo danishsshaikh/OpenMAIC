@@ -33,6 +33,11 @@ import { INTERACTIVE_STATIC_MESSAGE_FLAG } from '../interactive-static';
 import { emitManifestJson } from '../passes/emit';
 import { RUNTIME_DIAGNOSTIC_CODES } from '../runtime-diagnostics';
 import { toSrt, toVtt } from '../subtitles';
+import {
+  VIDEO_EXPORT_DEFAULT_COMPOSITION_ID,
+  VIDEO_EXPORT_DEFAULT_MANIFEST_FILE_NAME,
+  VIDEO_EXPORT_DEFAULT_PRODUCT_NAME,
+} from '../brand-defaults';
 import { EASE_DEFS, emitEffect } from './effects';
 import { escapeHtml, sec } from './format';
 import { INTER_FONT_FACE_CSS, INTER_OFL_LICENSE } from './inter-font';
@@ -143,11 +148,11 @@ export interface EmitHyperframesOptions {
   width?: number;
   /** Render height in px. Default derived from `width` at 16:9. */
   height?: number;
-  /** Composition id used for the root `data-composition-id` and the timeline key. Default `openmaic`. */
+  /** Composition id used for the root `data-composition-id` and the timeline key. Defaults to the active brand. */
   compositionId?: string;
   /** Relative path the emitted HTML loads GSAP from. Default `assets/vendor/gsap.min.js`. */
   gsapVendorPath?: string;
-  /** Manifest filename. Default `openmaic-video-manifest.json`. */
+  /** Manifest filename. Defaults to the active brand. */
   manifestPath?: string;
   /** Cover-card chrome; each omitted key falls back to its `en-US` default. */
   labels?: VideoExportLabelOverrides;
@@ -186,7 +191,9 @@ export interface EmittedProject {
 
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_GSAP_PATH = 'assets/vendor/gsap.min.js';
-const DEFAULT_MANIFEST = 'openmaic-video-manifest.json';
+const DEFAULT_COMPOSITION_ID = VIDEO_EXPORT_DEFAULT_COMPOSITION_ID;
+const DEFAULT_MANIFEST = VIDEO_EXPORT_DEFAULT_MANIFEST_FILE_NAME;
+const DEFAULT_PRODUCT_NAME = VIDEO_EXPORT_DEFAULT_PRODUCT_NAME;
 const DEFAULT_LOCALE = 'en-US';
 
 /** Language subtags written right-to-left; everything else renders LTR. */
@@ -1160,7 +1167,7 @@ function renderReadme(project: {
   const scriptFontSummary = project.quizScriptFonts.length
     ? `, ${project.quizScriptFonts.join(' and ')}`
     : '';
-  return `# ${project.stageName} — OpenMAIC video export
+  return `# ${project.stageName} — ${DEFAULT_PRODUCT_NAME} video export
 
 Self-contained [Hyperframes](https://github.com/heygen-com/hyperframes) composition
 for the classroom **${project.stageName}**. Everything needed to render is in this
@@ -1233,7 +1240,7 @@ export function emitHyperframes(
   const width = options.width ?? DEFAULT_WIDTH;
   const height =
     options.height ?? Math.round(width * (ir.canvas.pixelBase.height / ir.canvas.pixelBase.width));
-  const compositionId = options.compositionId ?? 'openmaic';
+  const compositionId = options.compositionId ?? DEFAULT_COMPOSITION_ID;
   const gsapVendorPath = options.gsapVendorPath ?? DEFAULT_GSAP_PATH;
   const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
   const labels: VideoExportLabels = {
@@ -1309,7 +1316,7 @@ export function emitHyperframes(
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(ir.stage.name)} — OpenMAIC video</title>
+<title>${escapeHtml(ir.stage.name)} — ${DEFAULT_PRODUCT_NAME} video</title>
 <style>
   ${INTER_FONT_FACE_CSS}${
     hasQuizQuestionList

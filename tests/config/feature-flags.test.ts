@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeScene, type Scene, type SceneContent } from '@/lib/types/stage';
 import type { WidgetConfig } from '@/lib/types/widgets';
-import type { PBLProjectConfig } from '@/lib/pbl/types';
+import type { PBLProjectConfig } from '@/lib/pbl/legacy/read';
 
 const FLAG_KEYS = [
   'DATABASE_URL',
