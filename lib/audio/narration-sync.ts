@@ -394,7 +394,9 @@ export function applyNarrationSyncForSceneUpdate(
   const nextNarration = getNarrationSourceFingerprint(next);
   const previousAudio = getAudioSourceFingerprint(previous, settings);
   const nextAudio = getAudioSourceFingerprint(next, settings);
-  const hasAudio = speechActions(previous.actions).some((a) => !!a.audioId || !!a.audioUrl);
+  const hasAudio = speechActions(previous.actions).some(
+    (a) => !!a.audioId || !!(a as LegacySpeechAction).audioUrl,
+  );
   const hasSpeech = speechActions(next.actions).length > 0;
 
   if (previousNarration !== nextNarration && hasSpeech) {
